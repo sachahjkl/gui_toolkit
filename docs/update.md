@@ -58,7 +58,7 @@ program's channels, and only for a program that has some. `prefs_page.update_sou
 
 ### What it does
 
-`updater_start` touches no disk: it starts a thread, which removes what an earlier update left (`remove_leftovers`), then waits. With `check` on, it
+`updater_start` touches no disk: it starts a thread, which asks whether this account can write the program's folder (else the phase is `Administered`), removes what an earlier update left (`remove_leftovers`), then waits. With `check` on, it
 checks `first_check` after the start (`FIRST_CHECK`, 20 s: the session's network may come later than the program), then every
 `every` (`CHECK_EVERY`, a day); a check that failed is made again after `retry` (`RETRY_AFTER`, an hour). With `install` on,
 what a check finds is downloaded and put in place at once. The phases:
@@ -71,6 +71,7 @@ what a check finds is downloaded and put in place at once. The phases:
 | `Downloading` | the program is being downloaded (at most the manifest's size) and put in place (`place`) |
 | `Installed` | the new program is in place: it runs at the next start. The program restarts when it likes: `host.restart_after_exit`, then it quits, and `host.program_end` starts the new copy (in front, with the keyboard) |
 | `Managed` | the program runs from `/nix/store`: its package manager updates it, nothing is asked |
+| `Administered` | this account cannot write the program's folder (an install for everyone: Program Files, `/opt`): an administrator updates it. Nothing is checked, downloaded nor written there, not even `remove_leftovers`; `check_now` says why |
 | `Refused` | the process runs with more rights than its user's files (`base.restricted`: elevated): nothing is checked nor downloaded, and `place` returns `Refused` |
 
 `news(user)` is called on the updater's thread at each change, never after `updater_stop` returned: the program posts to its

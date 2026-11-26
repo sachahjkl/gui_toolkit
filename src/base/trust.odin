@@ -6,8 +6,8 @@ package gt_base
 // run with the administrator's rights. Each place of the toolkit that starts or loads something asks `restricted`
 // (process.start, platform.open_url, open_path, reveal_in_folder, desktop's install, terminal, "Open with", setup, the
 // updates, the plugins, the devtools server) and refuses, saying why (`restricted_words`, `restricted_reason`:
-// trust_words_<os>.odin). A task manager's machine copy that runs unelevated has the user's own token: the rule adds
-// nothing there, and it is not restricted.
+// trust_words_<os>.odin). A process that runs unelevated has the user's own token: the rule adds nothing there, and it
+// is not restricted.
 
 import "core:sync"
 

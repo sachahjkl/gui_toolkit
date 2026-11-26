@@ -21,8 +21,12 @@ foreign user32_env {
 
 @(private = "file") SMTO_ABORTIFHUNG :: 0x0002
 
+// The user's environment (HKCU\Environment), or the machine's for the machine half of a system install.
 @(private)
-env_key :: proc(o: ^Integration_Options) -> string { return o.environment_root != "" ? o.environment_root : "Environment" }
+env_key :: proc(o: ^Integration_Options) -> string {
+	if in_machine(o) { return reg_join(machine_hive(o), "SYSTEM", "CurrentControlSet", "Control", "Session Manager", "Environment") }
+	return o.environment_root != "" ? o.environment_root : "Environment"
+}
 
 @(private = "file")
 mark_key :: proc(o: ^Integration_Options) -> string { return reg_join(registry_root_of(o), o.identity.vendor_key, o.identity.key) }

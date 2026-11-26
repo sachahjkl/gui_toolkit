@@ -3,8 +3,9 @@
 `import desktop "gt:desktop"` (or the relative path of the submodule). The package is named `tk_desktop` (the directory is
 `desktop`): a program may have a `desktop` package of its own, and Odin package names are unique within a build.
 
-The package makes a portable program part of the user's desktop, and installs a copy of it in a folder of its own. Everything
-is in the user's profile: no administrator rights, nothing system-wide. A program gets:
+The package makes a portable program part of the user's desktop, and installs a copy of it in a folder of its own: in
+the user's profile with no administrator rights, or for every account of the computer, which an administrator allows
+([the scope of an install](#the-scope-of-an-install)). A program gets:
 
 - **The integration**: a launcher in the application menu (Start menu, freedesktop.org entry), a desktop shortcut (Windows),
   the program on the user's PATH, the icons of the theme (Linux), and for a browser the registration as a candidate browser.
@@ -30,7 +31,7 @@ them with a job on another thread.
 | `key` | `Wren` | the registry key and ProgID stem (letters and digits) |
 | `slug` | `wren` | the `.desktop` file, the icon name, the window class (lower case, digits, hyphens) |
 | `aumid` | `FromentSoftware.Wren.Dev` | the Windows AppUserModelID; `set_process_identity` gives it to the process's windows (`""`: `identity_aumid` derives it from `vendor` and `name`, as gt:toolbox's `project_aumid` derives the build's from the Project's publisher and title: `Froment Software` and `Wren` give `FromentSoftware.Wren`; give one only for an id of another rule) |
-| `description`, `vendor` | | the menu entry's comment; the publisher in Settings > Apps |
+| `description`, `vendor` | | the menu entry's comment (in English); the publisher in Settings > Apps. setup's dialog shows the description through `i18n.tr`: the program's catalogue translates it |
 | `exe_name` | `wren.exe` | the executable's name in an install folder (`""`: the slug, with `.exe` on Windows) |
 | `entry_marker` | `X-Wren-Integration` | the key that marks the `.desktop` file (begins with `X-`) |
 | `registry_mark` | `WrenIntegration` | the value that marks a registry key, set to the `aumid` |
@@ -117,7 +118,7 @@ if r := desktop.apply(&o); r.error != .None { report(r.detail) }
 | `Autostart` | with `autostart`: the value `<key>` of `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" <autostart_arguments>` |
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
 | `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key; `open` and `explore` under both `shell` keys (the same commands, `ProgrammaticAccessOnly`, `DelegateExecute` empty), unless another program made one |
-| `Task_Manager` | with `task_manager`: the program copied to `%ProgramFiles%\<vendor>\<name>\<exe>` (`machine_dir` with a test's `image_options_root`), and in `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe` the value `Debugger` = `"<that copy>"`, `<registry_mark>` and `<registry_mark>Previous` (the Debugger there before); an administrator allows it ([below](#the-default-task-manager)) |
+| `Task_Manager` | with `task_manager`, an install for everyone only: in `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe` the value `Debugger` = `"<the installed program>"` (in Program Files), `<registry_mark>` and `<registry_mark>Previous` (the Debugger there before) ([below](#the-default-task-manager)) |
 | `Documents` | with `open_documents` (or `default_documents`): in `Software\Classes`, the ProgID `<vendor_key>.<key>.<ext>` of each type (its description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `AppUserModelID`), an empty value `<ProgID>` in `<ext>\OpenWithProgids`, `Applications\<exe name>` with `SupportedTypes\<ext>`; `Software\<vendor_key>\<key>\Capabilities` with `FileAssociations\<ext>` = the ProgID; the value `<key>.Documents` of `Software\RegisteredApplications` |
 | `Thumbnails` | with `thumbnails`: the program's provider `<stem>_thumbnails.dll` beside `<stem>.exe`; in `Software\Classes`, `CLSID\<thumbnail_clsid>` with its `InprocServer32`, and `<ext>\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}` (and under the type's ProgID with the Documents part) = the CLSID ([below](#thumbnails-in-the-file-managers)) |
 
@@ -157,6 +158,9 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | `Documents` | with `open_documents` (or `default_documents`): the MIME type of each of `document_types` in the entry's `MimeType=`, and `%f` in `Exec`; without `start_menu` the entry stays with `NoDisplay=true` |
 | `Default_Documents` | with `default_documents`: `<mime>=<slug>.desktop;` first in the line of each type in `[Default Applications]` of `$XDG_CONFIG_HOME/mimeapps.list` |
 | `Thumbnails` | with `thumbnails`: `$XDG_DATA_HOME/thumbnailers/<slug>.thumbnailer`, the program itself with `thumbnail_arguments` for the document types ([below](#thumbnails-in-the-file-managers)) |
+
+An install for everyone puts the entry, the icons and the thumbnailer under `/usr/local/share` and the link in
+`/usr/local/bin` ([the scope of an install](#the-scope-of-an-install)).
 
 The entry has `MimeType=` with `register_browser` (http, https, the URL schemes and the file types), `default_file_manager`
 (`inode/directory`) and the Documents part (the document types). `Exec` takes `%U` when the program is a browser or has
@@ -203,29 +207,21 @@ ids, and the text with `id` put first in that line or taken out of it.
 manager offers it as an option of its install, and `Part.Task_Manager` says whether it is in place
 ([src/md/features/default-task-manager.md](../src/md/features/default-task-manager.md) says why it is made this way).
 
-- Windows only (`supported_parts`; `admin_parts()` has it): the key is the machine's. `install` with `task_manager`
-  (and `remove`) changes it only when `ask_administrator` is on, which setup's Install and Uninstall set: it starts
-  `"<exe>" --task-manager on` (or `off`) with the verb `runas`, Windows asks the person, and `install` waits for
-  that process (On: the installed copy; Off: the machine copy). Declined, the other parts stay installed and the result
-  is `Not_Allowed`; a failure of that process is `Machine`. Off, `apply` and every other path leave the part as it is.
-- On success the account is recorded in HKCU (`TaskManagerSetHere` under `Software\<vendor_key>\<key>`). `remove`
-  gives Task Manager back only when this account put it; another account's part stays, and nothing is asked. `remove`
-  does that first: on `Not_Allowed` or `Machine` it changes nothing else, and `uninstall` stops with the install whole.
-- The process that an administrator allowed calls `task_manager_write(o, on)` (setup's `command_run` does). On copies
-  the image of that very process into the machine copy (`task_manager_copy(o)`): its file is held open with no write
-  and no delete sharing, never read again by path (a test's roots copy `o.exe`). It keeps the Debugger there before,
-  and sets the Debugger to the copy. Off gives that Debugger back with its kind, deletes the marks, and deletes the copy (at the next restart when it
-  runs). A Debugger that another program set since stays.
+- Windows only (`supported_parts`), and only in an install for everyone (`scope_parts(.User)` lacks it): the key is the
+  machine's, and its Debugger runs the installed program in Program Files, where only an administrator writes. The part
+  is in the machine half (`machine_parts`): the elevated verb writes it with the rest of that half, in one prompt.
+- On keeps the Debugger there before and sets the Debugger to the installed program. Off and `remove` give that
+  Debugger back with its kind and delete the marks. A Debugger that another program set since stays. `remove` does it
+  first: a failure changes nothing else.
 - The program starts with taskmgr's path and options after its own executable: `setup.task_manager_start` takes them
-  away, and hands over to the person's own installed copy when the start is not elevated ([setup.md](setup.md)). The
-  machine copy is restricted only when it is elevated, as every program ([base.md](base.md#restricted-processes)).
-  Unelevated it has the user's own token; it never installs itself into their folder (`setup.Facts.machine_copy`).
+  away. The program is restricted when it runs elevated, as every program ([base.md](base.md#restricted-processes)): an
+  administrator's Ctrl+Shift+Esc starts it elevated with no prompt.
 - In a restricted process `install` and `remove` return `Restricted`, and `apply`, `open_terminal`, `open_with` and
   `cleanup_later` do nothing.
-- The status is read without elevation: present when the key has the mark or its Debugger runs the machine copy;
-  stale when the Debugger runs something else; partial when the machine copy is missing.
+- The status is read without elevation: present when the key has the mark or its Debugger runs the installed program;
+  stale when the Debugger runs something else; partial when the program is missing. A user install never reads it.
 - `image_options_on(k, debugger, ours)` and `image_options_off(k, ours)` are the rules on the key's values
-  (`Image_Options`), on every system; `task_manager_debugger(copy)` is the Debugger's text.
+  (`Image_Options`), on every system; `task_manager_debugger(program)` is the Debugger's text.
 - Linux, macOS: no such part.
 
 ## A handler of document types
@@ -452,6 +448,53 @@ The thumbnailers read are kept while no file or folder read has changed (a stat 
 | Linux | `$TERMINAL` when it is set, else the first of `xdg-terminal-exec`, foot, kitty, alacritty, wezterm, ghostty, gnome-terminal, kgx, konsole, xfce4-terminal, tilix, terminator, lxterminal, mate-terminal, urxvt, st, xterm found on the `PATH`, started in the folder. |
 | Windows | Windows Terminal (`wt -d <dir>`), else the command prompt started in the folder. |
 
+## The scope of an install
+
+`Integration_Options.scope` is `User` (the person's profile, the default) or `System` (the computer, for every account).
+`supported_scopes()` says which scopes this system has (Windows and Linux: both). The reasons are in
+[src/md/features/install-scope.md](../src/md/features/install-scope.md).
+
+| | Windows | Linux |
+|---|---|---|
+| The program (`system_install_dir`) | `%ProgramFiles%\<vendor>\<name>` (known folder) | `/opt/<vendor_key>/<name>` |
+| The menu entry | the Start menu of every account (`FOLDERID_CommonPrograms`) | `/usr/local/share/applications` |
+| The icons, the thumbnailer | the executable's icon; `HKLM\SOFTWARE\Classes` | `/usr/local/share/icons/hicolor`, `/usr/local/share/thumbnailers` |
+| The PATH | `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`, the console launcher beside the program | a link in `/usr/local/bin` |
+| The record | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\<key>` | the manifest |
+| The keys of the browser and the documents | `HKLM\SOFTWARE` | the entry |
+| Task Manager | `HKLM` | none |
+
+A system install has two halves. `machine_parts()` are the machine's: the launcher, the icons, the PATH, the browser's
+and the documents' registration, the thumbnails, Task Manager. The others (the desktop shortcut, the start with the
+session, the default file manager, the default documents) are each person's, in their profile. `machine_half` says which
+half a call writes: `install` and `remove` touch only the parts of that half; `status` reads both halves, each where it
+lives.
+
+```odin
+// the elevated process (setup's `--system install <choices>`): the files from its own image, the machine half, the record
+r := desktop.machine_install(&o, VERSION)
+r = desktop.machine_remove(&o)                                // --system uninstall
+// the person's process: start the elevated verb (runas, pkexec) and wait for it
+r = desktop.machine_elevate(&o, exe, desktop.system_arguments(.Install, choices))
+why := desktop.system_refusal(&o)                             // None, Nix, No_Elevation, Unsupported
+```
+
+- `machine_install` copies the image of its own process (Windows: `image_copy_self`; Linux: `/proc/self/exe`), never a
+  file at a path. On Linux `machine_install` and `machine_remove` refuse a folder that root writes in (the program's,
+  `/usr/local/share/applications`, `.../icons/hicolor`, `.../thumbnailers`, `/usr/local/bin`) or above it, when it is
+  not root's or a group or others can write it. A link of root's is followed and its target checked the same way
+  (Fedora Atomic's `/opt` leads to `/var/opt`).
+- `apply` on a system install writes the person's half only: a part of the machine's half that is missing or turned
+  off is not its to change, so it does not make `apply` write again at each start.
+- A restricted process (elevated) writes the system's places only: `machine_root` and `machine_registry_root` count only
+  in a process that is not restricted (`machine_is_scratch`).
+- `machine_elevate` starts the verb with `runas` (Windows) or `pkexec` (Linux, from the system's folders only) and waits
+  for it. Declined: `Not_Allowed`.
+- `system_refusal` says why an install for everyone cannot be offered: `Nix` on NixOS (the Nix package is that
+  install), `No_Elevation` when no administrator can be asked (Windows refuses this account's prompts by policy; Linux
+  has no pkexec); `system_refusal_words` says it in the language in use. A test's machine root is never refused.
+- `scope_parts(scope)` are the parts a scope has: `Task_Manager` only for `System`.
+
 ## The installed copy
 
 ```odin
@@ -470,17 +513,17 @@ per file placed; a hand-edited one never reaches outside its folder.
 ## The command line
 
 A program's install command line is gt:setup's (`--install`, `--uninstall`, `--setup`, `--status`, `--quit`, and
-`--task-manager on|off`, which Install starts as an administrator:
+`--system install|uninstall`, the elevated verb of an install for everyone:
 `setup.command_of`, `setup.command_run`, [setup.md](setup.md)). This package has none of its own.
 
 ## The tests' scratch roots
 
 Every place is a field of `Integration_Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
-HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `thumbnailers_dir`, `install_dir`, and for the Task_Manager part
-`image_options_root` (a key under HKEY_CURRENT_USER in place of HKLM's Image File Execution Options, written in the test's
-process with no administrator) with `machine_dir` (required with it: a test's machine copy never goes to Program Files;
-without `image_options_root`, `machine_dir` is ignored, so a variable of the environment never moves HKLM's machine copy
-out of Program Files).
+HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `thumbnailers_dir`, `install_dir`, and for an install for everyone `machine_root` (a folder that stands for the
+machine's: Linux `/`, Windows the one of `Program Files` and `Start Menu\Programs`) with `machine_registry_root` (Windows: a
+key under HKEY_CURRENT_USER that stands for HKLM). With them the machine half is written in the test's process, with no
+administrator. They count only in a process that is not restricted: the elevated verb writes the system's own places,
+whatever the environment says.
 A test points them at a scratch folder and a scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
 (`ROOT_NAMES`), so a program's own end-to-end tests run it on scratch places; any of them set turns the notification off.
 `delete_scratch_root` deletes a scratch registry key, and only one under the identity's `scratch_roots`.

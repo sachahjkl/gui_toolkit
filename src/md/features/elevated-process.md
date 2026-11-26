@@ -1,8 +1,9 @@
 # A process with more rights than its user's files
 
 A program made with the toolkit can run with an administrator's rights: started elevated by a person, or by Windows
-when taskmgr.exe auto-elevates for an administrator and its Debugger is a task manager's machine copy
-([default-task-manager.md](default-task-manager.md)). Such a process must never run code that a process of lower
+when taskmgr.exe auto-elevates for an administrator and its Debugger is a task manager installed for everyone
+([default-task-manager.md](default-task-manager.md)), or as the elevated verb of an install for everyone
+([install-scope.md](install-scope.md)). Such a process must never run code that a process of lower
 rights can change. Else any medium-integrity program writes a file where the elevated one later runs it, and the
 user's account becomes the administrator's without a prompt. The how-to is in [docs/base.md](../../../docs/base.md#restricted-processes).
 
@@ -39,13 +40,11 @@ the toolkit that starts, opens, installs, updates or loads something asks it, so
   Windows CI runner is an administrator, and the Pages build runs as root in a container (bare `odin`, `cwebp`).
 
 - **Fail closed.** A token that cannot be read counts as elevated: a doubt never hands the process's rights to the
-  user's code. On the hand-off of the machine copy, the same doubt means "run yourself, restricted".
-- **The machine copy is restricted only when elevated.** For an administrator, Ctrl+Shift+Esc starts it elevated with
-  no prompt (taskmgr.exe auto-elevates): it is then restricted as every elevated program. Unelevated, its token is the
-  user's own, and a restriction would add no safety: whatever it starts, the user could start. Refused: restricting
-  it whatever its token (the first design), which took Open, Open with and the terminal from a standard user for
-  nothing. It keeps one rule of its own: it never installs itself into the user's folder (`setup.Facts.machine_copy`).
-  A user with an install gets theirs from the hand-off, and one without installs from the download.
+  user's code.
+- **The elevated verb of an install for everyone writes in a restricted process.** It starts nothing that a user can
+  write (Linux's `update-desktop-database` comes from the system's folders, through `process.start`'s rule): it copies
+  its own image and writes the machine's places, which are then the system's own whatever the options and the
+  environment say. `desktop.machine_install` and `machine_remove` are the only writes allowed there.
 - **The refusals say this system's words.** "As administrator" on Windows, "as root" on Linux, whole sentences in
   `base.restricted_words` (trust_words_<os>.odin), translated as such: a language puts those words where its grammar
   wants them.
@@ -67,7 +66,7 @@ the toolkit that starts, opens, installs, updates or loads something asks it, so
 - **Libraries.** `base.dll_search_restrict` (SetDefaultDllDirectories: the program's folder and System32) is the first
   call of `host.program_start`, `setup.command_run` and `setup.task_manager_start`. A library loaded by name later
   never comes from the working folder or the PATH. The program's folder stays: a program that ships a library beside
-  it needs it, and for the machine copy that folder is Program Files.
+  it needs it, and for an install for everyone that folder is Program Files.
 - **Tests.** CI runners run as administrator. A test build (`ODIN_TEST`), or a build with
   `-define:GT_ELEVATED_UNRESTRICTED=true` for such a runner (tk's builds with the devtools endpoint, which a tool drives),
   is not restricted by its elevation alone. The toolbox's `build release` refuses that define: a release never has it. An explicit

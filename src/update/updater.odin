@@ -16,6 +16,8 @@ package tk_update
 // another while it runs.
 //
 // A copy installed by a package manager (from the Nix store) is never updated: its phase is Managed, and nothing is asked.
+// A copy in a folder that takes no file from this process (an install for everyone: Program Files, /opt) is updated by
+// an administrator: its phase is Administered, and nothing is checked nor written there.
 
 import "base:runtime"
 import "core:fmt"
@@ -69,6 +71,9 @@ Phase :: enum {
 	Downloading,   // and put in place
 	Installed,     // the new program is in place: it runs at the next start
 	Managed,       // a package manager updates this copy: nothing is checked
+	// an administrator updates this copy (an install for everyone): its folder takes no file from this process, so
+	// nothing is checked nor downloaded that could not be put in place
+	Administered,
 	Refused,       // this process runs with more rights than its user's files (base.restricted): nothing is checked nor placed
 }
 
@@ -178,6 +183,7 @@ set_auto :: proc(u: ^Updater, mode: Auto_Mode) {
 check_now :: proc(u: ^Updater) {
 	sync.guard(&u.mutex)
 	if u.phase == .Managed { u.result, u.failed, u.asked, u.install = replace(u.result, i18n.tr("a package manager updates this copy")), false, true, false; u.serial += 1; return }
+	if u.phase == .Administered { u.result, u.failed, u.asked, u.install = replace(u.result, i18n.tr("an administrator updates this copy")), false, true, false; u.serial += 1; return }
 	if u.phase == .Refused { u.asked = true; u.serial += 1; return }
 	if u.phase == .Checking || u.phase == .Downloading || u.phase == .Installed { return }
 	u.want_check, u.want_asked = true, true
@@ -199,7 +205,7 @@ set_channel :: proc(u: ^Updater, channel: string) {
 	sync.guard(&u.mutex)
 	if u.options.channel == channel { return }
 	u.options.channel = replace(u.options.channel, channel)
-	if u.phase == .Managed { return }
+	if u.phase == .Managed || u.phase == .Administered { return }
 	if u.phase == .Available {
 		manifest_destroy(&u.offer, heap())
 		u.phase = .Idle
@@ -236,6 +242,7 @@ status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 status_words :: proc(st: Status, allocator := context.temp_allocator) -> string {
 	switch st.phase {
 	case .Managed:     return i18n.tr("A package manager updates this copy.")
+	case .Administered: return i18n.tr("An administrator updates this copy: this account cannot write its folder.")
 	case .Refused:     return base.restricted_words(.Updates)
 	case .Checking:    return i18n.tr("Checking for a newer version…")
 	case .Downloading:
@@ -265,6 +272,7 @@ notice :: proc(st: Status, allocator := context.temp_allocator) -> (words: strin
 	if !st.asked { return "", false }
 	#partial switch st.phase {
 	case .Managed: return i18n.tr("A package manager updates this copy."), false
+	case .Administered: return i18n.tr("An administrator updates this copy: this account cannot write its folder."), false
 	case .Refused: return base.restricted_words(.Updates), false
 	case .Idle, .Available:
 		if st.failed { return fmt.aprintf(i18n.tr("The last check failed: %s."), st.result, allocator = allocator), true }
@@ -320,6 +328,15 @@ updater_run :: proc(u: ^Updater) {
 			return
 		}
 		sync.unlock(&u.mutex)
+	}
+	// (an install for everyone: this process cannot write the program's folder. Nothing is downloaded that could not be
+	// put in place, and nothing there is touched, not even an earlier update's leftovers)
+	if !folder_takes_files(process.parent_dir(u.options.exe)) {
+		sync.lock(&u.mutex)
+		u.phase = .Administered
+		tell(u)
+		updater_release(u)   // (unlocks)
+		return
 	}
 	remove_leftovers(u.options.exe)
 	sync.lock(&u.mutex)

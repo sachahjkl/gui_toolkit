@@ -2,15 +2,18 @@
 // repairs, upgrades or removes that install). It is the layer over the desktop package (docs/desktop.md): what the state
 // of the install is (facts), what Install and Uninstall do, and the dialog that shows both (dialog.odin).
 //
-// The installed copy:
+// The installed copy, for the person (scope User):
 //   Windows  %LOCALAPPDATA%\Programs\<folder>\<exe>, the Start menu's shortcut, the Settings > Apps record (its uninstall
 //            runs `<exe> <identity.uninstall_arguments>`), and what Setup_Options.prepare adds (the start with the session, the
 //            PATH and its console launcher)
-//   Linux    ~/.local/share/<folder>/<exe>, the applications menu's entry, the icons, and what Setup_Options.prepare adds
-// and in the install folder the manifest: the version and the files placed, which Uninstall removes.
+//   Linux    ~/.local/opt/<folder>/<exe>, the applications menu's entry, the icons, and what Setup_Options.prepare adds
+// or for everyone (scope System: %ProgramFiles%\<vendor>\<name>, /opt/<vendor_key>/<name>), whose machine half an
+// administrator allows through the elevated verb (src/md/features/install-scope.md); and in the install folder the
+// manifest: the version and the files placed, which Uninstall removes.
 package tk_setup
 
 import "core:fmt"
+import "core:os"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
@@ -41,7 +44,10 @@ Setup_Options :: struct {
 	// asks the copy that runs to end, as its own Quit does (its single instance: instance.MESSAGE_QUIT), for --quit; true
 	// when it took the request. nil: the program cannot be asked, and --status says `quit: no`. Called as `running` is
 	quit:           proc() -> bool,
-	folder:         bool,            // the dialog lets the user choose the install folder before the first install
+	folder:         bool,            // the dialog lets the user choose the install folder before the first install (for the person only)
+	// the scopes the program offers: for the person, for every account ({}: every scope this system has). A program that
+	// must stay the person's gives {.User}
+	scopes:         desktop.Scopes,
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
@@ -88,7 +94,12 @@ Facts :: struct {
 	version:    string,   // of the installed copy, from its manifest
 	nixos:      bool,     // the system is NixOS: a Nix package is the better install
 	from_nix:   bool,     // this copy runs from the Nix store: never offered an install
-	machine_copy: bool,   // this copy is a task manager's machine copy (Program Files): it never installs itself
+	scope:      desktop.Scope,            // the scope of the install that is there (none: the one asked)
+	other_scope: bool,                    // an install of the other scope is there too (a move that was not finished)
+	system_refusal: desktop.System_Refusal,   // why "For everyone" is not offered here (None: it is)
+	// Removal_Scheduled: the program's file goes at the next restart (Windows, an install for everyone: the elevated verb
+	// ran from it), not when this process ends. The dialog says it, the disk does not
+	at_restart: bool,
 }
 
 // What the facts make of an install. No program but something of it left: to repair, or to remove. A copy of the Nix store
@@ -107,30 +118,71 @@ state_of :: proc(f: Facts) -> State {
 // No program installed, but something of an install is left: a launcher, a shortcut, the record, the manifest.
 leftover :: proc(f: Facts) -> bool { return !f.exe_there && (f.start_lnk || f.desk_lnk || f.record || f.manifest) }
 
-// The options of the program's integration, its install folder set: the one the system recorded (Windows), else
-// Setup_Options.install_folder beside the default. `recorded`: the system has a record of it.
-options :: proc(o: Setup_Options, choices: []bool = nil) -> (integration: desktop.Integration_Options, recorded: bool) {
+// The options of the program's integration in `scope` (nil: the scope of the install that is there, else the
+// person's), its install folder set: the one the system recorded (Windows), else Setup_Options.install_folder beside
+// the default; for everyone, always the system's place. `recorded`: the system has a record of it.
+options :: proc(o: Setup_Options, choices: []bool = nil, scope: Maybe(desktop.Scope) = nil) -> (integration: desktop.Integration_Options, recorded: bool) {
 	integration = desktop.options_make(o.identity)
 	integration.icons = o.icons
+	integration.scope = scope.? or_else installed_scope(o)
 	default := desktop.default_install_dir(&integration)
 	// (the record alone: an install in the default folder is recorded too; install_target would give the default
 	// for no record, and telling the two apart by the folder made such an install one "to repair")
 	if found := desktop.install_recorded(&integration); found != "" {
 		integration.install_dir, recorded = found, true
-	} else if default != "" && o.install_folder != "" {
+	} else if default != "" && o.install_folder != "" && integration.scope == .User {
 		integration.install_dir = join({process.parent_dir(default), o.install_folder})
 	} else {
 		integration.install_dir = default
 	}
 	// (last: the program sees the folder, and may put every place elsewhere: a test's)
 	if o.prepare != nil { o.prepare(&integration, choices_or_first(o, choices), o.user) }
+	// (an install for everyone is in the system's place, or a test's machine root: never a folder a person chose)
+	if integration.scope == .System { integration.install_dir = desktop.system_install_dir(&integration) }
 	return
 }
 
-// The state of the install, as the disk and the system say it (strings in temp memory).
-facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) -> (f: Facts) {
+// The scopes the program offers on this system.
+offered_scopes :: proc(o: Setup_Options) -> desktop.Scopes {
+	s := o.scopes != {} ? o.scopes : desktop.supported_scopes()
+	return s & desktop.supported_scopes()
+}
+
+// An install of the program is there in `scope`: its record, its manifest or its program.
+install_there :: proc(o: Setup_Options, scope: desktop.Scope) -> bool {
+	if scope not_in offered_scopes(o) { return false }
+	integration, recorded := options(o, nil, scope)
+	if recorded { return true }
+	if integration.install_dir == "" { return false }
+	info := desktop.installed_info(&integration, integration.install_dir, context.temp_allocator)
+	return info.manifest
+}
+
+// The scope of the install that is there: the person's first (an account with its own copy uses it), then every
+// account's; none: the person's.
+installed_scope :: proc(o: Setup_Options) -> desktop.Scope {
+	if install_there(o, .User) { return .User }
+	if install_there(o, .System) { return .System }
+	return .User
+}
+
+// The state of the install, as the disk and the system say it (strings in temp memory). `scope`: the scope asked when
+// no install is there (where it would go); an install that is there says its own.
+facts :: proc(o: Setup_Options, choices: []bool = nil, scope := desktop.Scope.User, loc := #caller_location) -> (f: Facts) {
 	base.blocking("setup.facts", loc)
-	integration, recorded := options(o, choices)
+	user, everyone := install_there(o, .User), install_there(o, .System)
+	switch {
+	case user:     f.scope = .User
+	case everyone: f.scope = .System
+	case:          f.scope = scope in offered_scopes(o) ? scope : .User
+	}
+	f.other_scope = user && everyone
+	f.system_refusal = .Unsupported
+	if .System in offered_scopes(o) {
+		machine, _ := options(o, choices, .System)
+		f.system_refusal = desktop.system_refusal(&machine)
+	}
+	integration, recorded := options(o, choices, f.scope)
 	f.running = process.executable_path()
 	f.dir = integration.install_dir
 	info := desktop.installed_info(&integration, f.dir, context.temp_allocator)
@@ -160,18 +212,85 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) 
 	}
 	f.nixos = desktop.is_nixos()
 	f.from_nix = desktop.in_nix_store(f.running)
-	f.machine_copy = is_machine_copy(&integration, f.running)
 	f.state = state_of(f)
 	return
 }
 
 // Copies this program into the install folder (unless it runs from there), writes its launchers, the program's own parts
 // and the system's record. The installed program (temp memory), or why not.
-// `choices`: the program's options (nil: their first values); `folder`: another install folder than the default ("").
-install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil, folder := "") -> (ok: bool, exe_or_why: string) {
+// `choices`: the program's options (nil: their first values); `folder`: another install folder than the default (""; the
+// person's scope only); `scope`: for the person, or for every account (an administrator allows its machine half). An
+// install of the other scope goes once this one is in place: one install at a time.
+install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil, folder := "", scope := desktop.Scope.User) -> (ok: bool, exe_or_why: string) {
 	if base.restricted() { return false, restricted_words() }
-	integration, _ := options(o, choices)
-	if is_machine_copy(&integration, process.executable_path()) { return false, machine_copy_words() }
+	if scope not_in offered_scopes(o) { return false, desktop.system_refusal_words(.Unsupported) }
+	other := scope == .User ? desktop.Scope.System : desktop.Scope.User
+	moving := install_there(o, other)
+	if scope == .System {
+		ok, exe_or_why = install_system(o, desktop_shortcut, choices)
+	} else {
+		ok, exe_or_why = install_user(o, desktop_shortcut, choices, folder)
+	}
+	if !ok || !moving { return }
+	// (the move: the install of the other scope goes, now that this one is in place)
+	gone, leftovers, why := uninstall_scope(o, choices, other)
+	defer {
+		for l in leftovers { delete(l) }
+		delete(leftovers)
+	}
+	if !gone { return false, fmt.tprintf(i18n.tr("Installed, but the other copy is still there: %s"), why) }
+	// (Windows: the person's copy that runs this; its files go once this process ends, its folder with them. The
+	// manifest is the last leftover: uninstall_scope says so)
+	if len(leftovers) > 0 {
+		u, _ := options(o, nil, .User)
+		_ = desktop.cleanup_later(&u, leftovers[:], process.parent_dir(leftovers[len(leftovers) - 1]), desktop.current_process_id())
+	}
+	// The person's own places (the desktop shortcut, the start with the session, the defaults) have the same names in
+	// both scopes: the removal of the old scope took the ones this install had just written. They are written again,
+	// against the new program.
+	if r := person_half_write(o, desktop_shortcut, choices, scope); r.error != .None { return false, failure(r) }
+	return
+}
+
+// The person's half of an install of `scope` (all of it for the person's scope), against the installed program.
+@(private = "file")
+person_half_write :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool, scope: desktop.Scope) -> desktop.Result {
+	integration, _ := options(o, choices, scope)
+	integration.exe = join({integration.install_dir, desktop.exe_name_of(integration.identity)})
+	integration.machine_half, integration.desktop_shortcut = false, desktop_shortcut
+	return desktop.install(&integration)
+}
+
+// For every account: the machine half through the elevated verb (one prompt; a test's machine root: here), then the
+// person's half against the installed program.
+@(private = "file")
+install_system :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool) -> (ok: bool, exe_or_why: string) {
+	integration, _ := options(o, choices, .System)
+	if r := desktop.system_refusal(&integration); r != .None { return false, desktop.system_refusal_words(r) }
+	r := machine_run(&integration, o, .Install, choices_or_first(o, choices), process.executable_path())
+	if r.error == .Not_Allowed { return false, fmt.tprintf(i18n.tr("Nothing was installed: %s"), failure(r)) }
+	if r.error != .None { return false, failure(r) }
+	if rr := person_half_write(o, desktop_shortcut, choices, .System); rr.error != .None { return false, failure(rr) }
+	return true, join({integration.install_dir, desktop.exe_name_of(integration.identity)})
+}
+
+// The machine half of a system install: in this process on a test's machine root, else the elevated verb started
+// from `exe` (the download for Install, the installed program for Uninstall), awaited.
+@(private)
+machine_run :: proc(integration: ^desktop.Integration_Options, o: Setup_Options, verb: desktop.System_Verb, choices: []bool, exe: string) -> desktop.Result {
+	if desktop.machine_is_scratch(integration) {
+		m := integration^
+		m.exe = exe
+		if verb == .Install { return desktop.machine_install(&m, o.version) }
+		return desktop.machine_remove(&m)
+	}
+	return desktop.machine_elevate(integration, exe, desktop.system_arguments(verb, choices))
+}
+
+// For the person: the program in their profile, its parts, the record.
+@(private = "file")
+install_user :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool, folder: string) -> (ok: bool, exe_or_why: string) {
+	integration, _ := options(o, choices, .User)
 	if folder != "" {
 		if why := desktop.check_install_dir(folder, o.identity.name, probe = true); why != "" { return false, why }
 		integration.install_dir = folder
@@ -185,15 +304,8 @@ install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil,
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
 	integration.exe = join({integration.install_dir, exe_name})
 	integration.desktop_shortcut = desktop_shortcut
-	integration.ask_administrator = true   // (a person asked: a part of the machine's may ask Windows for an administrator)
-	r := desktop.install(&integration)
-	// (the change for every account failed, or no administrator allowed it: it comes last, so the rest is in place; it
-	// is recorded, and the result says what is not)
-	machine := r.error == .Not_Allowed || r.error == .Machine
-	if r.error != .None && !machine { return false, failure(r) }
+	if r := desktop.install(&integration); r.error != .None { return false, failure(r) }
 	if rr := desktop.record_install(&integration, integration.install_dir, o.version); rr.error != .None { return false, failure(rr) }
-	if r.error == .Not_Allowed { return false, i18n.tr("Installed, but Task Manager was not changed: no administrator allowed it.") }
-	if machine { return false, fmt.tprintf(i18n.tr("Installed, but Task Manager was not changed: %s"), failure(r)) }
 	return true, integration.exe
 }
 
@@ -206,6 +318,8 @@ updated :: proc(o: Setup_Options, version: string, exe := "") -> (ok: bool, why:
 	integration, _ := options(o)
 	info := desktop.installed_info(&integration, integration.install_dir, context.temp_allocator)
 	if !info.manifest || info.exe == "" || !desktop.same_path(info.exe, running) { return true, "" }
+	// (an install for everyone is updated by the elevated step, which records it: src/md/features/install-scope.md)
+	if integration.scope == .System { return false, i18n.tr("An install for everyone is updated by an administrator.") }
 	exe_name := desktop.exe_name_of(integration.identity)
 	plan := desktop.Install_Plan{
 		identity = integration.identity, src_exe = running, dir = integration.install_dir, exe_name = exe_name,
@@ -220,26 +334,62 @@ updated :: proc(o: Setup_Options, version: string, exe := "") -> (ok: bool, why:
 // Removes the launchers and parts (ours only), the system's record and the installed files. The files of the copy that
 // runs (Windows: they cannot be deleted while it runs) are in `leftovers` (heap, the caller's): remove_later deletes them
 // once this process has ended.
+// Every install of the program that is there goes (both, when a move left two: the person asked for none).
 uninstall :: proc(o: Setup_Options, choices: []bool = nil) -> (ok: bool, leftovers: [dynamic]string, why: string) {
 	if base.restricted() { return false, nil, restricted_words() }
-	integration, _ := options(o, choices)   // (the program's parts are taken away too)
+	user, everyone := install_there(o, .User), install_there(o, .System)
+	if !user && !everyone { return uninstall_scope(o, choices, .User) }   // (what an install left: a launcher, the record)
+	if user {
+		ok, leftovers, why = uninstall_scope(o, choices, .User)
+		if !ok { return }
+	}
+	if everyone {
+		more: [dynamic]string
+		ok, more, why = uninstall_scope(o, choices, .System)
+		for l in more { append(&leftovers, l) }
+		delete(more)
+	}
+	return
+}
+
+// An uninstall now leaves the program of the install for everyone until the next restart (Windows). The elevated verb
+// runs from that file, which cannot be deleted while it runs: the verb puts it aside, and Windows deletes it at the
+// restart, not when this process ends. Linux deletes a file that runs at once. Reads the disk: before the uninstall.
+system_removal_at_restart :: proc(o: Setup_Options) -> bool {
+	when ODIN_OS != .Windows { return false }
+	if !install_there(o, .System) { return false }
+	integration, _ := options(o, nil, .System)
+	exe := join({integration.install_dir, desktop.exe_name_of(integration.identity)})
+	// (a test's machine: no verb, the work is this process's own)
+	if desktop.machine_is_scratch(&integration) { return desktop.same_path(exe, process.executable_path()) }
+	return os.is_file(exe)
+}
+
+// The install of one scope goes. For everyone: the machine half first, through the elevated verb started from the
+// installed program (its prompt names a file of Program Files or /opt); declined, nothing changed. Then this person's half.
+@(private)
+uninstall_scope :: proc(o: Setup_Options, choices: []bool, scope: desktop.Scope) -> (ok: bool, leftovers: [dynamic]string, why: string) {
+	integration, _ := options(o, choices, scope)   // (the program's parts are taken away too)
 	integration.exe = join({integration.install_dir, desktop.exe_name_of(integration.identity)})
-	integration.ask_administrator = true   // (a person asked: a part of the machine's is given back too)
-	ur := desktop.uninstall(&integration, process.executable_path(), context.temp_allocator)
+	running := process.executable_path()
+	if scope == .System {
+		from := os.is_file(integration.exe) ? integration.exe : running
+		r := machine_run(&integration, o, .Uninstall, choices_or_first(o, choices), from)
+		if r.error == .Not_Allowed { return false, nil, fmt.tprintf(i18n.tr("Nothing was uninstalled: %s"), failure(r)) }
+		if r.error != .None { return false, nil, failure(r) }
+		integration.machine_half = false
+		if rr := desktop.remove(&integration); rr.error != .None { return false, nil, failure(rr) }
+		// (no leftovers: the person's helper cannot delete a file of Program Files. The elevated verb put the program
+		// that runs aside, and Windows deletes it at the next restart: system_removal_at_restart, Facts.at_restart)
+		return true, nil, ""
+	}
+	ur := desktop.uninstall(&integration, running, context.temp_allocator)
 	if len(ur.leftovers) > 0 {
 		leftovers = make([dynamic]string)
 		for l in ur.leftovers { append(&leftovers, strings.clone(l)) }
 		append(&leftovers, strings.clone(join({ur.folder, integration.identity.manifest_name})))   // (it stays while they are there)
 	}
-	#partial switch ur.result.error {
-	case .None:
-	case .Not_Allowed:
-		return false, leftovers, i18n.tr("Nothing was uninstalled: giving Task Manager back needs an administrator, and none allowed it. Task Manager still opens the program. Uninstall again to be asked again.")
-	case .Machine:
-		return false, leftovers, fmt.tprintf(i18n.tr("Nothing was uninstalled: Task Manager could not be given back (%s). Task Manager still opens the program."), failure(ur.result))
-	case:
-		return false, leftovers, failure(ur.result)
-	}
+	if ur.result.error != .None { return false, leftovers, failure(ur.result) }
 	return true, leftovers, ""
 }
 
@@ -323,7 +473,6 @@ choice_dismissed :: proc(version: string, allocator := context.temp_allocator) -
 // repair, unless the user said "standalone" (or closed it for this version). Never a copy of the Nix store.
 wanted :: proc(f: Facts, version, choice: string) -> bool {
 	if base.restricted() { return false }   // (an administrator's process installs nothing: never offered)
-	if f.machine_copy { return false }      // (the copy of every account: machine_copy_words)
 	if f.from_nix || f.state == .Nix_Package { return false }
 	if choice == choice_dismissed(version) { return false }
 	if is_upgrade(f, version) { return true }
@@ -333,18 +482,6 @@ wanted :: proc(f: Facts, version, choice: string) -> bool {
 // Why a restricted process (base.restricted: elevated) neither installs nor updates, in this system's words and the
 // language in use: what the page, the dialog and the command line say.
 restricted_words :: proc() -> string { return base.restricted_words(.Installs) }
-
-// Why the task manager's machine copy does not install itself into the account that runs it: it is the copy of every
-// account (a person with an install got theirs from the hand-off; one without installs from the download).
-machine_copy_words :: proc() -> string {
-	return i18n.tr("This copy serves every account: it does not install itself. Install the program from its download.")
-}
-
-// This program is the task manager's machine copy (desktop.task_manager_copy): never installed into a user's folder.
-is_machine_copy :: proc(integration: ^desktop.Integration_Options, running: string) -> bool {
-	copy := desktop.task_manager_copy(integration)
-	return copy != "" && desktop.same_path(copy, running)
-}
 
 @(private)
 failure :: proc(r: desktop.Result) -> string {

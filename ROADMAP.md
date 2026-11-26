@@ -13,8 +13,20 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **A de-elevated start for an elevated program.** An administrator's elevated classeur (or the elevated machine copy
-  of a task manager) keeps Open, Open with and the terminal: on Windows the toolkit asks Explorer's shell, which runs
+- **The update of an install for everyone.** The updater downloads and checks as now; "Restart to update" then starts
+  the installed program elevated (`--system update <file>`), which checks the signature again with its own key and
+  places the file, in one prompt per update. Until then such an install says that an administrator updates it. Intent:
+  [src/md/features/install-scope.md](src/md/features/install-scope.md).
+- **The elevated verb loads its libraries from System32 only.** Windows loads the libraries that a program imports from
+  the program's folder first, before `dll_search_restrict` runs: a library put beside the download is loaded by the
+  elevated verb of an install for everyone. Linking with `/DEPENDENTLOADFLAG:0x800` (Windows 10 1607 and later) closes
+  it for every program. Intent: [src/md/features/install-scope.md](src/md/features/install-scope.md).
+- **The programs offer the install for everyone.** Each program takes the new gui_toolkit: most change nothing
+  (`Setup_Options.scopes` is every scope by default); a task manager calls `task_manager_start(args)` and drops its
+  hand-off; a program that must stay per person gives `scopes = {.User}`. `--install --everyone` on the command line
+  comes with it. Intent: [src/md/features/install-scope.md](src/md/features/install-scope.md).
+- **A de-elevated start for an elevated program.** An administrator's elevated classeur (or a task manager that
+  Ctrl+Shift+Esc started elevated) keeps Open, Open with and the terminal: on Windows the toolkit asks Explorer's shell, which runs
   at medium integrity, to start them (`IShellDispatch2::ShellExecute` through the desktop's `IShellView`), so the
   handler runs with the person's own token and never with the administrator's. On Linux there is no such way for
   root: no process of the user's session takes requests from root by design, and `sudo -u` would trust the user's

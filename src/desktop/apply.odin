@@ -16,20 +16,44 @@ apply :: proc(o: ^Integration_Options) -> Result {
 	wanted := o.start_menu || o.desktop_shortcut || o.add_to_path || o.autostart || o.register_browser || o.default_file_manager || o.task_manager || opens_documents(o) || thumbnails_wanted(o)
 	st := status(o, context.temp_allocator)
 	if !wanted {
-		if st.state == .Absent && st.error == .None { return {} }
+		if !half_present(o, st) && st.error == .None { return {} }
 		return remove(o)
 	}
-	if st.state == .Installed && !unwanted_present(st) { return {} }
+	if half_in_place(o, st) && !unwanted_present(o, st) { return {} }
 	return install(o)
 }
 
-// A part is there that the options turned off (the launcher, once general.menu is off): Installed says nothing of it,
-// install takes it away. (Not the icons: a program that gives none would install again at each start. Not a part of
-// the machine's: apply never asks an administrator, so such a part stays, and an install for it would come at each start.)
-@(private = "file")
-unwanted_present :: proc(st: Status) -> bool {
+// Something of the parts that this call writes is there (a system install's machine half is not this call's).
+@(private)
+half_present :: proc(o: ^Integration_Options, st: Status) -> bool {
+	if o.scope != .System { return st.state != .Absent }
+	for p in Part { if touches(o, p) && st.parts[p].present { return true } }
+	return false
+}
+
+// The parts that this call writes are all there and run this program. A system install's person's half: only its own
+// parts count. A part of the machine's half that is missing or turned off is not this call's to change (install
+// leaves it), and counting it would write the person's half again at each start.
+@(private)
+half_in_place :: proc(o: ^Integration_Options, st: Status) -> bool {
+	if o.scope != .System { return st.state == .Installed }
 	for p in Part {
-		if p != .Icons && p not_in ADMIN_PARTS && st.parts[p].present && p not_in st.wanted { return true }
+		if !touches(o, p) { continue }
+		ps := st.parts[p]
+		if ps.present && ps.stale { return false }
+		if p in st.wanted && (!ps.present || ps.partial) { return false }
+	}
+	return true
+}
+
+// A part is there that the options turned off (the launcher, once general.menu is off): Installed says nothing of it,
+// install takes it away. (Not the icons: a program that gives none would install again at each start. Not a part only
+// an install for everyone has, nor any part of the machine's half: apply writes the person's half, never the machine's.)
+@(private)
+unwanted_present :: proc(o: ^Integration_Options, st: Status) -> bool {
+	for p in Part {
+		if !touches(o, p) { continue }
+		if p != .Icons && p not_in SYSTEM_ONLY_PARTS && st.parts[p].present && p not_in st.wanted { return true }
 	}
 	return false
 }

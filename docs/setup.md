@@ -66,6 +66,45 @@ event, after a build that did not draw it (`Dialog.in_page`, `page_build`): leav
 `Setup_Options.prepare` asked). `Facts.parts` has every part of the integration that is there and runs the installed
 copy.
 
+## For me or for everyone
+
+The dialog and the page offer the scope of the install as two radios under "Install for": "Only me" (the person's
+profile, no administrator) and "Everyone on this computer" (Program Files or `/opt`, an administrator allows it). Each
+says under it what it means on this system. The reasons are in
+[src/md/features/install-scope.md](../src/md/features/install-scope.md).
+
+```odin
+cfg := setup.Setup_Options{
+	// ...
+	scopes = {},        // {}: every scope this system has (the default); {.User}: the program stays the person's
+}
+ok, exe := setup.install(cfg, shortcut, choices, scope = .System)   // what the dialog's Install does with Dialog.scope
+```
+
+- `Facts.scope` is the scope of the install that is there (else the one asked: `facts(o, choices, scope)`);
+  `Facts.other_scope` says that an install of the other scope is there too; `Facts.system_refusal` says why "Everyone"
+  cannot be offered (`desktop.System_Refusal`): NixOS (the Nix package is the install for everyone), or no administrator
+  can be asked. The radio is then greyed, and the reason is under it.
+- `Dialog.scope` is the scope asked of Install, from the facts when they first come; `scope_set` changes it and reads
+  the facts again.
+- Install in the other scope than the install that is there is a move: the new install first, then the old one goes
+  (`install_label`: "Install for everyone", "Install for me only"). Declined by the administrator, both stay, and
+  Uninstall removes both.
+- An install for everyone starts the elevated verb once (`--system install <choices>`, from this copy), then writes this
+  person's half (the desktop shortcut, the start with the session). Uninstall starts `--system uninstall` from the
+  installed program. A test's scratch roots set `machine_root` (and `machine_registry_root` on Windows): the machine
+  half is then written in the test's process.
+- The install folder field is offered only for "Only me": an install for everyone goes to its system's place.
+- `updated` refuses an install for everyone: its update is an elevated step (not written yet). Until then the
+  updater of a copy for everyone is `Administered` ([update.md](update.md)): it checks and downloads nothing, and says
+  that an administrator updates the program.
+- Moving from one scope to the other writes the person's half again once the old install is gone: the desktop
+  shortcut, the start with the session and the defaults have the same names in both scopes, and the removal of the old
+  install takes them.
+- Windows: Uninstall of an install for everyone leaves the program's file until the next restart (the elevated verb
+  runs from it). `Facts.at_restart` is then set with `Removal_Scheduled`, and the dialog says "deleted at the next
+  restart", not "when this window closes".
+
 ## The program's options
 
 `Setup_Options.choices` are the program's own options of an install, a box each; `prepare` receives their values in
@@ -95,11 +134,9 @@ On Windows the second box has no part (`supported_parts()` lacks `Default_Docume
 Install then opens Settings at the program's page, where the person makes it the default.
 
 A task manager offers to take the place of the system's the same way, on Windows only (`Part.Task_Manager`,
-[desktop.md](desktop.md#the-default-task-manager)). The part is the machine's: under its box the dialog and the page say
-why Windows will ask for an administrator (`choice_note`). Install and Uninstall ask Windows for one; an automatic
-path never does. Declined (or failed), the rest is installed and recorded, and the dialog says what is not. An Uninstall
-gives Task Manager back first, and only when this account put it: declined or failed, nothing is uninstalled, and the
-dialog says that Task Manager still opens the program.
+[desktop.md](desktop.md#the-default-task-manager)). The part is the machine's: only an install for everyone has it, and
+its Debugger runs the installed program in Program Files. Under "Only me" its box is off, and the dialog and the page say
+why (`choice_note`, `choice_possible`).
 
 ```odin
 choices = {
@@ -108,22 +145,18 @@ choices = {
 prepare = proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) { o.task_manager = choices[0] },
 ```
 
-The Debugger of taskmgr.exe runs the program's machine copy with taskmgr's path and options. Before anything else of its
-start, the program calls `task_manager_start`:
+The Debugger runs the program with taskmgr's path and options. Before anything else of its start, the program calls
+`task_manager_start`:
 
 ```odin
-args, handed_off := setup.task_manager_start(setup_options(), os.args[1:])
-if handed_off { return }   // the person's own installed copy runs: this one ends
-// args: without taskmgr's path and options, the plain start
+args := setup.task_manager_start(os.args[1:])   // without taskmgr's path and options: the plain start
 ```
 
-`task_manager_arguments(args)` is its pure part: the arguments without taskmgr's, and whether they were there.
-It restricts an elevated process first (`base.restrict_if_elevated`, [base.md](base.md#restricted-processes)): an
-administrator's Ctrl+Shift+Esc starts the machine copy elevated. Unelevated, the machine copy has the user's own
-token and is not restricted; it never installs itself into the user's folder (`Facts.machine_copy`: `wanted` is false,
-`install` returns `machine_copy_words()`). A restricted process installs, uninstalls and updates nothing, and is never
-offered the install: `install`, `uninstall` and `updated` return `restricted_words()`, which the dialog
-and the page show in place of their buttons. Its `launch` starts only a program of an administrator's folder.
+`task_manager_arguments(args)` is its pure part: the arguments without taskmgr's, and whether they were there. It
+restricts an elevated process first (`base.restrict_if_elevated`, [base.md](base.md#restricted-processes)): an
+administrator's Ctrl+Shift+Esc starts the program elevated. A restricted process installs, uninstalls and updates
+nothing, and is never offered the install: `install`, `uninstall` and `updated` return `restricted_words()`, which the
+dialog and the page show in place of their buttons. Its `launch` starts only a program of an administrator's folder.
 
 ```odin
 choices = {
@@ -141,12 +174,12 @@ The same options in every program, listed in its table of options (`setup.COMMAN
 
 | Option | What it does |
 |---|---|
-| `--install` | installs this copy for the user, as the Install button does (`install`), each box tied to parts as the system has it (`choices_from_facts`): no window |
-| `--uninstall` | removes the installed copy (`uninstall`, then `remove_later` for what the running copy holds); the user's settings and data stay: no window |
-| `--status` | says the state in a word, then a fact a line (the program, its version, this copy, the menu entry, the start with the session, the PATH, `running: true` when a copy runs: `Setup_Options.running`, the program's single-instance check; `quit: yes` when `--quit` can end it: `Setup_Options.quit`); exit code 0 installed whole (a Nix package too), 1 not installed or to repair (`status_exit`; the words say which): no window |
+| `--install` | installs this copy in the scope of the install that is there (else for the user), as the Install button does (`install`), each box tied to parts as the system has it (`choices_from_facts`): no window |
+| `--uninstall` | removes the installed copy (`uninstall`, then `remove_later` for what the running copy holds; Windows, an install for everyone: its program goes at the next restart, and the line says it); the user's settings and data stay: no window |
+| `--status` | says the state in a word, then a fact a line (the program, for whom (`for: me` or `everyone`), its version, this copy, the menu entry, the start with the session, the PATH, `running: true` when a copy runs: `Setup_Options.running`, the program's single-instance check; `quit: yes` when `--quit` can end it: `Setup_Options.quit`); exit code 0 installed whole (a Nix package too), 1 not installed or to repair (`status_exit`; the words say which): no window |
 | `--quit` | asks the copy that runs to end (`Setup_Options.quit`, its single instance: `instance.MESSAGE_QUIT`), then waits until its instance is gone and no process runs the installed copy's file, at most `QUIT_WAIT` (10 s); exit code 0 ended or not running, 1 still running or cannot be asked: no window |
 | `--setup` | starts the program with the install shown (`prefs_page.install_open`); Settings > Apps' Uninstall runs it (`Identity.uninstall_arguments = "--setup"`) |
-| `--task-manager on`, `off` | the change of the machine that Install and Uninstall start as an administrator (`desktop.task_manager_write`): the program in place of Task Manager, or Task Manager given back; hidden from the help; no window |
+| `--system install <choices>`, `--system uninstall` | the machine half of an install for everyone, which Install and Uninstall start as an administrator (`desktop.machine_install`, `machine_remove`): `<choices>` is one `0` or `1` per box of `Setup_Options.choices`, nothing else; hidden from the help; no window |
 
 A program gives `running` and `quit` from its single instance ([instance.md](instance.md), "The messages every program
 understands"): `quit` sends `instance.MESSAGE_QUIT`, and the handler of the copy that runs closes its window. A program

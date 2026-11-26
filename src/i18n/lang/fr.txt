@@ -170,6 +170,21 @@ fr Le nom du dossier a un deux-points après la lettre du disque.
 en Pick a folder, not the root of a drive.
 fr Choisissez un dossier, pas la racine d'un disque.
 
+en This system has no install for everyone.
+fr Ce système n'a pas d'installation pour tous.
+
+en On NixOS, the install for everyone is the Nix package in the system's configuration.
+fr Sur NixOS, l'installation pour tous est le paquet Nix dans la configuration du système.
+
+en No administrator can be asked here: polkit's pkexec is not installed.
+fr Aucun administrateur ne peut être sollicité ici : pkexec (polkit) n'est pas installé.
+
+en No administrator could be asked: no polkit agent runs in this session.
+fr Aucun administrateur n'a pu être sollicité : aucun agent polkit ne tourne dans cette session.
+
+en No administrator can be asked from this account: Windows refuses its requests.
+fr Aucun administrateur ne peut être sollicité depuis ce compte : Windows refuse ses demandes.
+
 en application menu
 fr menu des applications
 
@@ -1406,11 +1421,17 @@ fr Dossier d'installation
 en Done: everything is in place.
 fr Terminé : tout est en place.
 
+en Removed. The program is deleted at the next restart.
+fr Supprimé. Le programme est effacé au prochain redémarrage.
+
 en Removed. The program is deleted when this window closes.
 fr Supprimé. Le programme est effacé à la fermeture de cette fenêtre.
 
 en Removed.
 fr Supprimé.
+
+en Two copies are installed: one for you, one for everyone. Uninstall removes both.
+fr Deux copies sont installées : une pour vous, une pour tous. Désinstaller retire les deux.
 
 en Not installed: this copy runs on its own.
 fr Non installé : cette copie fonctionne seule.
@@ -1433,6 +1454,9 @@ fr Une copie plus récente est installée (%s) : celle-ci (%s) est plus ancienne
 en A copy is installed (%s): this one runs on its own.
 fr Une copie est installée (%s) : celle-ci fonctionne seule.
 
+en Uninstalled: the program is deleted at the next restart.
+fr Désinstallé : le programme est effacé au prochain redémarrage.
+
 en Uninstalled: the program is deleted when this window closes.
 fr Désinstallé : le programme est effacé à la fermeture de cette fenêtre.
 
@@ -1444,6 +1468,12 @@ fr Installé par Nix : le paquet Nix a l'entrée du menu et l'icône.
 
 en %s Setup
 fr Installation : %s
+
+en Install for everyone
+fr Installer pour tous
+
+en Install for me only
+fr Installer pour moi seul
 
 en Upgrade to %s
 fr Passer à %s
@@ -1520,14 +1550,29 @@ fr Nix installe et met à jour %s.
 en By
 fr Par
 
-en Install location
-fr Emplacement de l'installation
-
 en Installed program
 fr Programme installé
 
+en Install location
+fr Emplacement de l'installation
+
 en Choose…
 fr Choisir…
+
+en Install for
+fr Installer pour
+
+en Everyone on this computer
+fr Tous les comptes de cet ordinateur
+
+en Only me
+fr Moi seul
+
+en The copy installed for you goes once this one is in place.
+fr La copie installée pour vous part une fois celle-ci en place.
+
+en The copy for everyone goes once yours is in place: an administrator allows it.
+fr La copie pour tous part une fois la vôtre en place : un administrateur l'autorise.
 
 en Options
 fr Options
@@ -1535,8 +1580,8 @@ fr Options
 en Shortcut on the Desktop
 fr Raccourci sur le Bureau
 
-en Windows asks for an administrator: Task Manager is the same for every account on this computer.
-fr Windows demande un administrateur : le Gestionnaire des tâches est le même pour tous les comptes de cet ordinateur.
+en Only with an install for everyone: Task Manager is the same for every account on this computer.
+fr Seulement avec une installation pour tous : le Gestionnaire des tâches est le même pour tous les comptes de cet ordinateur.
 
 en Details
 fr Détails
@@ -1577,6 +1622,9 @@ fr Ne pas installer
 en Open the installed copy
 fr Ouvrir la copie installée
 
+en Installed for
+fr Installé pour
+
 en Version installed
 fr Version installée
 
@@ -1589,6 +1637,12 @@ fr Avec la session
 en On the PATH
 fr Dans le PATH
 
+en Every account
+fr Tous les comptes
+
+en You
+fr Vous
+
 en %s (the installed copy)
 fr %s (la copie installée)
 
@@ -1598,23 +1652,20 @@ fr oui
 en yes (with its console launcher)
 fr oui (avec son lanceur de console)
 
+en Installed, but the other copy is still there: %s
+fr Installé, mais l'autre copie est toujours là : %s
+
+en Nothing was installed: %s
+fr Rien n'a été installé : %s
+
 en the install folder is unknown
 fr le dossier d'installation est inconnu
 
-en Installed, but Task Manager was not changed: no administrator allowed it.
-fr Installé, mais le Gestionnaire des tâches n'a pas changé : aucun administrateur ne l'a autorisé.
+en An install for everyone is updated by an administrator.
+fr Une installation pour tous est mise à jour par un administrateur.
 
-en Installed, but Task Manager was not changed: %s
-fr Installé, mais le Gestionnaire des tâches n'a pas changé : %s
-
-en Nothing was uninstalled: giving Task Manager back needs an administrator, and none allowed it. Task Manager still opens the program. Uninstall again to be asked again.
-fr Rien n'a été désinstallé : rendre le Gestionnaire des tâches demande un administrateur, et aucun ne l'a autorisé. Le Gestionnaire des tâches ouvre toujours le programme. Désinstallez de nouveau pour que la question revienne.
-
-en Nothing was uninstalled: Task Manager could not be given back (%s). Task Manager still opens the program.
-fr Rien n'a été désinstallé : le Gestionnaire des tâches n'a pas pu être rendu (%s). Le Gestionnaire des tâches ouvre toujours le programme.
-
-en This copy serves every account: it does not install itself. Install the program from its download.
-fr Cette copie sert à tous les comptes : elle ne s'installe pas elle-même. Installez le programme depuis son téléchargement.
+en Nothing was uninstalled: %s
+fr Rien n'a été désinstallé : %s
 
 en Applications menu
 fr Menu des applications
@@ -1628,6 +1679,12 @@ fr Installé. Lancez-le depuis le menu des applications, ou maintenant :
 en Installed, but the menu entry, an icon or a file is missing.
 fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
 
+en In /opt, for every account. The system asks for an administrator's password now, and for each update.
+fr Dans /opt, pour tous les comptes. Le système demande le mot de passe d'un administrateur maintenant, et à chaque mise à jour.
+
+en In your home folder, with no administrator. Updates install by themselves.
+fr Dans votre dossier personnel, sans administrateur. Les mises à jour s'installent seules.
+
 ctx setup key
 en Start menu
 fr Menu Démarrer
@@ -1640,6 +1697,12 @@ fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
 
 en Installed, but a shortcut, the Settings entry or a file is missing.
 fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichier.
+
+en In Program Files, for every account. Windows asks for an administrator now, and for each update.
+fr Dans Program Files, pour tous les comptes. Windows demande un administrateur maintenant, et à chaque mise à jour.
+
+en In your profile, with no administrator. Updates install by themselves.
+fr Dans votre profil, sans administrateur. Les mises à jour s'installent seules.
 
 en Waiting for the system's answer…
 fr En attente de la réponse du système…
@@ -2762,8 +2825,14 @@ fr la mise à jour n'a pas pu être mise en place
 en a package manager updates this copy
 fr un gestionnaire de paquets met à jour cette copie
 
+en an administrator updates this copy
+fr un administrateur met à jour cette copie
+
 en A package manager updates this copy.
 fr Un gestionnaire de paquets met à jour cette copie.
+
+en An administrator updates this copy: this account cannot write its folder.
+fr Un administrateur met à jour cette copie : ce compte ne peut pas écrire dans son dossier.
 
 en Checking for a newer version…
 fr Recherche d'une version plus récente…

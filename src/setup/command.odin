@@ -11,21 +11,22 @@ package tk_setup
 //                           bounded time; no window
 //   <program> --setup       starts the program with its installation shown (Settings > Apps' Uninstall runs it:
 //                           Identity.uninstall_arguments)
-//   <program> --task-manager on|off
-//                           the change of the machine that Install and Uninstall start as an administrator (Windows:
-//                           the program in place of Task Manager, desktop.task_manager_write); no window
+//   <program> --system install <choices> | uninstall
+//                           the machine half of an install for everyone, which Install and Uninstall start as an
+//                           administrator (runas, pkexec): one 0 or 1 per box of Setup_Options.choices, no path; no window
 //
 // A program lists COMMAND_OPTIONS in its table of options (gt:cli), takes the command out with command_of before it
 // opens a window, and for Install, Uninstall, Status and Quit exits with command_run's code.
 
 import "core:fmt"
+import "core:strings"
 import "core:time"
 import base "../base"
 import cli "../cli"
 import desktop "../desktop"
 import process "../process"
 
-Command :: enum u8 { None, Install, Uninstall, Status, Quit, Setup, Task_Manager_On, Task_Manager_Off }
+Command :: enum u8 { None, Install, Uninstall, Status, Quit, Setup, System_Install, System_Uninstall }
 
 // How long --quit waits for the copy that runs to end (it may save its work first), and how often it looks.
 QUIT_WAIT :: 10 * time.Second
@@ -39,8 +40,8 @@ COMMAND_OPTIONS := [?]cli.Option{
 	{name = "status", help = "say what is installed, and whether the program runs (exit code 0 installed, 1 not installed or to repair)", group = "Installation"},
 	{name = "quit", help = "ask the program that runs to end, and wait for it (exit code 0 ended or not running, 1 still running)", group = "Installation"},
 	{name = "setup", help = "open the window on the installation"},
-	// (what Install starts as an administrator: a person does not type it)
-	{name = "task-manager", value = "on|off", separate = true, hidden = true, help = "put the program in place of Task Manager, or give Task Manager back (as an administrator)", group = "Installation"},
+	// (what Install and Uninstall start as an administrator: a person does not type it)
+	{name = "system", value = "install|uninstall", separate = true, hidden = true, help = "install or remove the part of an install for everyone that every account shares (as an administrator)", group = "Installation"},
 }
 
 // Takes the install's options out of the arguments (the last one given wins); `rest`: the others, in their order.
@@ -53,19 +54,31 @@ command_of :: proc(args: []string, allocator := context.temp_allocator) -> (c: C
 		case "--status":    c = .Status
 		case "--quit":      c = .Quit
 		case "--setup":     c = .Setup
-		case desktop.TASK_MANAGER_FLAG + "=on", desktop.TASK_MANAGER_FLAG + "=off":
-			c = a[len(desktop.TASK_MANAGER_FLAG) + 1:] == "on" ? .Task_Manager_On : .Task_Manager_Off
-		case desktop.TASK_MANAGER_FLAG:
-			// (its value is the next argument; without one of its two values it is no command, and stays for the
-			// program to refuse)
-			if i + 1 < len(args) && (args[i + 1] == "on" || args[i + 1] == "off") {
-				c = args[i + 1] == "on" ? .Task_Manager_On : .Task_Manager_Off
-				i += 1
-			} else {
+		case desktop.SYSTEM_FLAG:
+			// (its verb is the next argument, then for install its choices; without a verb it is no command, and stays
+			// for the program to refuse)
+			verb, _, taken := system_command(args[i:])
+			if taken == 0 {
 				append(&rest, a)
+			} else {
+				c = verb == .Install ? .System_Install : .System_Uninstall
+				i += taken - 1
 			}
 		case:               append(&rest, a)
 		}
+	}
+	return
+}
+
+// The elevated verb at the head of `args` (SYSTEM_FLAG, its verb, for install its choices of 0 and 1): `taken`, the
+// arguments it is made of (0: none).
+system_command :: proc(args: []string) -> (verb: desktop.System_Verb, choices: string, taken: int) {
+	if len(args) < 2 || args[0] != desktop.SYSTEM_FLAG { return }
+	switch args[1] {
+	case desktop.system_verb_word(.Uninstall): return .Uninstall, "", 2
+	case desktop.system_verb_word(.Install):
+		if len(args) > 2 && strings.trim(args[2], "01") == "" && args[2] != "" { return .Install, args[2], 3 }
+		return .Install, "", 2
 	}
 	return
 }
@@ -90,7 +103,8 @@ command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> cl
 		choices := make([]bool, len(o.choices), context.temp_allocator)
 		for x, i in o.choices { choices[i] = x.on }
 		choices_from_facts(f, o, choices)
-		ok, exe_or_why := install(o, false, choices)
+		// (the scope of the install that is there: a command line never moves it)
+		ok, exe_or_why := install(o, false, choices, scope = f.scope)
 		if !ok {
 			out(fmt.tprintf("%s: the install failed: %s\n", name, exe_or_why))
 			return .Failed
@@ -99,6 +113,7 @@ command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> cl
 		if desktop.is_nixos() { out(fmt.tprintf("%s: on NixOS a Nix package is the better install: Nix updates it\n", name)) }
 		return .Done
 	case .Uninstall:
+		at_restart := system_removal_at_restart(o)
 		ok, leftovers, why := uninstall(o)
 		defer {
 			for l in leftovers { delete(l) }
@@ -109,7 +124,7 @@ command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> cl
 			out(fmt.tprintf("%s: the uninstall failed: %s\n", name, why))
 			return .Failed
 		}
-		out(fmt.tprintf("%s: uninstalled (your settings and data stay)\n", name))
+		out(fmt.tprintf("%s: uninstalled (your settings and data stay)%s\n", name, at_restart ? "; the program is deleted at the next restart" : ""))
 		return .Done
 	case .Status:
 		f := facts(o)
@@ -118,17 +133,39 @@ command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> cl
 		return status_exit(f.state)
 	case .Quit:
 		return quit_run(o, out)
-	case .Task_Manager_On, .Task_Manager_Off:
-		on := c == .Task_Manager_On
-		integration, _ := options(o)
-		if r := desktop.task_manager_write(&integration, on); r.error != .None {
-			out(fmt.tprintf("%s: Task Manager was not changed: %s\n", name, failure(r)))
+	case .System_Install, .System_Uninstall:
+		// (the elevated verb: its arguments read again from the command line Windows or pkexec gave; restricted, it
+		// writes only the system's places, from its own image)
+		_, text, _ := system_command(system_args(process.command_line_args()))
+		integration: desktop.Integration_Options
+		r: desktop.Result
+		if c == .System_Install {
+			choices, ok := desktop.system_choices(text, len(o.choices))
+			if !ok {
+				out(fmt.tprintf("%s: the choices are not this program's\n", name))
+				return .Failed
+			}
+			integration, _ = options(o, choices, .System)
+			r = desktop.machine_install(&integration, o.version)
+		} else {
+			integration, _ = options(o, nil, .System)
+			r = desktop.machine_remove(&integration)
+		}
+		if r.error != .None {
+			out(fmt.tprintf("%s: the install for everyone was not changed: %s\n", name, failure(r)))
 			return .Failed
 		}
-		out(fmt.tprintf("%s: %s\n", name, on ? "in place of Task Manager" : "Task Manager given back"))
+		out(fmt.tprintf("%s: %s for everyone\n", name, c == .System_Install ? "installed" : "uninstalled"))
 		return .Done
 	}
 	return .Done
+}
+
+// The arguments from SYSTEM_FLAG on (none: empty).
+@(private = "file")
+system_args :: proc(args: []string) -> []string {
+	for a, i in args { if a == desktop.SYSTEM_FLAG { return args[i:] } }
+	return nil
 }
 
 // --quit: the copy that runs is asked to end (Setup_Options.quit), then the end is awaited, at most QUIT_WAIT: its
@@ -174,8 +211,8 @@ status_text :: proc(f: Facts, o: Setup_Options, running: bool) -> string {
 		.Not_Installed = "not installed", .This_Copy = "installed (this copy)", .Repair = "installed, to repair",
 		.Other_Copy = "installed (another copy)", .Removal_Scheduled = "uninstalled", .Nix_Package = "installed by Nix",
 	}
-	return fmt.tprintf("%s: %s\n  program: %s\n  version: %s\n  this copy: %s %s\n  menu entry: %s\n  start with the session: %s\n  on the PATH: %s\n  running: %v\n  quit: %s\n",
-		o.identity.name, words[f.state], f.exe_there ? f.exe : "-", f.version != "" ? f.version : "-", o.version, f.running,
+	return fmt.tprintf("%s: %s\n  program: %s\n  for: %s\n  version: %s\n  this copy: %s %s\n  menu entry: %s\n  start with the session: %s\n  on the PATH: %s\n  running: %v\n  quit: %s\n",
+		o.identity.name, words[f.state], f.exe_there ? f.exe : "-", f.scope == .System ? "everyone" : "me", f.version != "" ? f.version : "-", o.version, f.running,
 		yes_no(f.start_lnk), yes_no(f.autostart), yes_no(f.on_path), running, yes_no(o.quit != nil))
 }
 

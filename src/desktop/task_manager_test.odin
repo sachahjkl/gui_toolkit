@@ -1,12 +1,13 @@
 package tk_desktop
 
-import "core:strings"
 import "core:testing"
 
-// The part is the machine's where it exists (Windows), and Linux has none: no box that claims half of it.
+// The part is the machine's where it exists (Windows): an install for everyone has it, a user install never. Linux has
+// none: no box that claims half of it.
 @(test)
-task_manager_is_an_administrator_part :: proc(t: ^testing.T) {
-	testing.expect(t, .Task_Manager not_in supported_parts() || .Task_Manager in admin_parts(), "the machine's: an administrator allows it")
+task_manager_is_a_part_of_an_install_for_everyone :: proc(t: ^testing.T) {
+	testing.expect(t, .Task_Manager not_in scope_parts(.User), "never for one account: the Debugger is every account's")
+	testing.expect(t, .Task_Manager not_in supported_parts() || .Task_Manager in machine_parts(), "the machine's half")
 	when ODIN_OS == .Linux { testing.expect(t, .Task_Manager not_in supported_parts(), "Linux has no system task manager") }
 	when ODIN_OS == .Windows { testing.expect(t, .Task_Manager in supported_parts(), "Windows has the part") }
 }
@@ -66,23 +67,4 @@ task_manager_off_gives_back_exactly :: proc(t: ^testing.T) {
 	k = image_options_off(taken, false)
 	testing.expect_value(t, k.debugger, later)
 	testing.expect(t, !k.marked && !k.previous.present, "the marks gone")
-}
-
-// The machine copy is always under Program Files for HKLM's Debugger: a folder from the environment (which the user
-// writes) counts only with a test's key under HKCU.
-@(test)
-task_manager_copy_is_in_program_files :: proc(t: ^testing.T) {
-	o := Integration_Options{identity = {name = "Sample", vendor = "Froment Software"}}
-	exe := exe_name_of(o.identity)
-	testing.expect_value(t, machine_copy_path(&o, `C:\Program Files`), strings.concatenate({`C:\Program Files\Froment Software\Sample\`, exe}, context.temp_allocator))
-	// a user's variable names a folder of theirs: HKLM's Debugger still runs Program Files'
-	o.machine_dir = `C:\Users\someone\AppData\Local\evil`
-	testing.expect_value(t, machine_copy_path(&o, `C:\Program Files`), strings.concatenate({`C:\Program Files\Froment Software\Sample\`, exe}, context.temp_allocator))
-	testing.expect_value(t, machine_copy_path(&o, ""), "")
-	// with a test's key, the test's folder
-	o.image_options_root = `Software\TkDesktopTest_1\Image File Execution Options`
-	testing.expect_value(t, machine_copy_path(&o, `C:\Program Files`), strings.concatenate({o.machine_dir, `\`, exe}, context.temp_allocator))
-	// a vendor that is no folder's name: the program's name alone
-	o = {identity = {name = "Sample", vendor = `..\Windows`}}
-	testing.expect_value(t, machine_copy_path(&o, `C:\Program Files`), strings.concatenate({`C:\Program Files\Sample\`, exe}, context.temp_allocator))
 }

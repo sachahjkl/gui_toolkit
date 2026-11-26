@@ -338,6 +338,34 @@ a_managed_copy_is_left_alone :: proc(t: ^testing.T) {
 	testing.expect(t, st.asked && !st.failed && st.result != "", "it says why")
 }
 
+// A copy in a folder this account cannot write (an install for everyone): an administrator updates it. Nothing is
+// checked nor downloaded, and nothing is written there.
+@(test)
+an_install_for_everyone_is_left_to_an_administrator :: proc(t: ^testing.T) {
+	when ODIN_OS == .Windows { return }   // (a folder of the test's own cannot be closed to its account without its access list)
+	if os.get_uid() == 0 { return }       // (root writes any folder)
+	dir, exe := program_folder("administered")
+	old := fmt.tprintf("%s.old", exe)
+	_ = os.write_entire_file(old, program_bytes(2))
+	testing.expect(t, os.chmod(dir, {.Read_User, .Execute_User, .Read_Group, .Execute_Group, .Read_Other, .Execute_Other}) == nil)
+	defer {
+		_ = os.chmod(dir, os.Permissions_Default_Directory)
+		fsx.remove_tree(dir)
+	}
+	testing.expect(t, !folder_takes_files(dir), "the folder is closed to this account")
+	u := updater_start({product = updater_product(), folder = "http://127.0.0.1:9/", current = "1.0.0", exe = exe})
+	defer updater_stop(u)
+	st := wait_phase(u, .Administered)
+	testing.expect_value(t, st.phase, Phase.Administered)
+	check_now(u)
+	st = status(u)
+	testing.expect(t, st.phase == .Administered && st.asked && !st.failed && st.result != "", "it says why")
+	testing.expect(t, os.is_file(old), "nothing there is touched")
+	words, bad := notice(st)
+	testing.expect(t, !bad && words != "", "check_now: an administrator")
+	testing.expect(t, folder_takes_files(fsx.temp_dir(context.temp_allocator)), "a folder of the account's takes files")
+}
+
 // The notice never says what the badge shows (a version on offer, its download, one in place), nor a check made by
 // itself; it says a failed install, asked or not, and the answers to check_now.
 @(test)

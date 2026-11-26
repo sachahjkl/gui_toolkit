@@ -14,7 +14,7 @@ import "../platform"
 // <thumbnailers_dir>/<slug>.thumbnailer ("" when neither the option nor the data directory is known).
 @(private)
 thumbnailer_path :: proc(o: ^Integration_Options) -> string {
-	dir := o.thumbnailers_dir
+	dir := in_machine(o) ? strings.concatenate({machine_share(o), "/thumbnailers"}, context.temp_allocator) : o.thumbnailers_dir
 	if dir == "" {
 		data := platform.user_dir(.Data, "", context.temp_allocator)
 		if data == "" { return "" }

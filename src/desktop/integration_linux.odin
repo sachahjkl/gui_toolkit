@@ -1,6 +1,8 @@
 package tk_desktop
 
-// Linux: the freedesktop.org way (XDG), all under the user's data directory.
+// Linux: the freedesktop.org way (XDG), all under the user's data directory. An install for everyone (scope System,
+// scope_linux.odin) puts the parts of machine_parts() under /usr/local (share/applications, share/icons,
+// share/thumbnailers, bin), from the elevated verb; the others stay the person's.
 //
 //   $XDG_DATA_HOME/applications/<slug>.desktop       the desktop entry (desktop_entry.odin): name, Exec, Icon, the
 //                                                    identity's categories and, for a browser, MimeType= for http,
@@ -56,6 +58,7 @@ platform_backend :: proc() -> ^Backend { return &LINUX_BACKEND }
 // folder is the record.
 @(private)
 linux_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
+	if o.scope == .System { return system_install_dir(o, allocator) }   // (/opt/<vendor_key>/<name>: scope_linux.odin)
 	// (~/.local/opt/<vendor>/<name>: a program in a folder of its own, as /opt holds one for every user, apart from
 	// its data in ~/.local/share/<vendor>/<name> that an uninstall leaves; XDG names no place for programs:
 	// src/md/features/folders.md)
@@ -81,6 +84,14 @@ Layout :: struct {
 
 @(private = "file")
 layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
+	if in_machine(o) {
+		// (the machine half of a system install: /usr/local/share, in every account's XDG_DATA_DIRS)
+		share := machine_share(o)
+		l.applications = strings.concatenate({share, "/applications"}, context.temp_allocator)
+		l.icons = strings.concatenate({share, "/icons/hicolor"}, context.temp_allocator)
+		l.entry = strings.concatenate({l.applications, "/", o.identity.slug, ".desktop"}, context.temp_allocator)
+		return l, true
+	}
 	data_home := ""
 	if o.applications_dir == "" || o.icons_dir == "" {
 		data_home = platform.user_dir(.Data, "", context.temp_allocator)
@@ -324,7 +335,7 @@ desktop_shortcut_path :: proc(o: ^Integration_Options) -> string {
 // <bin_dir>/<slug> (~/.local/bin/<slug>): the symlink that puts the program on the user's PATH (the "Add to PATH" of Linux).
 @(private = "file")
 bin_link_path :: proc(o: ^Integration_Options) -> string {
-	bin := o.bin_dir != "" ? o.bin_dir : xdg_bin_dir()
+	bin := in_machine(o) ? machine_bin(o) : o.bin_dir != "" ? o.bin_dir : xdg_bin_dir()
 	if bin == "" { return "" }
 	return strings.concatenate({bin, "/", o.identity.slug}, context.temp_allocator)
 }
@@ -336,15 +347,18 @@ bin_link_path :: proc(o: ^Integration_Options) -> string {
 linux_install :: proc(o: ^Integration_Options) -> Result {
 	l, ok := layout_of(o)
 	if !ok { return {.System, "neither $XDG_DATA_HOME nor the home directory is known"} }
-	if !ensure_dir(l.applications) { return {.Io, strings.concatenate({"cannot create ", l.applications}, context.temp_allocator)} }
+	// (a system install's call writes the parts of its half only: touches)
+	if touches(o, .Launcher) && !ensure_dir(l.applications) { return {.Io, strings.concatenate({"cannot create ", l.applications}, context.temp_allocator)} }
 
 	for ic in o.icons {
+		if !touches(o, .Icons) { break }
 		path := icon_path(l, o.identity.slug, ic.size)
 		if !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
 		if !fsx.write_atomic(path, ic.png) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
 	}
 	// (the Documents part lives in the entry: without the Launcher it stays, hidden from the menu)
-	if o.start_menu || opens_documents(o) {
+	if !touches(o, .Launcher) {
+	} else if o.start_menu || opens_documents(o) {
 		if !fsx.write_atomic(l.entry, transmute([]byte)desktop_entry_text(o, no_display = !o.start_menu)) { return {.Io, strings.concatenate({"cannot write ", l.entry}, context.temp_allocator)} }
 	} else if text, rerr := os.read_entire_file(l.entry, context.temp_allocator); rerr == nil {
 		// the option is off: an entry of ours goes (another program's file of that name stays)
@@ -355,7 +369,7 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 	}
 
 	// PATH: a symlink in the bin directory to the executable (replaced when it points elsewhere); removed when the option is off.
-	if link := bin_link_path(o); link != "" {
+	if link := bin_link_path(o); link != "" && touches(o, .Path) {
 		if o.add_to_path {
 			if !ensure_dir(filepath.dir(link)) { return {.Io, strings.concatenate({"cannot create the directory of ", link}, context.temp_allocator)} }
 			if target, err := os.read_link(link, context.temp_allocator); err != nil || !same_path(target, o.exe) {
@@ -370,7 +384,7 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 	}
 
 	// Autostart: the entry written when the option is on; an entry of ours taken out when it is off.
-	if path := autostart_path(o); path != "" {
+	if path := autostart_path(o); path != "" && touches(o, .Autostart) {
 		if o.autostart {
 			if !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
 			if !fsx.write_atomic(path, transmute([]byte)autostart_entry_text(o)) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
@@ -381,7 +395,7 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 
 	// Desktop_Shortcut: the entry's copy, executable, when the option is on; ours taken out when it is off (another
 	// program's file of that name stays).
-	if path := desktop_shortcut_path(o); path != "" {
+	if path := desktop_shortcut_path(o); path != "" && touches(o, .Desktop_Shortcut) {
 		ours, _, _ := entry_ours(o, path)
 		if o.desktop_shortcut {
 			if os.exists(path) && !ours { return {.Io, strings.concatenate({path, " is another program's"}, context.temp_allocator)} }
@@ -394,14 +408,20 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 	}
 
 	// File_Manager: the entry the default of folders with the option; taken out of that line without it
-	if r := defaults_set(o, {DIRECTORY_MIME}, o.default_file_manager); r.error != .None { return r }
+	if touches(o, .File_Manager) {
+		if r := defaults_set(o, {DIRECTORY_MIME}, o.default_file_manager); r.error != .None { return r }
+	}
 	// Default_Documents: the same for each document type
-	if r := defaults_set(o, document_mimes(o), o.default_documents); r.error != .None { return r }
+	if touches(o, .Default_Documents) {
+		if r := defaults_set(o, document_mimes(o), o.default_documents); r.error != .None { return r }
+	}
 	// Thumbnails: the .thumbnailer written with the option, ours taken out without it
-	if r := thumbnailer_apply(o); r.error != .None { return r }
+	if touches(o, .Thumbnails) {
+		if r := thumbnailer_apply(o); r.error != .None { return r }
+	}
 
 	// (the icon theme's cache is checked against the directories' times: there is nothing to run for the icons)
-	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
+	if o.notify_system && touches(o, .Launcher) { run_tool("update-desktop-database", {l.applications}) }
 	return {}
 }
 
@@ -413,7 +433,7 @@ linux_remove :: proc(o: ^Integration_Options) -> Result {
 	l, ok := layout_of(o)
 	if !ok { return {.System, "neither $XDG_DATA_HOME nor the home directory is known"} }
 	res: Result
-	if text, err := os.read_entire_file(l.entry, context.temp_allocator); err == nil {
+	if text, err := os.read_entire_file(l.entry, context.temp_allocator); err == nil && touches(o, .Launcher) {
 		content := string(text)
 		mark, _ := entry_value(content, o.identity.entry_marker)
 		exec, _ := entry_value(content, "Exec")
@@ -423,39 +443,47 @@ linux_remove :: proc(o: ^Integration_Options) -> Result {
 	}
 	// the icons are named after the identity's slug: this program's own namespace
 	for size in ICON_SIZES {
+		if !touches(o, .Icons) { break }
 		path := icon_path(l, o.identity.slug, size)
 		if os.is_file(path) {
 			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
 		}
 	}
 	for ic in o.icons {
+		if !touches(o, .Icons) { break }
 		path := icon_path(l, o.identity.slug, ic.size)
 		if os.is_file(path) { _ = os.remove(path) }
 	}
 	// PATH: the symlink goes only when it runs this program (a file of the same name that is not ours stays).
-	if link := bin_link_path(o); link != "" {
+	if link := bin_link_path(o); link != "" && touches(o, .Path) {
 		if target, err := os.read_link(link, context.temp_allocator); err == nil && same_path(target, o.exe) {
 			if rerr := os.remove(link); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", link}, context.temp_allocator)} }
 		}
 	}
 	// Desktop_Shortcut: the copy goes when it is the program's.
-	if path := desktop_shortcut_path(o); path != "" {
+	if path := desktop_shortcut_path(o); path != "" && touches(o, .Desktop_Shortcut) {
 		if ours, _, _ := entry_ours(o, path); ours {
 			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
 		}
 	}
 	// Autostart: the entry goes when it is the program's.
-	if path := autostart_path(o); path != "" {
+	if path := autostart_path(o); path != "" && touches(o, .Autostart) {
 		if ours, _, _ := entry_ours(o, path); ours {
 			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
 		}
 	}
 	// File_Manager: the entry's id goes from the folders' line (the rest of the person's file stays).
-	if r := defaults_set(o, {DIRECTORY_MIME}, false); r.error != .None && res.error == .None { res = r }
+	if touches(o, .File_Manager) {
+		if r := defaults_set(o, {DIRECTORY_MIME}, false); r.error != .None && res.error == .None { res = r }
+	}
 	// Default_Documents: the entry's id goes from the lines of the document types
-	if r := defaults_set(o, document_mimes(o), false); r.error != .None && res.error == .None { res = r }
-	if r := thumbnailer_remove(o); r.error != .None && res.error == .None { res = r }
-	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
+	if touches(o, .Default_Documents) {
+		if r := defaults_set(o, document_mimes(o), false); r.error != .None && res.error == .None { res = r }
+	}
+	if touches(o, .Thumbnails) {
+		if r := thumbnailer_remove(o); r.error != .None && res.error == .None { res = r }
+	}
+	if o.notify_system && touches(o, .Launcher) { run_tool("update-desktop-database", {l.applications}) }
 	return res
 }
 

@@ -16,13 +16,16 @@ import "core:strings"
 import win "core:sys/windows"
 import base "../base"
 
+// (a system install's record is the machine's, HKLM's, whichever half reads it)
 @(private = "file")
 uninstall_key :: proc(o: ^Integration_Options) -> string {
-	return reg_join(registry_root_of(o), "Microsoft", "Windows", "CurrentVersion", "Uninstall", o.identity.key)
+	root := o.scope == .System ? reg_join(machine_hive(o), "SOFTWARE") : registry_root_of(o)
+	return reg_join(root, "Microsoft", "Windows", "CurrentVersion", "Uninstall", o.identity.key)
 }
 
 @(private)
 windows_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
+	if o.scope == .System { return system_install_dir(o, allocator) }
 	// (%LOCALAPPDATA%\Programs\<vendor>\<name>: a person's own programs, its vendor's together, apart from the data in
 	// %LOCALAPPDATA%\<vendor>\<name> that an uninstall leaves; src/md/features/folders.md)
 	base := known_folder(win.FOLDERID_LocalAppData)
@@ -45,7 +48,7 @@ windows_locate :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 windows_record :: proc(o: ^Integration_Options, dir, version: string) -> Result {
 	key := uninstall_key(o)
 	exe := strings.concatenate({strings.trim_right(dir, "\\/"), "\\", exe_name_of(o.identity)}, context.temp_allocator)
-	failed :: proc(key: string) -> Result { return {.System, strings.concatenate({"cannot write HKCU\\", key}, context.temp_allocator)} }
+	failed :: proc(key: string) -> Result { return {.System, strings.concatenate({"cannot write ", key}, context.temp_allocator)} }
 	ok := reg_set(key, "DisplayName", o.identity.name)
 	ok = ok && reg_set(key, "DisplayVersion", version)
 	ok = ok && reg_set(key, "Publisher", o.identity.vendor)
@@ -64,7 +67,7 @@ windows_record :: proc(o: ^Integration_Options, dir, version: string) -> Result 
 windows_unrecord :: proc(o: ^Integration_Options) -> Result {
 	key := uninstall_key(o)
 	if mark, _ := reg_get(key, o.identity.registry_mark); mark != identity_aumid(o.identity) { return {} }   // not ours (or already gone)
-	if !reg_delete_tree(key) { return {.System, strings.concatenate({"cannot delete HKCU\\", key}, context.temp_allocator)} }
+	if !reg_delete_tree(key) { return {.System, strings.concatenate({"cannot delete ", key}, context.temp_allocator)} }
 	return {}
 }
 

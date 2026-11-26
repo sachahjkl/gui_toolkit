@@ -1218,7 +1218,7 @@ updater_under :: proc(o: Page_Options, em: f32) {
 		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.6))})
 		ui.progress("###update_progress", update.progress(st), lively = true)
 	}
-	if st.phase == .Managed { return }
+	if st.phase == .Managed || st.phase == .Administered { return }
 	ui.space(ui.LINE_GAP)
 	// (a width of its own: a row that takes the program's base width, text_size() of no text, is a few pixels wide,
 	// and the buttons in it wrap to their widest word though the line has room)

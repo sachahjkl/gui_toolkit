@@ -1,23 +1,46 @@
 package tk_desktop
 
 // The few registry operations the Windows backend needs, with paths given as plain strings. Each works under
-// HKEY_CURRENT_USER unless given another hive: only the Task_Manager part (task_manager_windows.odin) reads
-// HKEY_LOCAL_MACHINE, and writes it only in the process that an administrator allowed.
+// HKEY_CURRENT_USER unless the path begins with "HKLM\" (machine_hive: the machine half of a system install, which
+// only the elevated verb writes), or another hive is given.
 
 import "core:strings"
 import win "core:sys/windows"
 import "../ascii"
 
-// The key that stands for HKCU\Software: "Software" itself, or a scratch key under it for the tests.
+// The key that stands for HKCU\Software: "Software" itself, or a scratch key under it for the tests. The machine half
+// of a system install: HKLM\SOFTWARE (or the test's stand-in for HKLM).
 @(private)
-registry_root_of :: proc(o: ^Integration_Options) -> string { return o.registry_root != "" ? o.registry_root : "Software" }
+registry_root_of :: proc(o: ^Integration_Options) -> string {
+	if in_machine(o) { return reg_join(machine_hive(o), "SOFTWARE") }
+	return o.registry_root != "" ? o.registry_root : "Software"
+}
 
 @(private)
 reg_join :: proc(parts: ..string) -> string { return strings.join(parts, "\\", context.temp_allocator) }
 
+// The hive of a path: "HKLM\..." is HKEY_LOCAL_MACHINE's, any other the one given (HKCU by default).
+@(private)
+hive_of :: proc(path: string, hive: win.HKEY) -> (win.HKEY, string) {
+	if ascii.has_prefix_fold(path, "HKLM\\") { return win.HKEY_LOCAL_MACHINE, path[len("HKLM\\"):] }
+	if ascii.equal_fold(path, "HKLM") { return win.HKEY_LOCAL_MACHINE, "" }
+	return hive, path
+}
+
+// A DWORD value (0 and false when the key or the value is missing).
+@(private)
+reg_get_dword :: proc(at, name: string, in_hive := win.HKEY_CURRENT_USER) -> (value: u32, ok: bool) {
+	h, rest := hive_of(at, in_hive)
+	size := win.DWORD(size_of(u32))
+	v: u32
+	if win.RegGetValueW(h, wide(rest), wide(name), win.RRF_RT_REG_DWORD, nil, &v, &size) != 0 { return 0, false }
+	return v, true
+}
+
 // Sets a string value (the default value when `name` is empty), creating the key and its parents.
 @(private)
-reg_set :: proc(path, name, value: string, hive := win.HKEY_CURRENT_USER) -> bool {
+reg_set :: proc(at, name, value: string, in_hive := win.HKEY_CURRENT_USER) -> bool {
+	hive, path := hive_of(at, in_hive)
 	key: win.HKEY
 	if win.RegCreateKeyExW(hive, wide(path), 0, nil, win.REG_OPTION_NON_VOLATILE, win.KEY_SET_VALUE | win.KEY_CREATE_SUB_KEY, nil, &key, nil) != 0 { return false }
 	defer win.RegCloseKey(key)
@@ -29,7 +52,8 @@ reg_set :: proc(path, name, value: string, hive := win.HKEY_CURRENT_USER) -> boo
 
 // A string value ("" and false when the key or the value is missing, or the value is not a string).
 @(private)
-reg_get :: proc(path, name: string, hive := win.HKEY_CURRENT_USER) -> (value: string, ok: bool) {
+reg_get :: proc(at, name: string, in_hive := win.HKEY_CURRENT_USER) -> (value: string, ok: bool) {
+	hive, path := hive_of(at, in_hive)
 	size: win.DWORD
 	if win.RegGetValueW(hive, wide(path), name == "" ? nil : wide(name), win.RRF_RT_REG_SZ, nil, nil, &size) != 0 || size < 2 { return "", false }
 	buf := make([]u16, int(size) / 2 + 1, context.temp_allocator)
@@ -39,7 +63,8 @@ reg_get :: proc(path, name: string, hive := win.HKEY_CURRENT_USER) -> (value: st
 
 // A REG_SZ or REG_EXPAND_SZ value as stored (%VARIABLES% not expanded), with whether it is the expanding kind.
 @(private)
-reg_get_any :: proc(path, name: string, hive := win.HKEY_CURRENT_USER) -> (value: string, expand, ok: bool) {
+reg_get_any :: proc(at, name: string, in_hive := win.HKEY_CURRENT_USER) -> (value: string, expand, ok: bool) {
+	hive, path := hive_of(at, in_hive)
 	flags := win.DWORD(win.RRF_RT_REG_SZ | win.RRF_RT_REG_EXPAND_SZ | win.RRF_NOEXPAND)
 	size, kind: win.DWORD
 	if win.RegGetValueW(hive, wide(path), name == "" ? nil : wide(name), flags, &kind, nil, &size) != 0 { return "", false, false }
@@ -50,7 +75,8 @@ reg_get_any :: proc(path, name: string, hive := win.HKEY_CURRENT_USER) -> (value
 
 // Sets a string value of the given kind (REG_EXPAND_SZ when `expand`), creating the key.
 @(private)
-reg_set_kind :: proc(path, name, value: string, expand: bool, hive := win.HKEY_CURRENT_USER) -> bool {
+reg_set_kind :: proc(at, name, value: string, expand: bool, in_hive := win.HKEY_CURRENT_USER) -> bool {
+	hive, path := hive_of(at, in_hive)
 	key: win.HKEY
 	if win.RegCreateKeyExW(hive, wide(path), 0, nil, win.REG_OPTION_NON_VOLATILE, win.KEY_SET_VALUE | win.KEY_CREATE_SUB_KEY, nil, &key, nil) != 0 { return false }
 	defer win.RegCloseKey(key)
@@ -63,16 +89,18 @@ reg_set_kind :: proc(path, name, value: string, expand: bool, hive := win.HKEY_C
 
 // A DWORD value (0 and false when missing).
 @(private)
-reg_set_dword :: proc(path, name: string, value: u32) -> bool {
+reg_set_dword :: proc(at, name: string, value: u32) -> bool {
+	hive, path := hive_of(at, win.HKEY_CURRENT_USER)
 	key: win.HKEY
-	if win.RegCreateKeyExW(win.HKEY_CURRENT_USER, wide(path), 0, nil, win.REG_OPTION_NON_VOLATILE, win.KEY_SET_VALUE | win.KEY_CREATE_SUB_KEY, nil, &key, nil) != 0 { return false }
+	if win.RegCreateKeyExW(hive, wide(path), 0, nil, win.REG_OPTION_NON_VOLATILE, win.KEY_SET_VALUE | win.KEY_CREATE_SUB_KEY, nil, &key, nil) != 0 { return false }
 	defer win.RegCloseKey(key)
 	v := value
 	return win.RegSetValueExW(key, wide(name), 0, win.REG_DWORD, cast(^win.BYTE)&v, 4) == 0
 }
 
 @(private)
-reg_key_exists :: proc(path: string, hive := win.HKEY_CURRENT_USER) -> bool {
+reg_key_exists :: proc(at: string, in_hive := win.HKEY_CURRENT_USER) -> bool {
+	hive, path := hive_of(at, in_hive)
 	key: win.HKEY
 	if win.RegOpenKeyExW(hive, wide(path), 0, win.KEY_READ, &key) != 0 { return false }
 	win.RegCloseKey(key)
@@ -82,14 +110,16 @@ reg_key_exists :: proc(path: string, hive := win.HKEY_CURRENT_USER) -> bool {
 // Deletes the key and everything under it (true when it is gone, also when it never was there).
 @(private)
 reg_delete_tree :: proc(path: string) -> bool {
-	r := RegDeleteTreeW(win.HKEY_CURRENT_USER, wide(path))
+	hive, rest := hive_of(path, win.HKEY_CURRENT_USER)
+	r := RegDeleteTreeW(hive, wide(rest))
 	return r == 0 || r == win.LSTATUS(win.ERROR_FILE_NOT_FOUND)
 }
 
 // Deletes the key when it holds no subkey and no value: a parent the program created goes with its last child, and
 // one that holds something of another program stays. True when it is gone or never was there.
 @(private)
-reg_delete_if_empty :: proc(path: string, hive := win.HKEY_CURRENT_USER) -> bool {
+reg_delete_if_empty :: proc(at: string, in_hive := win.HKEY_CURRENT_USER) -> bool {
+	hive, path := hive_of(at, in_hive)
 	key: win.HKEY
 	r := win.RegOpenKeyExW(hive, wide(path), 0, win.KEY_READ, &key)
 	if r == win.LSTATUS(win.ERROR_FILE_NOT_FOUND) { return true }
@@ -104,9 +134,10 @@ reg_delete_if_empty :: proc(path: string, hive := win.HKEY_CURRENT_USER) -> bool
 
 // The names of the values of a key, the default value left out (nil when the key is missing; temp memory).
 @(private)
-reg_value_names :: proc(path: string) -> []string {
+reg_value_names :: proc(at: string) -> []string {
+	hive, path := hive_of(at, win.HKEY_CURRENT_USER)
 	key: win.HKEY
-	if win.RegOpenKeyExW(win.HKEY_CURRENT_USER, wide(path), 0, win.KEY_READ, &key) != 0 { return nil }
+	if win.RegOpenKeyExW(hive, wide(path), 0, win.KEY_READ, &key) != 0 { return nil }
 	defer win.RegCloseKey(key)
 	out := make([dynamic]string, context.temp_allocator)
 	buf := make([]u16, 16384, context.temp_allocator)   // (a value's name is at most 16383 characters)
@@ -120,7 +151,8 @@ reg_value_names :: proc(path: string) -> []string {
 }
 
 @(private)
-reg_delete_value :: proc(path, name: string, hive := win.HKEY_CURRENT_USER) -> bool {
+reg_delete_value :: proc(at, name: string, in_hive := win.HKEY_CURRENT_USER) -> bool {
+	hive, path := hive_of(at, in_hive)
 	key: win.HKEY
 	r := win.RegOpenKeyExW(hive, wide(path), 0, win.KEY_SET_VALUE, &key)
 	if r == win.LSTATUS(win.ERROR_FILE_NOT_FOUND) { return true }

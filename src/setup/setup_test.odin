@@ -72,7 +72,6 @@ a_start_offers_the_dialog_when_there_is_something_to_do :: proc(t: ^testing.T) {
 	testing.expect(t, !wanted({state = .This_Copy}, "0.2.0", ""))
 	testing.expect(t, !wanted({state = .Other_Copy, version = "0.3.0"}, "0.2.0", ""), "a newer copy is installed")
 	testing.expect(t, !wanted({state = .Not_Installed, from_nix = true}, "0.2.0", ""), "a copy of the Nix store")
-	testing.expect(t, !wanted({state = .Not_Installed, machine_copy = true}, "0.2.0", ""), "a task manager's machine copy")
 	testing.expect(t, !wanted({state = .Nix_Package}, "0.2.0", ""))
 }
 
@@ -143,17 +142,48 @@ task_manager_arguments_are_taken_away :: proc(t: ^testing.T) {
 	testing.expect(t, !from && len(rest) == 0, "no argument")
 }
 
-// --task-manager on|off is the elevated command, alone; without one of its values it is left for the program to refuse.
+// --system install <choices> | uninstall is the elevated verb, alone: a word and one 0 or 1 per box, never a path.
+// Without a verb it is left for the program to refuse.
 @(test)
-the_task_manager_command :: proc(t: ^testing.T) {
-	c, rest := command_of({"--task-manager", "on"})
-	testing.expect_value(t, c, Command.Task_Manager_On)
+the_elevated_verb_of_an_install_for_everyone :: proc(t: ^testing.T) {
+	c, rest := command_of({"--system", "install", "101"})
+	testing.expect_value(t, c, Command.System_Install)
 	testing.expect_value(t, len(rest), 0)
-	c, rest = command_of({"--task-manager=off"})
-	testing.expect_value(t, c, Command.Task_Manager_Off)
 	testing.expect(t, command_alone(c), "no window")
-	c, rest = command_of({"--task-manager", "maybe"})
+	c, rest = command_of({"--system", "install"})
+	testing.expect_value(t, c, Command.System_Install)   // (a program with no box)
+	c, rest = command_of({"--system", "uninstall", "a.txt"})
+	testing.expect_value(t, c, Command.System_Uninstall)
+	testing.expect_value(t, len(rest), 1)
+	c, rest = command_of({"--system", "install", "C:\\Users\\x"})
+	testing.expect_value(t, c, Command.System_Install)
+	testing.expect_value(t, len(rest), 1)   // (a path is no choice: it stays, and the verb reads no choice from it)
+	c, rest = command_of({"--system", "maybe"})
 	testing.expect_value(t, c, Command.None)
 	testing.expect_value(t, len(rest), 2)
+	verb, choices, taken := system_command({"--system", "install", "10"})
+	testing.expect(t, verb == .Install && choices == "10" && taken == 3)
 	testing.expect(t, !command_alone(.Setup) && !command_alone(.None), "the window's")
+}
+
+// The status says for whom the install is.
+@(test)
+the_status_says_the_scope :: proc(t: ^testing.T) {
+	text := status_text({state = .This_Copy, scope = .System}, {identity = {name = "App"}, version = "1"}, false)
+	testing.expectf(t, strings.contains(text, "  for: everyone\n"), "%s", text)
+	text = status_text({state = .This_Copy}, {identity = {name = "App"}, version = "1"}, false)
+	testing.expectf(t, strings.contains(text, "  for: me\n"), "%s", text)
+}
+
+// A box of Task Manager is the install for everyone's: under "For me" it is off and says why.
+@(test)
+a_box_of_the_machine_needs_everyone :: proc(t: ^testing.T) {
+	tm := Choice{label = "Task Manager", parts = {.Task_Manager}}
+	testing.expect(t, choice_possible({label = "PATH", parts = {.Path}}, .User))
+	when ODIN_OS == .Windows {
+		testing.expect(t, !choice_possible(tm, .User) && choice_note(tm, .User) != "", "not for one account")
+		testing.expect(t, choice_possible(tm, .System) && choice_note(tm, .System) == "")
+	} else {
+		testing.expect(t, choice_possible(tm, .User), "no such part here: the program shows no box")
+	}
 }

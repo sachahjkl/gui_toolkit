@@ -1,6 +1,6 @@
 // Package desktop (tk_desktop): the files that make a portable program part of the user's desktop, and the installed
-// copy of the program. Everything is in the user's own profile, with one exception: the task manager's part (Windows),
-// which is the machine's and which an administrator allows at a person's request (task_manager_windows.odin).
+// copy of the program. An install is the person's (their profile) or the computer's, for every account (Scope: an
+// administrator allows its machine half, src/md/features/install-scope.md).
 // docs/desktop.md says what a program gets and how it configures it.
 //
 // The package is the interface (`Identity`, `Integration_Options`, `Status`, `status`, `install`, `remove`, `uninstall`) and one
@@ -126,10 +126,12 @@ Integration_Options :: struct {
 	autostart:        bool,       // the program starts with the user's session
 	autostart_arguments: string,  // what it starts with then ("--hidden": in the notification area; "": nothing)
 	default_file_manager: bool,   // the program opens folders in place of the system's file manager (Windows: also Win+E)
-	task_manager:     bool,       // the program opens in place of the system's task manager (Part.Task_Manager, Windows: Ctrl+Shift+Esc)
-	// a person asked for this install or removal (setup's Install, Uninstall): a part that needs an administrator
-	// (admin_parts) may ask Windows for one. Off: such a part is left as it is, and nothing is asked
-	ask_administrator: bool,
+	task_manager:     bool,       // the program opens in place of the system's task manager (Part.Task_Manager, Windows: Ctrl+Shift+Esc; scope System only)
+	// where the install is: the person's profile, or the computer for every account (src/md/features/install-scope.md)
+	scope:            Scope,
+	// (scope System) this call reads or writes the machine's half: the parts of machine_parts(), in the machine's places.
+	// Off: the person's half, in their profile. install and remove touch only the parts of their half
+	machine_half:     bool,
 	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the one the build embedded, if any
 
 	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
@@ -145,8 +147,10 @@ Integration_Options :: struct {
 	autostart_dir:    string,     // Linux: $XDG_CONFIG_HOME/autostart
 	config_dir:       string,     // Linux: $XDG_CONFIG_HOME, where mimeapps.list names the default file manager
 	thumbnailers_dir: string,     // Linux: $XDG_DATA_HOME/thumbnailers, where the Thumbnails part puts its .thumbnailer
-	machine_dir:      string,     // Windows: the folder of the Task_Manager part's machine copy ("" = %ProgramFiles%\<vendor>\<name>)
-	image_options_root: string,   // Windows: a key under HKCU that stands for HKLM\...\Image File Execution Options (a test's; "" = that one)
+	// A test's stand-ins for the machine's places (scope System). They count only in a process that is not restricted:
+	// in a real elevated one the machine's places are the system's own, whatever the options say (machine_places)
+	machine_root:     string,     // a folder that stands for the machine's: Linux "/" (its opt, usr/local); Windows the folder that holds "Program Files" and "Start Menu\Programs"
+	machine_registry_root: string,   // Windows: a key under HKCU that stands for HKEY_LOCAL_MACHINE
 	icons:            []Icon,     // Linux: the PNGs to install (the program embeds them; Windows uses the executable's own icon)
 	notify_system:    bool,       // tell the system once done (SHChangeNotify, update-desktop-database); off for scratch roots
 }
@@ -277,8 +281,8 @@ options_clone :: proc(o: Integration_Options, allocator := context.allocator) ->
 	c.autostart_dir = clone_or_empty(o.autostart_dir, allocator)
 	c.config_dir = clone_or_empty(o.config_dir, allocator)
 	c.thumbnailers_dir = clone_or_empty(o.thumbnailers_dir, allocator)
-	c.machine_dir = clone_or_empty(o.machine_dir, allocator)
-	c.image_options_root = clone_or_empty(o.image_options_root, allocator)
+	c.machine_root = clone_or_empty(o.machine_root, allocator)
+	c.machine_registry_root = clone_or_empty(o.machine_registry_root, allocator)
 	types := make([]string, len(o.file_types), allocator)
 	for ft, i in o.file_types { types[i] = strings.clone(ft, allocator) }
 	c.file_types = types
@@ -290,7 +294,7 @@ options_destroy :: proc(o: ^Integration_Options, allocator := context.allocator)
 	delete(o.desktop_dir, allocator); delete(o.environment_root, allocator); delete(o.install_dir, allocator)
 	delete(o.applications_dir, allocator); delete(o.icons_dir, allocator); delete(o.bin_dir, allocator)
 	delete(o.autostart_dir, allocator); delete(o.config_dir, allocator); delete(o.thumbnailers_dir, allocator)
-	delete(o.machine_dir, allocator); delete(o.image_options_root, allocator)
+	delete(o.machine_root, allocator); delete(o.machine_registry_root, allocator)
 	for ft in o.file_types { delete(ft, allocator) }
 	delete(o.file_types, allocator)
 	o^ = {}
@@ -311,7 +315,7 @@ parts_wanted :: proc(b: ^Backend, o: ^Integration_Options) -> Parts {
 	if !o.add_to_path { w -= {.Path} }
 	if !o.autostart { w -= {.Autostart} }
 	if !o.default_file_manager { w -= {.File_Manager} }
-	if !o.task_manager { w -= {.Task_Manager} }
+	if !o.task_manager || o.scope != .System { w -= {.Task_Manager} }   // (the machine's: src/md/features/install-scope.md)
 	if !o.register_browser { w -= {.Registration} }
 	if !opens_documents(o) { w -= {.Documents} }
 	if !o.default_documents || len(o.document_types) == 0 { w -= {.Default_Documents} }
@@ -344,6 +348,21 @@ status :: proc(o: ^Integration_Options, allocator := context.allocator) -> Statu
 	if b == nil { return Status{error = .Unsupported} }
 	if e := validate(o, need_exe = false); e.error != .None { return Status{error = e.error} }
 	s := b.status(o, allocator)
+	if o.scope == .System {
+		// (each half where it lives: the machine's parts from the machine's places, the person's from their profile)
+		m := o^
+		m.machine_half = !o.machine_half
+		other := b.status(&m, allocator)
+		for p in Part {
+			if (p in machine_parts()) == m.machine_half {
+				delete(s.parts[p].target, allocator)
+				s.parts[p] = other.parts[p]
+				other.parts[p] = {}
+			}
+		}
+		if s.error == .None { s.error = other.error }
+		status_destroy(&other, allocator)
+	}
 	classify(&s, parts_wanted(b, o), allocator)
 	return s
 }
@@ -388,10 +407,6 @@ targets :: proc(browser: bool) -> string {
 	return targets_words(browser)
 }
 
-// The parts of this platform that only an administrator can change (Windows: Task_Manager): a setup box of one says
-// that Windows will ask, and only a person's request (Integration_Options.ask_administrator) changes one.
-admin_parts :: proc() -> Parts { return supported_parts() & ADMIN_PARTS }
-
 // True when the system has a page where the user picks the default programs.
 has_default_apps_page :: proc() -> bool {
 	b := platform_backend()
@@ -429,8 +444,8 @@ validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 	if len(launcher_bytes(o)) > 0 && launcher_mark_of(id) == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
 	if o.thumbnail_clsid != "" && !clsid_valid(o.thumbnail_clsid) { return {.Bad_Options, "thumbnail_clsid is a CLSID (\"{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\")"} }
 	if strings.contains_any(o.thumbnail_arguments, "\n\r\x00") { return {.Bad_Options, "thumbnail_arguments is one line"} }
-	// (a test's key of the images' options writes its machine copy in its own folder, never in Program Files)
-	if o.image_options_root != "" && o.machine_dir == "" { return {.Bad_Options, "image_options_root comes with machine_dir"} }
+	// (a test's machine: its registry with its folders, never one without the other)
+	if (o.machine_registry_root != "") != (o.machine_root != "") && ODIN_OS == .Windows { return {.Bad_Options, "machine_registry_root comes with machine_root"} }
 	if o.exe == "" { o.exe = process.executable_path() }
 	if need_exe {
 		if o.exe == "" { return {.No_Executable, error_text(.No_Executable)} }

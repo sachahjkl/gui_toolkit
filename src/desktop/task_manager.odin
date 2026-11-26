@@ -7,14 +7,6 @@ package tk_desktop
 import "core:strings"
 import "../ascii"
 
-// The command that makes the machine's change in a process that an administrator allowed: `<exe> --task-manager on`
-// or `off` (setup.command_of reads it; desktop starts it with the verb runas).
-TASK_MANAGER_FLAG :: "--task-manager"
-
-// The parts that only an administrator can change, where the platform has them (admin_parts).
-@(private)
-ADMIN_PARTS :: Parts{.Task_Manager}
-
 // A string value of the registry as it is stored: its text and whether it is REG_EXPAND_SZ.
 Registry_String :: struct {
 	value:   string,
@@ -30,7 +22,7 @@ Image_Options :: struct {
 }
 
 // The key after On. `debugger` is the program's value (task_manager_debugger); `debugger_ours`: the Debugger there
-// already runs the program's machine copy. Another program's Debugger (or the system's) is kept to give back; one of
+// already runs the installed program. Another program's Debugger (or the system's) is kept to give back; one of
 // the program's (a copy moved since) keeps the one kept before it.
 image_options_on :: proc(k: Image_Options, debugger: string, debugger_ours: bool) -> Image_Options {
 	out := k
@@ -48,25 +40,6 @@ image_options_off :: proc(k: Image_Options, debugger_ours: bool) -> Image_Option
 	return out
 }
 
-// Where the machine copy is, under `program_files` (%ProgramFiles%; "" when Windows does not say): <vendor>\<name>\<exe>.
-// machine_dir counts only with a test's key (image_options_root): a root comes from the environment, which the user
-// writes (HKCU\Environment), and the elevated command must never point HKLM's Debugger at a folder the user can write.
-@(private)
-machine_copy_path :: proc(o: ^Integration_Options, program_files: string, allocator := context.temp_allocator) -> string {
-	dir := o.machine_dir
-	if o.image_options_root == "" {
-		if program_files == "" { return "" }
-		vendor := o.identity.vendor
-		if vendor == "" || strings.contains_any(vendor, "\\/:*?\"<>|\x00") || strings.contains(vendor, "..") {
-			dir = strings.concatenate({program_files, "\\", o.identity.name}, context.temp_allocator)
-		} else {
-			dir = strings.concatenate({program_files, "\\", vendor, "\\", o.identity.name}, context.temp_allocator)
-		}
-	}
-	if dir == "" { return "" }
-	return strings.concatenate({strings.trim_right(dir, "\\/"), "\\", exe_name_of(o.identity)}, allocator)
-}
-
 // An NT path ("\Device\HarddiskVolume3\...", GetMappedFileNameW's) as CreateFileW opens it: through the
 // \\?\GLOBALROOT link of the object namespace ("" for anything else).
 global_root_path :: proc(nt_path: string, allocator := context.temp_allocator) -> string {
@@ -74,8 +47,8 @@ global_root_path :: proc(nt_path: string, allocator := context.temp_allocator) -
 	return strings.concatenate({"\\\\?\\GLOBALROOT", nt_path}, allocator)
 }
 
-// The Debugger's text for the machine copy: its path quoted (Program Files has a space; Windows adds taskmgr's path
-// after it).
-task_manager_debugger :: proc(machine_copy: string, allocator := context.temp_allocator) -> string {
-	return strings.concatenate({"\"", machine_copy, "\""}, allocator)
+// The Debugger's text for the installed program: its path quoted (Program Files has a space; Windows adds taskmgr's
+// path after it).
+task_manager_debugger :: proc(program: string, allocator := context.temp_allocator) -> string {
+	return strings.concatenate({"\"", program, "\""}, allocator)
 }

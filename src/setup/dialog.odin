@@ -45,6 +45,7 @@ Dialog :: struct {
 	known:     bool,               // the facts were read at least once since it opened
 	facts:     Facts,              // as last read (strings owned)
 	shortcut:  bool,               // the Desktop's shortcut, asked of Install
+	scope:     desktop.Scope,      // for the person or for every account, asked of Install: the facts' when they first come
 	choices:   [dynamic]bool,      // the program's options (Setup_Options.choices), as ticked
 	folder:    ui.Line_Edit,      // the install folder (Setup_Options.folder): set from the facts when they first come
 	note:      string,             // what the last action said (owned)
@@ -52,6 +53,7 @@ Dialog :: struct {
 	installed: string,             // the copy just installed, to open (owned; "": none)
 	removed:   bool,               // this copy was uninstalled while it runs: its file goes when the process ends
 	leftovers: [dynamic]string,    // ... with these (owned)
+	at_restart: bool,              // uninstalled, and the program for everyone goes at the next restart (Windows: Facts.at_restart)
 	copied:    string,             // the line whose path was just copied (its id, owned): a check until the pointer leaves
 	confirm:   bool,               // Uninstall was clicked once: the next click does it
 	job:       ^Job,               // the work out on the dialog's thread (nil: none)
@@ -248,6 +250,7 @@ Job :: struct {
 	d:         ^Dialog,             // (it does not move while the work is out: destroy waits for it)
 	c:         Setup_Options,   // (its strings and procedures are the program's: they outlive the work)
 	shortcut:  bool,
+	scope:     desktop.Scope,
 	choices:   []bool,              // owned
 	folder:    string,              // owned
 	removed:   bool,                // the facts say Removal_Scheduled
@@ -259,6 +262,7 @@ Job :: struct {
 	ok:        bool,
 	text:      string,              // the installed program, or why not; the folder picked
 	leftovers: [dynamic]string,
+	at_restart: bool,               // Uninstall: the program for everyone goes at the next restart (system_removal_at_restart)
 }
 
 @(private = "file")
@@ -266,7 +270,7 @@ job_start :: proc(d: ^Dialog, o: Setup_Options, kind: Job_Kind) {
 	if d.job != nil { return }
 	sync.atomic_store(&d.stale_flag, false)
 	j := new(Job)
-	j.kind, j.d, j.c, j.shortcut, j.removed = kind, d, o, d.shortcut, d.removed
+	j.kind, j.d, j.c, j.shortcut, j.removed, j.scope = kind, d, o, d.shortcut, d.removed, d.scope
 	j.choices = make([]bool, len(d.choices))
 	copy(j.choices, d.choices[:])
 	j.folder = strings.clone(strings.trim_space(ui.line_edit_string(&d.folder)))
@@ -292,9 +296,10 @@ job_run :: proc(data: rawptr) {
 	switch j.kind {
 	case .Read:
 	case .Install:
-		ok, text := install(j.c, j.shortcut, j.choices, j.folder)
+		ok, text := install(j.c, j.shortcut, j.choices, j.folder, j.scope)
 		j.ok, j.text = ok, strings.clone(text)
 	case .Uninstall:
+		j.at_restart = system_removal_at_restart(j.c)
 		ok, leftovers, why := uninstall(j.c, j.choices)
 		j.ok, j.leftovers, j.text = ok, leftovers, strings.clone(why)
 	case .Pick_Folder:
@@ -302,7 +307,7 @@ job_run :: proc(data: rawptr) {
 		if res.status == .Chosen && len(res.paths) > 0 { j.ok, j.text = true, strings.clone(res.paths[0]) }
 		return
 	}
-	j.facts = facts_clone(facts(j.c, j.choices))
+	j.facts = facts_clone(facts(j.c, j.choices, j.scope))
 }
 
 @(private = "file")
@@ -353,8 +358,13 @@ job_collect :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 		if j.ok {
 			delete(d.installed)
 			d.installed = ""
-			d.removed = len(d.leftovers) > 0
-			say(d, true, d.removed ? i18n.tr("Removed. The program is deleted when this window closes.") : i18n.tr("Removed."))
+			d.at_restart = j.at_restart
+			d.removed = len(d.leftovers) > 0 || d.at_restart
+			switch {
+			case d.at_restart: say(d, true, i18n.tr("Removed. The program is deleted at the next restart."))
+			case d.removed:    say(d, true, i18n.tr("Removed. The program is deleted when this window closes."))
+			case:              say(d, true, i18n.tr("Removed."))
+			}
 			ev = .Uninstalled
 		} else {
 			say(d, false, j.text)
@@ -362,10 +372,11 @@ job_collect :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 	}
 	facts_free(&d.facts)
 	d.facts, j.facts = j.facts, {}
-	if d.removed { d.facts.state = .Removal_Scheduled }   // (the file is still there: the disk would say Repair)
+	if d.removed { d.facts.state, d.facts.at_restart = .Removal_Scheduled, d.at_restart }   // (the file is still there: the disk would say Repair)
 	if !d.known {
 		d.known = true
 		d.shortcut = d.facts.desk_lnk
+		d.scope = d.facts.scope
 		choices_from_facts(d.facts, o, d.choices[:])   // (a box of a part shows what the system has, not a default)
 		if ui.line_edit_string(&d.folder) == "" { ui.line_edit_set(&d.folder, d.facts.dir) }
 	}
@@ -375,7 +386,7 @@ job_collect :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 // What the state is, in a sentence, and its tone ("good", "warn", "bad", "accent").
 state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
 	if base.restricted() { return restricted_words(), "warn" }
-	if f.machine_copy { return machine_copy_words(), "warn" }
+	if f.other_scope { return i18n.tr("Two copies are installed: one for you, one for everyone. Uninstall removes both."), "warn" }
 	switch f.state {
 	case .Not_Installed: return i18n.tr("Not installed: this copy runs on its own."), "warn"
 	case .This_Copy:     return i18n.tr("Installed: this is the installed copy."), "good"
@@ -389,7 +400,9 @@ state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
 		if is_upgrade(f, o.version) { return fmt.tprintf(i18n.tr("An older copy is installed (%s): upgrade it to %s?"), f.version, o.version), "accent" }
 		if is_downgrade(f, o.version) { return fmt.tprintf(i18n.tr("A newer copy is installed (%s): this one (%s) is older."), f.version, o.version), "warn" }
 		return fmt.tprintf(i18n.tr("A copy is installed (%s): this one runs on its own."), f.version != "" ? f.version : "?"), "warn"
-	case .Removal_Scheduled: return i18n.tr("Uninstalled: the program is deleted when this window closes."), "warn"
+	case .Removal_Scheduled:
+		if f.at_restart { return i18n.tr("Uninstalled: the program is deleted at the next restart."), "warn" }
+		return i18n.tr("Uninstalled: the program is deleted when this window closes."), "warn"
 	case .Nix_Package:
 		if leftover(f) { return i18n.tr("Installed by Nix. An earlier install left files here: they can be removed."), "accent" }
 		return i18n.tr("Installed by Nix: the Nix package has the menu entry and the icon."), "good"
@@ -434,6 +447,7 @@ view_build :: proc(v: ^ui.View, d: ^Dialog) {
 	if ui.scroll_y("###setup_scroll") {
 		hero(d, o, em, d.logo)
 		if d.known {
+			scope_section(d, o, em, is_busy)
 			location(d, o, em, is_busy)
 			if !f.from_nix { options_card(d, o, em) }
 			details(d, o, em, is_busy)
@@ -484,8 +498,12 @@ busy :: proc(d: ^Dialog) -> bool { return d.job != nil && d.job.kind != .Read }
 // What the install button says for the state ("": none is offered: not read yet, just installed, removed, from Nix).
 install_label :: proc(d: ^Dialog, o: Setup_Options) -> string {
 	f := &d.facts
-	if base.restricted() || f.machine_copy { return "" }   // (restricted_words, machine_copy_words say why)
+	if base.restricted() { return "" }   // (restricted_words says why)
 	if !d.known || d.installed != "" && f.state != .This_Copy || f.state == .Removal_Scheduled || f.from_nix { return "" }
+	// (the other scope chosen with an install there: the move, which removes the other once the new one is in place)
+	if f.exe_there && f.manifest && d.scope != f.scope {
+		return d.scope == .System ? i18n.tr("Install for everyone") : i18n.tr("Install for me only")
+	}
 	#partial switch f.state {
 	case .Other_Copy:
 		switch {
@@ -637,7 +655,8 @@ hero :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 			if o.identity.description != "" {
 				if ui.tags("weak") {
 					ui.next({width = ui.fill(), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###setup_description", o.identity.description))
+					// (the program's words: its catalogue translates them, as its boxes' labels)
+					ui.paragraph(fmt.tprintf("%s###setup_description", i18n.tr(o.identity.description)))
 				}
 			}
 			ui.space(ui.LINE_GAP)
@@ -817,9 +836,9 @@ by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
 @(private)
 location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
-	choose := o.folder && f.state == .Not_Installed && !f.from_nix
+	choose := o.folder && f.state == .Not_Installed && !f.from_nix && d.scope == .User
 	if !choose && f.exe == "" { return }   // (nothing chosen, nothing there: no empty field)
-	section_head(em, "###setup_location_label", choose ? i18n.tr("Install location") : i18n.tr("Installed program"))
+	section_head(em, "###setup_location_label", f.exe_there ? i18n.tr("Installed program") : i18n.tr("Install location"))
 	line_next()
 	if ui.row(.Center, id = "###setup_location_row") {
 		ui.space(ui.PAGE_MARGIN)
@@ -851,6 +870,80 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	}
 }
 
+// "Install for": for me or for everyone (src/md/features/install-scope.md), each a radio with what it means here
+// under it: the person compares the two before choosing. "For everyone" is greyed with the reason when it cannot be
+// offered here. Nothing when the program offers one scope, when there is nothing to do, in a restricted process, for a
+// copy of the Nix store.
+@(private)
+scope_shown :: proc(d: ^Dialog, o: Setup_Options) -> bool {
+	return d.known && !base.restricted() && !d.facts.from_nix && card(offered_scopes(o)) == 2 && install_label(d, o) != ""
+}
+
+@(private = "file")
+scope_section :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
+	if !scope_shown(d, o) { return }
+	section_head(em, "###setup_scope_head", i18n.tr("Install for"))
+	line_next()
+	if ui.row(id = "###setup_scope_row") {
+		ui.space(ui.PAGE_MARGIN)
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###setup_scope_column") { scope_choices(d, o, em, busy) }
+		ui.space(ui.PAGE_MARGIN)
+	}
+}
+
+// The two radios and their words. A change reads the facts again (where the program would go).
+@(private)
+scope_choices :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
+	f := &d.facts
+	refused := f.system_refusal != .None
+	if refused { d.scope = .User }
+	chosen := int(d.scope)
+	// (the label's start in a mark row: its margin, its mark, the gap after it, the text's pad; the words line up under
+	// the label)
+	indent := em * 0.4 + em * 1.4 + em * 0.6 + ui.top_style().text_pad
+	for scope in desktop.Scope {
+		if scope == .System { ui.space(ui.LINE_GAP) }
+		label := scope == .System ? i18n.tr("Everyone on this computer") : i18n.tr("Only me")
+		id := scope == .System ? "###setup_scope_everyone" : "###setup_scope_me"
+		ui.next({width = ui.fill()})
+		if ui.disabled(busy || scope == .System && refused) {
+			if ui.radio(id, label, &chosen, int(scope)) { scope_set(d, o, desktop.Scope(chosen)) }
+		}
+		words := scope == .System && refused ? desktop.system_refusal_words(f.system_refusal) : words_scope(scope)
+		// (the move: an install of the other scope is there, and goes once this one is in place)
+		if f.exe_there && f.manifest && scope == d.scope && d.scope != f.scope {
+			move := d.scope == .System ? i18n.tr("The copy installed for you goes once this one is in place.") : i18n.tr("The copy for everyone goes once yours is in place: an administrator allows it.")
+			words = fmt.tprintf("%s %s", words, move)
+		}
+		line_next()
+		if ui.row(id = fmt.tprintf("%s_words_row", id)) {
+			ui.spacer(ui.px(indent))
+			if ui.tags("weak") {
+				ui.next({width = ui.fill(), text_pad = 0, font_size = math.round(em * 0.86)})
+				ui.paragraph(fmt.tprintf("%s%s_words", words, id))
+			}
+		}
+	}
+}
+
+// The scope asked of Install: the facts are read again for it.
+scope_set :: proc(d: ^Dialog, o: Setup_Options, scope: desktop.Scope) {
+	if d.scope == scope { return }
+	d.scope = scope
+	if d.job == nil { job_start(d, o, .Read) } else { sync.atomic_store(&d.stale_flag, true) }
+}
+
+// The glyph of the install button: a wrench to repair, a shield where an administrator is asked, else a download.
+@(private)
+install_glyph :: proc(d: ^Dialog) -> string {
+	switch {
+	case d.facts.state == .Repair && d.scope == d.facts.scope: return lucide.WRENCH
+	case d.scope == .System:                                   return lucide.SHIELD
+	}
+	return lucide.DOWNLOAD
+}
+
 // A section's head: its name, small and weak, at the page's margin, LINE_GAP above what it heads.
 @(private)
 section_head :: proc(em: f32, id, title: string) {
@@ -878,11 +971,15 @@ options_card :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 		ui.space(ui.PAGE_MARGIN)
 		if ui.list_card("###setup_options_card") {
 			for k in 0 ..< n {
-				note := k > 0 ? choice_note(o.choices[k - 1]) : ""
+				note := k > 0 ? choice_note(o.choices[k - 1], d.scope) : ""
 				if ui.card_row(fmt.tprintf("###setup_tile_%d", k), note != "" ? .Y : .X) {
 					ui.next({width = ui.fill()})
 					if k == 0 {
 						ui.toggle("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
+					} else if note != "" {
+						// (off, and no click: this scope has not the part)
+						off := false
+						if ui.disabled() { ui.toggle(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &off, wrap = true) }
 					} else {
 						ui.toggle(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &d.choices[k - 1], wrap = true)
 					}
@@ -894,12 +991,18 @@ options_card :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 	}
 }
 
-// Why a box's change asks Windows for an administrator, in the language in use ("": its parts need none here).
-choice_note :: proc(x: Choice) -> string {
-	if .Task_Manager in (x.parts & desktop.admin_parts()) {
-		return i18n.tr("Windows asks for an administrator: Task Manager is the same for every account on this computer.")
+// Why a box cannot be ticked in `scope`, in the language in use ("": it can): Task Manager is every account's, and
+// only an install for everyone gives it.
+choice_note :: proc(x: Choice, scope: desktop.Scope) -> string {
+	if !choice_possible(x, scope) {
+		return i18n.tr("Only with an install for everyone: Task Manager is the same for every account on this computer.")
 	}
 	return ""
+}
+
+// A box can be ticked in `scope`: its parts are all the scope's.
+choice_possible :: proc(x: Choice, scope: desktop.Scope) -> bool {
+	return x.parts & desktop.supported_parts() <= desktop.scope_parts(scope)
 }
 
 // A choice's note under its box, in the weak tone.
@@ -1110,7 +1213,7 @@ footer :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 		}
 		if label := install_label(d, o); label != "" {
 			ui.space(ui.CONTROL_GAP)
-			if button(o, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, o) }
+			if button(o, "###setup_install", label, install_glyph(d), .Success, em) && !busy(d) { start_install(d, o) }
 			mark(d, .Install, "###setup_install")
 		}
 		ui.space(ui.PAGE_MARGIN)

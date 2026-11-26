@@ -1,7 +1,7 @@
 package tk_desktop
 
-// Windows: everything in the user's profile (the user's Start menu folder, HKEY_CURRENT_USER), nothing that needs
-// administrator rights, but the Task_Manager part (task_manager_windows.odin), which an administrator allows.
+// Windows: an install for the person is in their profile (their Start menu folder, HKEY_CURRENT_USER), and needs no
+// administrator.
 //
 //   Start menu          <Programs>\<name>.lnk  made with IShellLinkW + IPersistFile: the executable, its own icon,
 //                       and the AppUserModelID (IPropertyStore, PKEY_AppUserModel_ID) that the program's windows also
@@ -31,8 +31,11 @@ package tk_desktop
 //                                                                          program made is left to it)
 //                       Removal puts back what the system had: the keys go, and a default verb that names ours.
 //   Documents           (open_documents) a ProgID per document type and the lists that name it (documents_windows.odin)
-//   Task manager        (task_manager) the Debugger of taskmgr.exe in HKLM, run from a copy in Program Files: an
-//                       administrator allows it (task_manager_windows.odin)
+//   Task manager        (task_manager) the Debugger of taskmgr.exe in HKLM, which runs the program of an install for
+//                       everyone (task_manager_windows.odin)
+//
+// An install for everyone (scope System, scope_windows.odin) puts the parts of machine_parts() in HKLM and the Start
+// menu of every account, from the elevated verb; the others stay the person's.
 //   Thumbnails          (thumbnails) the program's thumbnail provider, a COM DLL beside the executable, and the keys
 //                       that make Explorer ask it for the document types (thumbnail_provider_windows.odin)
 //
@@ -103,7 +106,8 @@ FILE_EXPLORER_CLSID :: "{52205fd8-5dfb-447d-801a-d0b52f2e83e1}"
 @(private = "file")
 layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
 	root := registry_root_of(o)
-	l.menu_dir = o.menu_dir != "" ? o.menu_dir : programs_folder()
+	// (the machine half: the Start menu of every account; the person's own otherwise)
+	l.menu_dir = in_machine(o) ? machine_programs_folder(o) : o.menu_dir != "" ? o.menu_dir : programs_folder()
 	if l.menu_dir == "" { return {}, false }
 	l.lnk = strings.concatenate({l.menu_dir, "\\", o.identity.name, ".lnk"}, context.temp_allocator)
 	desktop := o.desktop_dir != "" ? o.desktop_dir : known_folder(win.FOLDERID_Desktop)
@@ -210,7 +214,8 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 	s.parts[.File_Manager] = file_manager_status(o, l, allocator)
 	s.parts[.Documents] = documents_status(o, allocator)
 	s.parts[.Thumbnails] = thumbnails_status(o, allocator)
-	s.parts[.Task_Manager] = task_manager_status(o, allocator)
+	// (the machine's, for an install for everyone only: a user install has no such part, whatever another account set)
+	if o.scope == .System { s.parts[.Task_Manager] = task_manager_status(o, allocator) }
 	return s
 }
 
@@ -311,41 +316,54 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 	defer com_leave(com)
 
 	// each part the options have is written, each one they do not have is taken away (when it is ours): applying a
-	// change of options is the same call as installing
-	if o.start_menu {
-		if !ensure_dir(l.menu_dir) { return {.Io, strings.concatenate({"cannot create ", l.menu_dir}, context.temp_allocator)} }
-		if r := write_shortcut(o, l.lnk); r.error != .None { return r }
-	} else if r := remove_shortcut(o, l.lnk); r.error != .None { return r }
-
-	if o.desktop_shortcut {
-		if l.desktop_lnk == "" { return {.System, "the Desktop folder is unknown"} }
-		if !ensure_dir(process.parent_dir(l.desktop_lnk)) { return {.Io, strings.concatenate({"cannot create ", process.parent_dir(l.desktop_lnk)}, context.temp_allocator)} }
-		if r := write_shortcut(o, l.desktop_lnk); r.error != .None { return r }
-	} else if l.desktop_lnk != "" {
-		if r := remove_shortcut(o, l.desktop_lnk); r.error != .None { return r }
+	// change of options is the same call as installing. A system install's call writes the parts of its half only
+	// (touches): the machine's in HKLM and the Start menu of every account, the person's in HKCU
+	if touches(o, .Launcher) {
+		if o.start_menu {
+			if !ensure_dir(l.menu_dir) { return {.Io, strings.concatenate({"cannot create ", l.menu_dir}, context.temp_allocator)} }
+			if r := write_shortcut(o, l.lnk); r.error != .None { return r }
+		} else if r := remove_shortcut(o, l.lnk); r.error != .None { return r }
 	}
 
-	if o.register_browser {
-		if r := write_registration(o, l); r.error != .None { return r }
-	} else {
-		remove_registration(o, l)   // an earlier install that registered: the option says it should not
+	if touches(o, .Desktop_Shortcut) {
+		if o.desktop_shortcut {
+			if l.desktop_lnk == "" { return {.System, "the Desktop folder is unknown"} }
+			if !ensure_dir(process.parent_dir(l.desktop_lnk)) { return {.Io, strings.concatenate({"cannot create ", process.parent_dir(l.desktop_lnk)}, context.temp_allocator)} }
+			if r := write_shortcut(o, l.desktop_lnk); r.error != .None { return r }
+		} else if l.desktop_lnk != "" {
+			if r := remove_shortcut(o, l.desktop_lnk); r.error != .None { return r }
+		}
 	}
 
-	if o.default_file_manager {
-		if r := write_file_manager(o, l); r.error != .None { return r }
-	} else if r := remove_file_manager(o, l); r.error != .None { return r }
+	if touches(o, .Registration) {
+		if o.register_browser {
+			if r := write_registration(o, l); r.error != .None { return r }
+		} else {
+			remove_registration(o, l)   // an earlier install that registered: the option says it should not
+		}
+	}
 
-	if opens_documents(o) {
-		if r := documents_write(o); r.error != .None { return r }
-	} else if r := documents_remove(o); r.error != .None { return r }
+	if touches(o, .File_Manager) {
+		if o.default_file_manager {
+			if r := write_file_manager(o, l); r.error != .None { return r }
+		} else if r := remove_file_manager(o, l); r.error != .None { return r }
+	}
+
+	if touches(o, .Documents) {
+		if opens_documents(o) {
+			if r := documents_write(o); r.error != .None { return r }
+		} else if r := documents_remove(o); r.error != .None { return r }
+	}
 
 	// (after the Documents part: the provider goes under the ProgIDs that part made)
-	if thumbnails_wanted(o) {
-		if r := thumbnails_write(o); r.error != .None { return r }
-	} else if r := thumbnails_remove(o); r.error != .None { return r }
+	if touches(o, .Thumbnails) {
+		if thumbnails_wanted(o) {
+			if r := thumbnails_write(o); r.error != .None { return r }
+		} else if r := thumbnails_remove(o); r.error != .None { return r }
+	}
 
 	path_changed := false
-	if dir := exe_dir(o.exe); dir != "" {
+	if dir := exe_dir(o.exe); dir != "" && touches(o, .Path) {
 		if o.add_to_path {
 			had := path_contains(o, dir)
 			if r := path_add(o, dir); r.error != .None { return r }
@@ -359,22 +377,25 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 		}
 	}
 	// the start with the session: the value written when the option is on, taken out when it is off
-	if o.autostart {
-		if !reg_set(run_key(o), o.identity.key, autostart_command(o)) { return {.System, strings.concatenate({"cannot write HKCU\\", run_key(o)}, context.temp_allocator)} }
-	} else if _, found := reg_get(run_key(o), o.identity.key); found {
-		_ = reg_delete_value(run_key(o), o.identity.key)
+	if touches(o, .Autostart) {
+		if o.autostart {
+			if !reg_set(run_key(o), o.identity.key, autostart_command(o)) { return {.System, strings.concatenate({"cannot write HKCU\\", run_key(o)}, context.temp_allocator)} }
+		} else if _, found := reg_get(run_key(o), o.identity.key); found {
+			_ = reg_delete_value(run_key(o), o.identity.key)
+		}
 	}
-	// (last: the consent prompt, when one comes, comes once the person's own parts are in place; declined, the rest
-	// stays installed and the result says it)
-	machine := task_manager_apply(o, o.task_manager, removing = false)
+	// (the machine's half of a system install only: the Debugger runs the installed program in Program Files)
+	if touches(o, .Task_Manager) && o.scope == .System {
+		if r := task_manager_apply(o, o.task_manager && o.scope == .System, removing = false); r.error != .None { return r }
+	}
 	if o.notify_system {
 		notify_associations()
 		if path_changed { broadcast_environment() }
 		// (Windows lets only the person make a program the default: Settings at its page, when some type is another's;
 		// not for scratch roots, whose install shows no window)
-		if o.default_documents && opens_documents(o) && documents_default_elsewhere(o) { _ = documents_open_defaults(o) }
+		if !in_machine(o) && o.default_documents && opens_documents(o) && documents_default_elsewhere(o) { _ = documents_open_defaults(o) }
 	}
-	return machine
+	return {}
 }
 
 // Deletes a shortcut when it is the program's (its AppUserModelID or its executable); another file of that name stays.
@@ -565,27 +586,39 @@ windows_remove :: proc(o: ^Integration_Options) -> Result {
 	if !ok { return {.System, "the Start menu folder is unknown"} }
 	com := com_enter()
 	defer com_leave(com)
-	// (first, and alone when it fails: no administrator allowed giving Task Manager back, or it failed, and the
-	// install stays whole, so that the person can try again; the Debugger never runs a copy whose install is gone)
-	if r := task_manager_apply(o, false, removing = true); r.error != .None { return r }
+	// (first, and alone when it fails: the install stays whole, so that the person can try again; the Debugger never
+	// runs a program whose install is gone)
+	if touches(o, .Task_Manager) && o.scope == .System {
+		if r := task_manager_apply(o, false, removing = true); r.error != .None { return r }
+	}
 	res: Result
-	if r := remove_shortcut(o, l.lnk); r.error != .None { res = r }
-	if l.desktop_lnk != "" {
+	if touches(o, .Launcher) {
+		if r := remove_shortcut(o, l.lnk); r.error != .None { res = r }
+	}
+	if l.desktop_lnk != "" && touches(o, .Desktop_Shortcut) {
 		if r := remove_shortcut(o, l.desktop_lnk); r.error != .None && res.error == .None { res = r }
 	}
-	if r := remove_registration(o, l); r.error != .None && res.error == .None { res = r }
-	if r := remove_file_manager(o, l); r.error != .None && res.error == .None { res = r }
-	if r := documents_remove(o); r.error != .None && res.error == .None { res = r }
-	if r := thumbnails_remove(o); r.error != .None && res.error == .None { res = r }
+	if touches(o, .Registration) {
+		if r := remove_registration(o, l); r.error != .None && res.error == .None { res = r }
+	}
+	if touches(o, .File_Manager) {
+		if r := remove_file_manager(o, l); r.error != .None && res.error == .None { res = r }
+	}
+	if touches(o, .Documents) {
+		if r := documents_remove(o); r.error != .None && res.error == .None { res = r }
+	}
+	if touches(o, .Thumbnails) {
+		if r := thumbnails_remove(o); r.error != .None && res.error == .None { res = r }
+	}
 	path_changed := false
-	if dir := exe_dir(o.exe); dir != "" {
+	if dir := exe_dir(o.exe); dir != "" && touches(o, .Path) {
 		had := path_contains(o, dir)
 		if r := path_take_out(o, dir, force = false); r.error != .None && res.error == .None { res = r }
 		path_changed = had && !path_contains(o, dir)
 		if r := launcher_remove(o, o.exe); r.error != .None && res.error == .None { res = r }
 	}
 	// the start with the session: the value is named by the key (the program's own name)
-	if _, found := reg_get(run_key(o), o.identity.key); found && !reg_delete_value(run_key(o), o.identity.key) && res.error == .None {
+	if _, found := reg_get(run_key(o), o.identity.key); touches(o, .Autostart) && found && !reg_delete_value(run_key(o), o.identity.key) && res.error == .None {
 		res = {.System, strings.concatenate({"cannot delete a value of HKCU\\", run_key(o)}, context.temp_allocator)}
 	}
 	if o.notify_system {

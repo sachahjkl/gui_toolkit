@@ -61,9 +61,12 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				ui.space(ui.INNER_PAD)
 				installed := f.state != .Not_Installed && f.state != .Nix_Package
 				// (one column for the keys, as wide as the widest in the language in use)
-				kw := keys_width(em, i18n.tr("Installed program"), i18n.tr("Version installed"), i18n.tr("This copy"),
+				kw := keys_width(em, i18n.tr("Installed program"), i18n.tr("Installed for"), i18n.tr("Version installed"), i18n.tr("This copy"),
 					i18n.tr("Location of this copy"), words_menu(), words_record(), i18n.tr("With the session"), i18n.tr("On the PATH"))
 				where_row(d, "###p_exe", i18n.tr("Installed program"), installed ? f.exe : "-", installed, kw, em)
+				if installed && card(offered_scopes(o)) == 2 {
+					where_row(d, "###p_scope", i18n.tr("Installed for"), f.scope == .System ? i18n.tr("Every account") : i18n.tr("You"), false, kw, em)
+				}
 				where_row(d, "###p_version", i18n.tr("Version installed"), installed && f.version != "" ? f.version : "-", false, kw, em)
 				here := f.running_it ? fmt.tprintf(i18n.tr("%s (the installed copy)"), o.version) : o.version
 				where_row(d, "###p_this_version", i18n.tr("This copy"), here, false, kw, em)
@@ -79,16 +82,32 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				}
 				ui.space(ui.INNER_PAD)
 			}
-			// before an install: where it goes and its options
+			// before an install: for whom, where it goes and its options
 			if !f.from_nix && install_label(d, o) != "" {
-				if o.folder && f.state == .Not_Installed { page_folder(d, o, em, is_busy) }
+				if scope_shown(d, o) {
+					ui.space(ui.ITEM_GAP)
+					if ui.tags("weak") {
+						ui.next({width = ui.fill(), text_pad = 0})
+						ui.label(fmt.tprintf("%s###setup_page_scope_head", i18n.tr("Install for")))
+					}
+					ui.space(ui.LINE_GAP)
+					scope_choices(d, o, em, is_busy)
+				}
+				if o.folder && f.state == .Not_Installed && d.scope == .User { page_folder(d, o, em, is_busy) }
 				ui.space(ui.ITEM_GAP)
 				ui.next({width = ui.fill()})
 				ui.checkbox("###setup_page_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
 				for i in 0 ..< min(len(o.choices), len(d.choices)) {
 					ui.next({width = ui.fill()})
-					ui.checkbox(fmt.tprintf("###setup_page_choice_%d", i), i18n.tr(o.choices[i].label), &d.choices[i], wrap = true)
-					if note := choice_note(o.choices[i]); note != "" { choice_note_line(fmt.tprintf("###setup_page_choice_note_%d", i), note, em) }
+					note := choice_note(o.choices[i], d.scope)
+					if note != "" {
+						// (off, and no click: this scope has not the part)
+						off := false
+						if ui.disabled() { ui.checkbox(fmt.tprintf("###setup_page_choice_%d", i), i18n.tr(o.choices[i].label), &off, wrap = true) }
+						choice_note_line(fmt.tprintf("###setup_page_choice_note_%d", i), note, em)
+					} else {
+						ui.checkbox(fmt.tprintf("###setup_page_choice_%d", i), i18n.tr(o.choices[i].label), &d.choices[i], wrap = true)
+					}
 				}
 			}
 			if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
@@ -141,7 +160,7 @@ page_buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 	page_line()
 	if ui.row(.Center, id = "###setup_page_buttons") {
 		if label := install_label(d, o); label != "" {
-			if button(o, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, o) }
+			if button(o, "###setup_install", label, install_glyph(d), .Success, em) && !busy(d) { start_install(d, o) }
 			mark(d, .Install, "###setup_install")
 			ui.space(ui.CONTROL_GAP)
 		}
