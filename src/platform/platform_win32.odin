@@ -10,6 +10,7 @@ import "core:unicode/utf16"
 import "core:unicode"
 import win "core:sys/windows"
 import base "../base"
+import i18n "../i18n"
 
 Native_Window :: struct {
 	hwnd:           win.HWND,
@@ -134,7 +135,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	// primary one whatever program launched it
 	at_x, at_y := i32(win.CW_USEDEFAULT), i32(win.CW_USEDEFAULT)
 	if start := start_monitor_work_area(); start.right > start.left { at_x, at_y = start.left + WINDOW_START_OFFSET_PX, start.top + WINDOW_START_OFFSET_PX }
-	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
+	wtitle := win.utf8_to_wstring(title_shown(title), context.temp_allocator)
 	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, win.L(WINDOW_CLASS_NAME), wtitle, win.WS_OVERLAPPEDWINDOW,
 		at_x, at_y, WINDOW_FIRST_WIDTH_PX, WINDOW_FIRST_HEIGHT_PX, nil, nil, instance, w)
 	if w.hwnd == nil {   // out of resources (USER handles, memory): no window
@@ -481,7 +482,14 @@ is_window_visible :: proc(w: ^Window) -> bool {
 
 set_title :: proc(w: ^Window, title: string) {
 	if w.offscreen { return }
-	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title, context.temp_allocator))
+	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title_shown(title), context.temp_allocator))
+}
+
+// The title the system shows (the taskbar, Alt+Tab, the system's title bar): a process with an administrator's rights
+// says so, as Windows' own consoles do, so that the person knows which window acts with them (base.restricted).
+title_shown :: proc(title: string) -> string {
+	if !base.restricted() { return title }
+	return strings.concatenate({title, " ", i18n.tr("(Administrator)")}, context.temp_allocator)
 }
 
 // Path of a font in the Windows font folder (%WINDIR%\Fonts), e.g. system_font_path("segoeui.ttf").

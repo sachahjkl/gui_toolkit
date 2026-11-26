@@ -12,6 +12,8 @@ src/config/titles.odin case "d3d", "d3d11", "d3d12": return strings.to_upper(w  
 src/config/titles.odin case "ws", "wss": return strings.to_upper(w  # display text: a word of a title in capitals
 src/desktop/system_windows.odin return strings.equal_fold(long_path(normalize_slashes(a))  # a Windows path (the file system folds by Unicode)
 src/desktop/install_windows.odin { return strings.equal_fold(a, b) }  # a Windows path (the file system folds by Unicode)
+src/base/trust_windows.odin strings.equal_fold(s[:len(prefix)], prefix)  # a Windows path (the file system folds by Unicode)
+src/base/trust_test_windows.odin strings.to_upper(strings.concatenate  # a Windows path in another case
 src/process/running_windows.odin return strings.equal_fold(a, b)  # a Windows path of an executable (the file system folds by Unicode)
 src/desktop/integration_windows.odin registered_mine := registered_ok && strings.equal_fold(registered  # a registry key's path (the registry folds by Unicode)
 src/desktop/integration_windows.odin ok && strings.equal_fold(registered, l.capabilities)  # a registry key's path (the registry folds by Unicode)

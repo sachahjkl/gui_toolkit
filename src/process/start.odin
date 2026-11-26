@@ -8,6 +8,7 @@ package tk_process
 // src/md/features/child-processes.md.
 
 import "core:fmt"
+import "core:io"
 import "core:os"
 import "core:sync"
 import "core:thread"
@@ -34,8 +35,14 @@ Ran :: struct {
 // Starts a child, the lock held around the spawn only. The ends of desc.stdin, stdout and stderr are inherited by this
 // child alone (Windows: they are inheritable during the spawn, then as they were). A blocking call: never on the
 // interface's thread.
+// A process with more rights than its user's files (base.restricted: elevated, or a machine copy) starts only a program
+// by its full path in a folder that only an administrator writes: else io.Error.Permission_Denied, and nothing runs.
 start :: proc(desc: os.Process_Desc, loc := #caller_location) -> (p: os.Process, err: os.Error) {
 	base.blocking("process.start", loc)
+	if len(desc.command) > 0 && !base.may_start(desc.command[0]) {
+		fmt.eprintfln("process.start: %s refused: %s", desc.command[0], base.restricted_reason())
+		return {}, io.Error.Permission_Denied
+	}
 	ends := [3]^os.File{desc.stdin, desc.stdout, desc.stderr}
 	sync.lock(&start_lock)
 	defer sync.unlock(&start_lock)

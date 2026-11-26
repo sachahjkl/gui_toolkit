@@ -20,12 +20,20 @@ exists, its box starts from `Facts.parts`, not from a default.
   `command` under it in HKCU, with an empty `DelegateExecute`, makes the shell run the command in place of Explorer's
   own handler.
 - Folders and drives get a verb of the program's (`<key>.open`), made the default of `Directory\shell` and
-  `Drive\shell`. Refused: `Folder\shell`. `Folder` also covers virtual folders (Control Panel, the Recycle Bin, This PC),
-  which a program that reads paths cannot open.
-- Refused: replacing the system's `open` verb. Removal could not tell the system's command from the program's, and
-  the person's Explorer would stay broken after an uninstall.
+  `Drive\shell`: a double click, and `ShellExecute` with no verb.
+- Most programs name the verb: `ShellExecute(…, "open", folder)` (Python's `os.startfile`, most "Open folder" buttons)
+  or `"explore"`. HKLM has no `open` nor `explore` under `Directory` or `Drive`, so the shell takes `Folder`'s,
+  which is File Explorer. The part adds `Directory\shell\open`, `Directory\shell\explore` and the same two under
+  `Drive` in HKCU, marked, with `ProgrammaticAccessOnly` (the context menu shows the program's own verb once, not
+  "Open" twice) and an empty `DelegateExecute`. Files (files-community) moved to the explicit verbs for this reason.
+- These keys add verbs that the system does not have at that class: removal deletes the marked keys, and `Folder`'s
+  verbs come back. A key of the same name that another program made stays, and the part does not take it.
+- Refused: `Folder\shell`. `Folder` also covers virtual folders (Control Panel, the Recycle Bin, This PC), which a
+  program that reads paths cannot open.
 - A `(Default)` of `shell` holds no mark. It is the program's when it names `<key>.open`, a name in the program's own
   namespace, and removal clears it only then.
+- `opennewwindow` also runs when `explorer.exe` starts with no argument (Win+R "explorer"): the program opens there
+  too. What `explorer.exe <folder>` does with the override is for a Windows run to say.
 
 ## Linux
 

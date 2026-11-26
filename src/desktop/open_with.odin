@@ -43,6 +43,7 @@ type_name :: proc(name: string, allocator := context.allocator) -> string {
 // Opens the file at `path` with the handler `id` (one of handlers_for_file's). False when it cannot start.
 open_with :: proc(path: string, id: string, loc := #caller_location) -> bool {
 	base.blocking("desktop.open_with", loc)
+	if base.restricted() { return false }   // (the handler is the user's to change: never with an administrator's rights)
 	return open_with_native(path, id)
 }
 

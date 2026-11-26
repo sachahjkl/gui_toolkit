@@ -72,6 +72,7 @@ a_start_offers_the_dialog_when_there_is_something_to_do :: proc(t: ^testing.T) {
 	testing.expect(t, !wanted({state = .This_Copy}, "0.2.0", ""))
 	testing.expect(t, !wanted({state = .Other_Copy, version = "0.3.0"}, "0.2.0", ""), "a newer copy is installed")
 	testing.expect(t, !wanted({state = .Not_Installed, from_nix = true}, "0.2.0", ""), "a copy of the Nix store")
+	testing.expect(t, !wanted({state = .Not_Installed, machine_copy = true}, "0.2.0", ""), "a task manager's machine copy")
 	testing.expect(t, !wanted({state = .Nix_Package}, "0.2.0", ""))
 }
 
@@ -121,4 +122,38 @@ the_quit_of_the_copy_that_runs :: proc(t: ^testing.T) {
 	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}, running = proc() -> bool { return false }, quit = asks}, quiet), cli.Exit.Done)
 	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}, running = proc() -> bool { return true }}, quiet), cli.Exit.Failed)
 	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}, running = proc() -> bool { return true }, quit = proc() -> bool { return false }}, quiet), cli.Exit.Failed)
+}
+
+// What Windows gives a task manager's replacement (taskmgr's path, then its options) is taken away; nothing else is.
+@(test)
+task_manager_arguments_are_taken_away :: proc(t: ^testing.T) {
+	rest, from := task_manager_arguments({`C:\WINDOWS\system32\Taskmgr.exe`, "/4"})
+	testing.expect(t, from && len(rest) == 0, "taskmgr's path and its options")
+	rest, from = task_manager_arguments({`C:\Windows\System32\taskmgr.exe`, "/7", "/startup"})
+	testing.expect(t, from && len(rest) == 0, "the Startup apps' link")
+	rest, from = task_manager_arguments({"taskmgr", "/4"})
+	testing.expect(t, from && len(rest) == 0, "cmd's taskmgr, as typed")
+	rest, from = task_manager_arguments({"TASKMGR"})
+	testing.expect(t, from && len(rest) == 0, "any case")
+	rest, from = task_manager_arguments({"--section", "services"})
+	testing.expect(t, !from && len(rest) == 2, "the program's own")
+	rest, from = task_manager_arguments({`C:\tools\nottaskmgr.exe`})
+	testing.expect(t, !from && len(rest) == 1, "another program's path")
+	rest, from = task_manager_arguments(nil)
+	testing.expect(t, !from && len(rest) == 0, "no argument")
+}
+
+// --task-manager on|off is the elevated command, alone; without one of its values it is left for the program to refuse.
+@(test)
+the_task_manager_command :: proc(t: ^testing.T) {
+	c, rest := command_of({"--task-manager", "on"})
+	testing.expect_value(t, c, Command.Task_Manager_On)
+	testing.expect_value(t, len(rest), 0)
+	c, rest = command_of({"--task-manager=off"})
+	testing.expect_value(t, c, Command.Task_Manager_Off)
+	testing.expect(t, command_alone(c), "no window")
+	c, rest = command_of({"--task-manager", "maybe"})
+	testing.expect_value(t, c, Command.None)
+	testing.expect_value(t, len(rest), 2)
+	testing.expect(t, !command_alone(.Setup) && !command_alone(.None), "the window's")
 }

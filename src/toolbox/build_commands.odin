@@ -107,8 +107,12 @@ check_run :: proc(args: []string, user: rawptr) -> cli.Exit { return ended(progr
 // (build_mode_of). With Build_Options.fresh, built beside it, then swapped in. Each step says why it fails.
 program_build :: proc(o: Build_Options, release := false, debug := false) -> bool {
 	mode := release ? Build_Mode.Release : debug ? Build_Mode.Debug : o.iterate
+	line := build_line(o, mode)
+	if mode == .Release {
+		if why := release_line_refused(line); why != "" { fmt.eprintfln("build: %s", why); return false }
+	}
 	if !program_prepare(o, mode == .Release) { return false }
-	if !run(build_line(o, mode), {echo = true}) { return false }
+	if !run(line, {echo = true}) { return false }
 	if o.fresh {
 		fresh, old := fresh_paths(o.project)
 		if !swap_in(fresh, o.program, old) { return false }
@@ -298,6 +302,16 @@ program_prepare :: proc(o: Build_Options, release := false) -> bool {
 	_ = os.make_directory_all(BUILD_DIR)
 	_ = os.make_directory_all(dir_of(o.program))
 	return true
+}
+
+// Why a release's odin line is refused ("": it is not). A release never carries GT_ELEVATED_UNRESTRICTED: elevated,
+// the program would start, install and load what a user can change (src/md/features/elevated-process.md).
+@(private)
+release_line_refused :: proc(line: []string) -> string {
+	for arg in line {
+		if strings.contains(arg, "GT_ELEVATED_UNRESTRICTED") { return "a release never carries GT_ELEVATED_UNRESTRICTED (an elevated program would run what a user can change)" }
+	}
+	return ""
 }
 
 // The odin command of the program's build in `mode`: to the program's path, or to its fresh path (fresh_paths).

@@ -35,6 +35,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import base "../base"
 import i18n "../i18n"
 import signing "../signing"
 
@@ -93,6 +94,7 @@ Error :: enum {
 	Not_Written_Whole,   // ... or what was read back is not what was signed
 	Not_Moved_Aside,     // Windows: the running program could not be renamed
 	Not_Placed,          // the new program could not take the running one's name (the running one is back)
+	Refused,             // this process is elevated (base.restricted): it places no program
 }
 
 error_text :: proc(e: Error) -> string {
@@ -121,6 +123,7 @@ error_text :: proc(e: Error) -> string {
 	case .Not_Written_Whole: return i18n.tr("the update was not written whole")
 	case .Not_Moved_Aside:  return i18n.tr("the running program could not be moved aside")
 	case .Not_Placed:       return i18n.tr("the update could not be put in place")
+	case .Refused:          return base.restricted_words(.Update_Placed)
 	}
 	return i18n.tr("unknown error")
 }
@@ -381,6 +384,7 @@ check_binary :: proc(m: Manifest, data: []byte) -> Error {
 // <exe>.old (remove_leftovers deletes it at the next start), and if the new one cannot take its name it comes back. On Linux the
 // new file is made executable and renamed over it: the running process keeps its open file. A failure leaves the program as it was.
 place :: proc(exe: string, data: []byte, m: Manifest) -> Error {
+	if base.restricted() { return .Refused }   // (never a program written by an administrator's process: base.restricted)
 	if e := check_binary(m, data); e != .None { return e }
 	if !is_program(data, m.platform) || m.platform != PLATFORM { return .Not_A_Program }
 	next := fmt.tprintf("%s.update", exe)

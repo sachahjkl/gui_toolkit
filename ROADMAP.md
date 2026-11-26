@@ -13,6 +13,13 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **A de-elevated start for an elevated program.** An administrator's elevated classeur (or the elevated machine copy
+  of a task manager) keeps Open, Open with and the terminal: on Windows the toolkit asks Explorer's shell, which runs
+  at medium integrity, to start them (`IShellDispatch2::ShellExecute` through the desktop's `IShellView`), so the
+  handler runs with the person's own token and never with the administrator's. On Linux there is no such way for
+  root: no process of the user's session takes requests from root by design, and `sudo -u` would trust the user's
+  environment and files from root, so a root program keeps refusing. Intent:
+  [src/md/features/elevated-process.md](src/md/features/elevated-process.md).
 - **cliche and opencode native draw with `ui.Mark_Editor`.** cliche drops its editor's model, painter and canvas for
   the toolkit's and keeps its window, its words and its outputs; opencode native opens the editor on a picture of its
   viewer or of its composer, and the result replaces the attachment. Intent:

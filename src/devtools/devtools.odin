@@ -32,6 +32,7 @@ import "core:time"
 import "core:unicode/utf8"
 import tk_json "../json"
 import "../platform"
+import base "../base"
 import png "../png"
 import "../render"
 import "../ui"
@@ -154,6 +155,9 @@ start :: proc(win: ^platform.Window, port: int, title := "") -> ^Server {
 // TOOLKIT_DEVTOOLS=<port> in the environment: start on it; else nil (service and stop do nothing with nil). Always nil in a
 // build without the endpoint (the define TOOLKIT_DEVTOOLS false: a release build's default).
 start_from_env :: proc(win: ^platform.Window, title := "") -> ^Server {
+	// (the port takes commands from any program of the user, and TOOLKIT_DEVTOOLS is the user's to set: never in a
+	// process with an administrator's rights; base.restricted)
+	if base.restricted() { return nil }
 	when TOOLKIT_DEVTOOLS {
 		port := env_port()
 		return port > 0 ? start(win, port, title) : nil

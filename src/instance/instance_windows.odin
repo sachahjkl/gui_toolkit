@@ -10,6 +10,7 @@ import "base:runtime"
 import "core:strings"
 import "core:time"
 import win "core:sys/windows"
+import base "../base"
 
 foreign import kernel32_inst "system:Kernel32.lib"
 foreign import user32_inst "system:User32.lib"
@@ -24,7 +25,6 @@ foreign user32_inst {
 	AllowSetForegroundWindow    :: proc(pid: win.DWORD) -> win.BOOL ---
 	FlashWindowEx               :: proc(info: ^Flash_Info) -> win.BOOL ---
 	SendMessageTimeoutW         :: proc(hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lparam: win.LPARAM, flags: win.UINT, timeout: win.UINT, result: ^win.DWORD_PTR) -> win.LRESULT ---
-	ChangeWindowMessageFilterEx :: proc(hwnd: win.HWND, message: win.UINT, action: win.DWORD, filter: rawptr) -> win.BOOL ---
 }
 
 // FLASHWINFO (winuser.h): the taskbar button flashes when the foreground cannot be taken.
@@ -36,7 +36,6 @@ Flash_Info :: struct { size: win.UINT, hwnd: win.HWND, flags: win.DWORD, count: 
 
 @(private = "file") SMTO_ABORTIFHUNG :: 0x0002
 @(private = "file") SMTO_BLOCK       :: 0x0001
-@(private = "file") MSGFLT_ALLOW     :: 1
 @(private = "file") CLASS_NAME       :: "TkInstanceWindow"
 @(private = "file") MAGIC            :: 0x544B_494E   // "TKIN": the dwData of the WM_COPYDATA
 
@@ -134,22 +133,15 @@ owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
 	if o.hwnd == nil { return false }
 	o.handler, o.user, o.state = handler, user, .Serving
 	win.SetWindowLongPtrW(o.hwnd, win.GWLP_USERDATA, win.LONG_PTR(uintptr(o)))
-	// An elevated owner takes the message from a normal sender (a link clicked in a normal program) only if it lets the
-	// message through (UIPI); a normal owner leaves the default, which keeps it from processes of a lower integrity.
-	if is_elevated() { ChangeWindowMessageFilterEx(o.hwnd, win.WM_COPYDATA, MSGFLT_ALLOW, nil) }
+	// The default message filter (UIPI) is kept: an elevated owner takes no message from a process of a lower integrity.
+	// Letting WM_COPYDATA through would let any program of the user drive a program with an administrator's rights
+	// (a message opens a section, a file, a URL); a start of lower integrity then runs on its own.
 	return true
 }
 
-// Does this process run with an elevated token (as administrator)?
-is_elevated :: proc() -> bool {
-	token: win.HANDLE
-	if !win.OpenProcessToken(win.GetCurrentProcess(), win.TOKEN_QUERY, &token) { return false }
-	defer win.CloseHandle(token)
-	elevation: u32   // TOKEN_ELEVATION { TokenIsElevated }
-	size: win.DWORD
-	if !win.GetTokenInformation(token, .TokenElevation, &elevation, size_of(elevation), &size) { return false }
-	return elevation != 0
-}
+// Does this process run with an elevated token (as administrator)? Fail closed: a token that cannot be read counts as
+// elevated (base.elevated).
+is_elevated :: proc() -> bool { return base.elevated() }
 
 @(private = "file")
 owner_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lparam: win.LPARAM) -> win.LRESULT {

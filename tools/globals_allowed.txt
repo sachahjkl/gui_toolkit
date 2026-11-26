@@ -10,6 +10,9 @@ base/blocking.odin blocking_seen process  # the blocking calls seen on the inter
 base/blocking.odin blocking_seen_here thread  # this thread's blocking calls (a test's session reads its own)
 base/blocking.odin blocking_lock process  # guards blocking_sites
 base/blocking.odin blocking_sites process  # the call sites already said (locked)
+base/trust.odin restriction_said process  # what restricts the process, said once at its start (atomic)
+base/trust.odin elevation_once process  # reads the token once
+base/trust.odin elevation_seen process  # the token's elevation, written once under elevation_once, then only read
 changelog/changelog.odin TYPE_NAMES const  # Keep a Changelog's types, a table
 plugins/page.odin PAGE_TAGS const  # the words the palette finds the Plugins page by, a table
 config/config_test.odin DEFS test

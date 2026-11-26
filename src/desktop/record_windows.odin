@@ -14,6 +14,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import win "core:sys/windows"
+import base "../base"
 
 @(private = "file")
 uninstall_key :: proc(o: ^Integration_Options) -> string {
@@ -76,6 +77,7 @@ windows_unrecord :: proc(o: ^Integration_Options) -> Result {
 // holds. False when the helper could not be started.
 @(private)
 windows_cleanup_later :: proc(o: ^Integration_Options, files: []string, folder: string, pid: u32) -> bool {
+	if base.restricted() { return false }   // (a script in the user's TEMP, run by cmd: never with an administrator's rights)
 	tmp, err := os.temp_dir(context.temp_allocator)
 	if err != nil || tmp == "" { return false }
 	stem := o.identity.cleanup_name != "" ? o.identity.cleanup_name : o.identity.slug

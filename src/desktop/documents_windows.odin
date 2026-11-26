@@ -18,6 +18,7 @@ import "base:runtime"
 import "core:strings"
 import win "core:sys/windows"
 import ascii "../ascii"
+import base "../base"
 
 @(private = "file")
 Documents_Layout :: struct {
@@ -193,6 +194,8 @@ documents_default_elsewhere :: proc(o: ^Integration_Options) -> bool {
 @(private)
 documents_open_defaults :: proc(o: ^Integration_Options) -> bool {
 	l := documents_layout(o)
+	// (ms-settings: is a protocol whose handler HKCU can override: the fodhelper bypass of UAC; base.restricted)
+	if base.restricted() { return false }
 	uri := strings.concatenate({"ms-settings:defaultapps?registeredAppUser=", l.value_name}, context.temp_allocator)
 	r := win.ShellExecuteW(nil, win.L("open"), wide(uri), nil, nil, win.SW_SHOWNORMAL)
 	return uintptr(r) > 32

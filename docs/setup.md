@@ -94,6 +94,37 @@ prepare = proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) {
 On Windows the second box has no part (`supported_parts()` lacks `Default_Documents`): give it `parts = {}` there. Its
 Install then opens Settings at the program's page, where the person makes it the default.
 
+A task manager offers to take the place of the system's the same way, on Windows only (`Part.Task_Manager`,
+[desktop.md](desktop.md#the-default-task-manager)). The part is the machine's: under its box the dialog and the page say
+why Windows will ask for an administrator (`choice_note`). Install and Uninstall ask Windows for one; an automatic
+path never does. Declined (or failed), the rest is installed and recorded, and the dialog says what is not. An Uninstall
+gives Task Manager back first, and only when this account put it: declined or failed, nothing is uninstalled, and the
+dialog says that Task Manager still opens the program.
+
+```odin
+choices = {
+	{label = i18n.later("Open Ctrl+Shift+Esc and Task Manager with the program"), on = false, parts = {.Task_Manager}},
+},
+prepare = proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) { o.task_manager = choices[0] },
+```
+
+The Debugger of taskmgr.exe runs the program's machine copy with taskmgr's path and options. Before anything else of its
+start, the program calls `task_manager_start`:
+
+```odin
+args, handed_off := setup.task_manager_start(setup_options(), os.args[1:])
+if handed_off { return }   // the person's own installed copy runs: this one ends
+// args: without taskmgr's path and options, the plain start
+```
+
+`task_manager_arguments(args)` is its pure part: the arguments without taskmgr's, and whether they were there.
+It restricts an elevated process first (`base.restrict_if_elevated`, [base.md](base.md#restricted-processes)): an
+administrator's Ctrl+Shift+Esc starts the machine copy elevated. Unelevated, the machine copy has the user's own
+token and is not restricted; it never installs itself into the user's folder (`Facts.machine_copy`: `wanted` is false,
+`install` returns `machine_copy_words()`). A restricted process installs, uninstalls and updates nothing, and is never
+offered the install: `install`, `uninstall` and `updated` return `restricted_words()`, which the dialog
+and the page show in place of their buttons. Its `launch` starts only a program of an administrator's folder.
+
 ```odin
 choices = {
 	{label = i18n.later("Put the program on the PATH"), on = true, parts = {.Path}},
@@ -110,11 +141,12 @@ The same options in every program, listed in its table of options (`setup.COMMAN
 
 | Option | What it does |
 |---|---|
-| `--install` | installs this copy for the user, as the Install button does (`install`): no window |
+| `--install` | installs this copy for the user, as the Install button does (`install`), each box tied to parts as the system has it (`choices_from_facts`): no window |
 | `--uninstall` | removes the installed copy (`uninstall`, then `remove_later` for what the running copy holds); the user's settings and data stay: no window |
 | `--status` | says the state in a word, then a fact a line (the program, its version, this copy, the menu entry, the start with the session, the PATH, `running: true` when a copy runs: `Setup_Options.running`, the program's single-instance check; `quit: yes` when `--quit` can end it: `Setup_Options.quit`); exit code 0 installed whole (a Nix package too), 1 not installed or to repair (`status_exit`; the words say which): no window |
 | `--quit` | asks the copy that runs to end (`Setup_Options.quit`, its single instance: `instance.MESSAGE_QUIT`), then waits until its instance is gone and no process runs the installed copy's file, at most `QUIT_WAIT` (10 s); exit code 0 ended or not running, 1 still running or cannot be asked: no window |
 | `--setup` | starts the program with the install shown (`prefs_page.install_open`); Settings > Apps' Uninstall runs it (`Identity.uninstall_arguments = "--setup"`) |
+| `--task-manager on`, `off` | the change of the machine that Install and Uninstall start as an administrator (`desktop.task_manager_write`): the program in place of Task Manager, or Task Manager given back; hidden from the help; no window |
 
 A program gives `running` and `quit` from its single instance ([instance.md](instance.md), "The messages every program
 understands"): `quit` sends `instance.MESSAGE_QUIT`, and the handler of the copy that runs closes its window. A program

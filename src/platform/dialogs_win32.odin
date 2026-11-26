@@ -254,8 +254,11 @@ file_dialog_in_apartment :: proc(kind: int, d: File_Dialog, allocator: runtime.A
 	return res
 }
 
+// (a restricted process opens nothing through the shell: its associations are the user's to change, and a URL's, a
+// file's or a folder's handler would run with the administrator's rights; base.restricted)
 @(private = "file")
 shell_execute :: proc(verb, file, params: string) -> bool {
+	if base.restricted() { return false }
 	W :: proc(s: string) -> win.LPCWSTR { return s == "" ? nil : win.utf8_to_wstring(s, context.temp_allocator) }
 	_ = win.CoInitializeEx(nil, .APARTMENTTHREADED | .DISABLE_OLE1DDE)
 	info := win.SHELLEXECUTEINFOW{cbSize = size_of(win.SHELLEXECUTEINFOW), lpVerb = W(verb), lpFile = W(file), lpParameters = W(params), nShow = win.SW_SHOWNORMAL}

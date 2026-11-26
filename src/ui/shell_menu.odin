@@ -8,6 +8,7 @@ package ui
 import "base:runtime"
 import "core:fmt"
 import "core:sync"
+import base "../base"
 import desktop "../desktop"
 import "../platform"
 
@@ -191,7 +192,9 @@ shell_menu_build_list :: proc(m: ^Shell_Menu, items: []desktop.Context_Item, pre
 		if menu_item_ex(label, disabled = it.disabled, icon_draw = icon_draw, icon_user = icon_user).clicked {
 			picked = it.id
 			m.invoked = it.id
-			if invoke {
+			if invoke && base.restricted() {
+				toast_add(.Bad, nil, nil, restricted_open_words())   // (desktop.context_menu_invoke refuses it)
+			} else if invoke {
 				w := win != nil ? win : (m.state != nil ? m.state.window : nil)
 				desktop.context_menu_invoke(&m.native, m.serial, it.id, w)
 			}

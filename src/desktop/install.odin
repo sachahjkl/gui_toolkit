@@ -464,7 +464,12 @@ uninstall :: proc(o: ^Integration_Options, running_exe: string, allocator := con
 	installed_exe := dir != "" ? fsx.path_join(dir, exe_name) : running_exe
 	o.exe = installed_exe
 	defer o.exe = prev_exe
-	if r := remove(o); r.error != .None && ur.result.error == .None { ur.result = r }
+	if r := remove(o); r.error != .None && ur.result.error == .None {
+		ur.result = r
+		// (the change for every account was refused or failed: remove changed nothing, and nothing else goes, so the
+		// install stays whole and coherent with it; the person can uninstall again)
+		if r.error == .Not_Allowed || r.error == .Machine { return ur }
+	}
 	if dir != "" {
 		if r := forget_path(o, dir); r.error != .None && ur.result.error == .None { ur.result = r }
 		if r := unrecord_install(o); r.error != .None && ur.result.error == .None { ur.result = r }

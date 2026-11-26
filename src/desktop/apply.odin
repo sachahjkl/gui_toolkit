@@ -1,5 +1,7 @@
 package tk_desktop
 
+import base "../base"
+
 // What a program's settings ask of the desktop, made so: the launcher (general.menu) and the start with the session
 // (general.autostart, gt:prefs_page's standard preferences) as `o` has them. A program calls it at each start and after
 // each change of those preferences, on a worker: it reads the disk, and writes it only when something differs.
@@ -9,8 +11,9 @@ package tk_desktop
 // nothing is written when it is Installed and no part that is off is there. A platform with no integration is no error. Blocking: it reads and writes
 // files, and on Windows the registry.
 apply :: proc(o: ^Integration_Options) -> Result {
-	if !supported() { return {} }
-	wanted := o.start_menu || o.desktop_shortcut || o.add_to_path || o.autostart || o.register_browser || o.default_file_manager || opens_documents(o) || thumbnails_wanted(o)
+	// (a restricted process changes no install: an elevated copy's shortcuts would name it; base.restricted)
+	if !supported() || base.restricted() { return {} }
+	wanted := o.start_menu || o.desktop_shortcut || o.add_to_path || o.autostart || o.register_browser || o.default_file_manager || o.task_manager || opens_documents(o) || thumbnails_wanted(o)
 	st := status(o, context.temp_allocator)
 	if !wanted {
 		if st.state == .Absent && st.error == .None { return {} }
@@ -21,11 +24,12 @@ apply :: proc(o: ^Integration_Options) -> Result {
 }
 
 // A part is there that the options turned off (the launcher, once general.menu is off): Installed says nothing of it,
-// install takes it away. (Not the icons: a program that gives none would install again at each start.)
+// install takes it away. (Not the icons: a program that gives none would install again at each start. Not a part of
+// the machine's: apply never asks an administrator, so such a part stays, and an install for it would come at each start.)
 @(private = "file")
 unwanted_present :: proc(st: Status) -> bool {
 	for p in Part {
-		if p != .Icons && st.parts[p].present && p not_in st.wanted { return true }
+		if p != .Icons && p not_in ADMIN_PARTS && st.parts[p].present && p not_in st.wanted { return true }
 	}
 	return false
 }

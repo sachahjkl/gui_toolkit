@@ -19,6 +19,7 @@ import "base:runtime"
 import "core:log"
 import "core:path/filepath"
 import "core:strings"
+import base "../base"
 import crash "../crash"
 import tk_log "../log"
 import process "../process"
@@ -56,6 +57,8 @@ Program_Start :: struct {
 }
 
 program_start :: proc(o: Program_Start_Options, allocator := context.allocator) -> (p: Program_Start) {
+	base.dll_search_restrict()   // (first: a library loaded by name after this never comes from the working folder or the PATH)
+	base.restrict_if_elevated()   // (a program with a window: elevated, it starts nothing that a user can change)
 	p.allocator = allocator
 	p.executable = strings.clone(process.executable_path(), allocator)
 	p.launch = o.launch

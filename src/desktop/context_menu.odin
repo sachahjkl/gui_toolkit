@@ -15,6 +15,7 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import "../ascii"
+import base "../base"
 import "../platform"
 
 // Maximum nesting depth walked when converting native submenus (guards against corrupt or cyclic shell menus).
@@ -116,6 +117,7 @@ context_menu_query :: proc(m: ^Context_Menu, target: Context_Target, on_ready: C
 // parent HWND on Windows; nil is allowed). Ignored if `serial` is stale or `id` is 0.
 context_menu_invoke :: proc(m: ^Context_Menu, serial: u64, id: u32, win: ^platform.Window = nil) {
 	if serial == 0 || id == 0 { return }
+	if base.restricted() { return }   // (an item's command is the user's to change, HKCU's verbs or a service menu: base.restricted)
 	hwnd := win != nil ? platform.native_surface_handles(win).hwnd : nil
 	sync.lock(&m.lock)
 	defer sync.unlock(&m.lock)
@@ -342,7 +344,7 @@ context_menu_worker :: proc(data: rawptr) {
 
 		if do_invoke {
 			if inv_serial == m.active_serial {
-				_ = context_menu_native_invoke(&m.native, inv_id, inv_hwnd)
+				if !base.restricted() { _ = context_menu_native_invoke(&m.native, inv_id, inv_hwnd) }
 			}
 		} else if do_clear {
 			context_menu_native_clear(&m.native)

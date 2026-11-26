@@ -122,6 +122,9 @@ build_program :: proc(root, folder, name: string, debug: bool, devtools: bool, e
 	_ = os.make_directory_all(join({root, "build"}))
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", join({root, folder, name}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", fmt.tprintf("-define:TOOLKIT_DEVTOOLS=%v", devtools), gt_collection(root))
+	// (a program that a tool drives over the devtools endpoint runs on a CI runner, an administrator or root: its
+	// elevation must not turn the endpoint off. Never a program that ships: those have no endpoint, base.restricted)
+	if devtools { append(&cmd, "-define:GT_ELEVATED_UNRESTRICTED=true") }
 	when ODIN_OS == .Windows {
 		append(&cmd, "-subsystem:windows")
 		rc := join({root, folder, name, fmt.tprintf("%s.rc", name)})

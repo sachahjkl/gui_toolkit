@@ -30,6 +30,7 @@ import "core:math"
 import "core:strings"
 import "core:sync"
 import "core:thread"
+import base "../base"
 import desktop "../desktop"
 import i18n "../i18n"
 import "../draw"
@@ -373,6 +374,8 @@ job_collect :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 
 // What the state is, in a sentence, and its tone ("good", "warn", "bad", "accent").
 state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
+	if base.restricted() { return restricted_words(), "warn" }
+	if f.machine_copy { return machine_copy_words(), "warn" }
 	switch f.state {
 	case .Not_Installed: return i18n.tr("Not installed: this copy runs on its own."), "warn"
 	case .This_Copy:     return i18n.tr("Installed: this is the installed copy."), "good"
@@ -481,6 +484,7 @@ busy :: proc(d: ^Dialog) -> bool { return d.job != nil && d.job.kind != .Read }
 // What the install button says for the state ("": none is offered: not read yet, just installed, removed, from Nix).
 install_label :: proc(d: ^Dialog, o: Setup_Options) -> string {
 	f := &d.facts
+	if base.restricted() || f.machine_copy { return "" }   // (restricted_words, machine_copy_words say why)
 	if !d.known || d.installed != "" && f.state != .This_Copy || f.state == .Removal_Scheduled || f.from_nix { return "" }
 	#partial switch f.state {
 	case .Other_Copy:
@@ -497,7 +501,7 @@ install_label :: proc(d: ^Dialog, o: Setup_Options) -> string {
 
 // Uninstall is offered: something of an install is there.
 can_uninstall :: proc(d: ^Dialog) -> bool {
-	return d.known && (d.facts.state == .This_Copy || d.facts.state == .Repair || d.facts.state == .Other_Copy || d.facts.state == .Nix_Package && leftover(d.facts))
+	return !base.restricted() && d.known && (d.facts.state == .This_Copy || d.facts.state == .Repair || d.facts.state == .Other_Copy || d.facts.state == .Nix_Package && leftover(d.facts))
 }
 
 // What closes the screen without installing: Close, Not now (an upgrade), Do not install (no install, another copy).
@@ -525,7 +529,8 @@ pick_folder :: proc(d: ^Dialog, o: Setup_Options) { if d.job == nil { job_start(
 // its window is closed and its single instance released (started now, it would find this one still running and hand
 // itself over to it). None when there is none.
 open_installed :: proc(d: ^Dialog) -> Event {
-	return d.installed != "" ? .Launched : .None
+	// (the installed copy is the user's to change: an administrator's process starts it never; base.restricted)
+	return d.installed != "" && !base.restricted() ? .Launched : .None
 }
 
 // Closes the screen by `how`: the event to keep (Kept_Standalone, Dismissed: not again for this version, or None).
@@ -873,17 +878,36 @@ options_card :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 		ui.space(ui.PAGE_MARGIN)
 		if ui.list_card("###setup_options_card") {
 			for k in 0 ..< n {
-				if ui.card_row(fmt.tprintf("###setup_tile_%d", k)) {
+				note := k > 0 ? choice_note(o.choices[k - 1]) : ""
+				if ui.card_row(fmt.tprintf("###setup_tile_%d", k), note != "" ? .Y : .X) {
 					ui.next({width = ui.fill()})
 					if k == 0 {
 						ui.toggle("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
 					} else {
 						ui.toggle(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &d.choices[k - 1], wrap = true)
 					}
+					if note != "" { choice_note_line(fmt.tprintf("###setup_choice_note_%d", k - 1), note, em) }
 				}
 			}
 		}
 		ui.space(ui.PAGE_MARGIN)
+	}
+}
+
+// Why a box's change asks Windows for an administrator, in the language in use ("": its parts need none here).
+choice_note :: proc(x: Choice) -> string {
+	if .Task_Manager in (x.parts & desktop.admin_parts()) {
+		return i18n.tr("Windows asks for an administrator: Task Manager is the same for every account on this computer.")
+	}
+	return ""
+}
+
+// A choice's note under its box, in the weak tone.
+@(private)
+choice_note_line :: proc(id, note: string, em: f32) {
+	if ui.tags("weak") {
+		ui.next({width = ui.fill(), text_pad = 0, font_size = math.round(em * 0.86)})
+		ui.paragraph(fmt.tprintf("%s%s", note, id))
 	}
 }
 

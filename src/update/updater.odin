@@ -23,6 +23,7 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import "core:time"
+import base "../base"
 import http "../http"
 import i18n "../i18n"
 import process "../process"
@@ -68,6 +69,7 @@ Phase :: enum {
 	Downloading,   // and put in place
 	Installed,     // the new program is in place: it runs at the next start
 	Managed,       // a package manager updates this copy: nothing is checked
+	Refused,       // this process runs with more rights than its user's files (base.restricted): nothing is checked nor placed
 }
 
 // What the updater is at, for the program to show. Strings in the caller's temporary allocator.
@@ -133,6 +135,13 @@ updater_start :: proc(o: Updater_Options) -> ^Updater {
 	if o.first_check <= 0 { o.first_check = FIRST_CHECK }
 	u.options = o
 	u.next_check = time.time_add(time.now(), o.first_check)
+	// (an elevated process, or the machine copy, never downloads nor places a program: the file it writes is one an
+	// administrator's process then runs; base.restricted)
+	if base.restricted() {
+		u.phase = .Refused
+		u.holders = 1
+		return u
+	}
 	if strings.has_prefix(o.exe, "/nix/store/") {   // (desktop.in_nix_store: Nix updates it)
 		u.phase = .Managed
 		u.holders = 1
@@ -169,6 +178,7 @@ set_auto :: proc(u: ^Updater, mode: Auto_Mode) {
 check_now :: proc(u: ^Updater) {
 	sync.guard(&u.mutex)
 	if u.phase == .Managed { u.result, u.failed, u.asked, u.install = replace(u.result, i18n.tr("a package manager updates this copy")), false, true, false; u.serial += 1; return }
+	if u.phase == .Refused { u.asked = true; u.serial += 1; return }
 	if u.phase == .Checking || u.phase == .Downloading || u.phase == .Installed { return }
 	u.want_check, u.want_asked = true, true
 	sync.cond_signal(&u.cond)
@@ -226,6 +236,7 @@ status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 status_words :: proc(st: Status, allocator := context.temp_allocator) -> string {
 	switch st.phase {
 	case .Managed:     return i18n.tr("A package manager updates this copy.")
+	case .Refused:     return base.restricted_words(.Updates)
 	case .Checking:    return i18n.tr("Checking for a newer version…")
 	case .Downloading:
 		// (the sizes, which the bar under it does not say; its share is the bar's)
@@ -254,6 +265,7 @@ notice :: proc(st: Status, allocator := context.temp_allocator) -> (words: strin
 	if !st.asked { return "", false }
 	#partial switch st.phase {
 	case .Managed: return i18n.tr("A package manager updates this copy."), false
+	case .Refused: return base.restricted_words(.Updates), false
 	case .Idle, .Available:
 		if st.failed { return fmt.aprintf(i18n.tr("The last check failed: %s."), st.result, allocator = allocator), true }
 		if st.phase == .Idle { return i18n.tr("Up to date."), false }

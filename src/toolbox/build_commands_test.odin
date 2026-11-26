@@ -287,3 +287,14 @@ build_commands_names :: proc(t: ^testing.T) {
 	free(c[0].user)
 	delete(c[0].usage)
 }
+
+// A release never carries the define that lifts an elevated program's restriction, from the project or the line.
+@(test)
+a_release_refuses_the_unrestricted_define :: proc(t: ^testing.T) {
+	o := sample_options()
+	testing.expect_value(t, release_line_refused(build_line(o, .Release)), "")
+	defines := [?]string{"-define:GT_ELEVATED_UNRESTRICTED=true"}
+	o.defines = defines[:]
+	testing.expect(t, release_line_refused(build_line(o, .Release)) != "", "the project's define")
+	testing.expect(t, release_line_refused({"odin", "build", "src", "-define:GT_ELEVATED_UNRESTRICTED=true"}) != "", "a define on the line")
+}

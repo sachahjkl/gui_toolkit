@@ -18,6 +18,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:sync"
+import base "../base"
 import desktop "../desktop"
 import i18n "../i18n"
 import lucide "../lucide"
@@ -192,7 +193,7 @@ open_with_run :: proc(ow: ^Open_With, path := "") {
 	}
 	done :: proc(d: rawptr, _: u64) {
 		r := (^Open_With_Run)(d)
-		if !r.ok { toast_add(.Bad, nil, nil, fmt.tprintf(i18n.tr("%s did not start."), r.name)) }
+		if !r.ok { toast_add(.Bad, nil, nil, base.restricted() ? restricted_open_words() : fmt.tprintf(i18n.tr("%s did not start."), r.name)) }
 		open_with_run_free(r)
 	}
 	lost :: proc(d: rawptr) { open_with_run_free((^Open_With_Run)(d)) }

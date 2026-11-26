@@ -2,6 +2,36 @@
 # longer has is said by it; a translation left empty is the English.
 language fr
 
+en The program runs as root: it installs nothing. Install it from your own account, not as root.
+fr Le programme tourne en root : il n'installe rien. Installez-le depuis votre propre compte, pas en root.
+
+en The program runs as root: it opens nothing with your programs.
+fr Le programme tourne en root : il n'ouvre rien avec vos programmes.
+
+en The program runs as root: it runs no plugin.
+fr Le programme tourne en root : il ne lance aucune extension.
+
+en The program runs as root: it does not update itself. Update it from your own account.
+fr Le programme tourne en root : il ne se met pas à jour. Mettez-le à jour depuis votre propre compte.
+
+en the program runs as root: it places no update
+fr le programme tourne en root : il ne met en place aucune mise à jour
+
+en The program runs as administrator: it installs nothing. Install it from your own account, not as administrator.
+fr Le programme tourne en administrateur : il n'installe rien. Installez-le depuis votre propre compte, pas en administrateur.
+
+en The program runs as administrator: it opens nothing with your programs.
+fr Le programme tourne en administrateur : il n'ouvre rien avec vos programmes.
+
+en The program runs as administrator: it runs no plugin.
+fr Le programme tourne en administrateur : il ne lance aucune extension.
+
+en The program runs as administrator: it does not update itself. Update it from your own account.
+fr Le programme tourne en administrateur : il ne se met pas à jour. Mettez-le à jour depuis votre propre compte.
+
+en the program runs as administrator: it places no update
+fr le programme tourne en administrateur : il ne met en place aucune mise à jour
+
 en unknown preference
 fr réglage inconnu
 
@@ -91,6 +121,12 @@ fr un fichier n'a pas pu être écrit ou supprimé
 
 en the system refused
 fr le système a refusé
+
+en no administrator allowed the change
+fr aucun administrateur n'a autorisé le changement
+
+en the change for every account failed
+fr le changement pour tous les comptes a échoué
 
 en Enter the folder to install into.
 fr Indiquez le dossier d'installation.
@@ -334,6 +370,9 @@ ctx key
 en Print
 fr Impr. écran
 
+en (Administrator)
+fr (Administrateur)
+
 en Permissions
 fr Autorisations
 
@@ -375,6 +414,9 @@ fr Il peut
 
 en Take back its permissions
 fr Retirer ses autorisations
+
+en Plugins are off
+fr Extensions désactivées
 
 en Starting…
 fr Démarrage…
@@ -1493,6 +1535,9 @@ fr Options
 en Shortcut on the Desktop
 fr Raccourci sur le Bureau
 
+en Windows asks for an administrator: Task Manager is the same for every account on this computer.
+fr Windows demande un administrateur : le Gestionnaire des tâches est le même pour tous les comptes de cet ordinateur.
+
 en Details
 fr Détails
 
@@ -1555,6 +1600,21 @@ fr oui (avec son lanceur de console)
 
 en the install folder is unknown
 fr le dossier d'installation est inconnu
+
+en Installed, but Task Manager was not changed: no administrator allowed it.
+fr Installé, mais le Gestionnaire des tâches n'a pas changé : aucun administrateur ne l'a autorisé.
+
+en Installed, but Task Manager was not changed: %s
+fr Installé, mais le Gestionnaire des tâches n'a pas changé : %s
+
+en Nothing was uninstalled: giving Task Manager back needs an administrator, and none allowed it. Task Manager still opens the program. Uninstall again to be asked again.
+fr Rien n'a été désinstallé : rendre le Gestionnaire des tâches demande un administrateur, et aucun ne l'a autorisé. Le Gestionnaire des tâches ouvre toujours le programme. Désinstallez de nouveau pour que la question revienne.
+
+en Nothing was uninstalled: Task Manager could not be given back (%s). Task Manager still opens the program.
+fr Rien n'a été désinstallé : le Gestionnaire des tâches n'a pas pu être rendu (%s). Le Gestionnaire des tâches ouvre toujours le programme.
+
+en This copy serves every account: it does not install itself. Install the program from its download.
+fr Cette copie sert à tous les comptes : elle ne s'installe pas elle-même. Installez le programme depuis son téléchargement.
 
 en Applications menu
 fr Menu des applications

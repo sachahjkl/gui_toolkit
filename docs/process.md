@@ -34,7 +34,7 @@ every child; do not call `os.process_start`, `os.process_exec` or `os.pipe` for 
 
 | Procedure | |
 |---|---|
-| `start(desc) -> (os.Process, os.Error)` | starts a child. On Windows the ends in `desc.stdin`, `stdout` and `stderr` are inheritable during the spawn only, then as they were |
+| `start(desc) -> (os.Process, os.Error)` | starts a child. On Windows the ends in `desc.stdin`, `stdout` and `stderr` are inheritable during the spawn only, then as they were. In a restricted process (`base.restricted`: elevated) only a full path in an administrator's folder starts; else `io.Error.Permission_Denied` and nothing runs |
 | `run(command, Run_Options{dir, env, input}, allocator) -> Ran` | starts it and waits for its end. Its standard output and error are read at once (neither blocks the other) and `input` is written on a thread of its own, then closed ("": the null device). `env` is its whole environment (nil: this process's) |
 | `ran_destroy(&r, allocator)` | frees `r.stdout` and `r.stderr` |
 | `pipe() -> (r, w: ^os.File, os.Error)` | a pipe whose ends no child inherits until `start` gives one to a child |

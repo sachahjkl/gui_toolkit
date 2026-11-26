@@ -116,7 +116,8 @@ if r := desktop.apply(&o); r.error != .None { report(r.detail) }
 | `Path` | the executable's folder in `HKCU\Environment\Path` (REG_EXPAND_SZ), marked by `PathDir` in `Software\<vendor_key>\<key>`; the console launcher `<stem>.com` beside `<stem>.exe` |
 | `Autostart` | with `autostart`: the value `<key>` of `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" <autostart_arguments>` |
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
-| `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key |
+| `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key; `open` and `explore` under both `shell` keys (the same commands, `ProgrammaticAccessOnly`, `DelegateExecute` empty), unless another program made one |
+| `Task_Manager` | with `task_manager`: the program copied to `%ProgramFiles%\<vendor>\<name>\<exe>` (`machine_dir` with a test's `image_options_root`), and in `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe` the value `Debugger` = `"<that copy>"`, `<registry_mark>` and `<registry_mark>Previous` (the Debugger there before); an administrator allows it ([below](#the-default-task-manager)) |
 | `Documents` | with `open_documents` (or `default_documents`): in `Software\Classes`, the ProgID `<vendor_key>.<key>.<ext>` of each type (its description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `AppUserModelID`), an empty value `<ProgID>` in `<ext>\OpenWithProgids`, `Applications\<exe name>` with `SupportedTypes\<ext>`; `Software\<vendor_key>\<key>\Capabilities` with `FileAssociations\<ext>` = the ProgID; the value `<key>.Documents` of `Software\RegisteredApplications` |
 | `Thumbnails` | with `thumbnails`: the program's provider `<stem>_thumbnails.dll` beside `<stem>.exe`; in `Software\Classes`, `CLSID\<thumbnail_clsid>` with its `InprocServer32`, and `<ext>\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}` (and under the type's ProgID with the Documents part) = the CLSID ([below](#thumbnails-in-the-file-managers)) |
 
@@ -178,7 +179,8 @@ there or not, and `status` reads them each time. `install` writes the part when 
 it is off; `remove` takes it away.
 
 - Windows: Win+E and the taskbar's File Explorer run `"<exe>"` with no argument; a folder or a drive opened from the
-  shell (a double click, a shortcut, `start <folder>`) runs `"<exe>" "<folder>"`. The keys are in the user's
+  shell (a double click, a shortcut, `start <folder>`, a program's `ShellExecute` with the verb `open` or `explore` or
+  none) runs `"<exe>" "<folder>"`. The keys are in the user's
   `Software\Classes` (under `registry_root`), over the system's own in HKLM. `<key>.open` and the `opennewwindow` key
   carry `registry_mark`. Removal deletes the keys that are the program's, puts the `(Default)` of `Directory\shell` and
   `Drive\shell` back to none when it names `<key>.open` (the system's `open` is then the default again), and deletes
@@ -194,6 +196,37 @@ it is off; `remove` takes it away.
 `mimeapps_default(text, mime)`, `mimeapps_defaults(text, mime)` and `mimeapps_with_default(text, mime, id, on)` read and
 edit the text of a `mimeapps.list` (no file read, on every system): the first id of a type's default line, all its
 ids, and the text with `id` put first in that line or taken out of it.
+
+## The default task manager
+
+`task_manager` makes the program what Ctrl+Shift+Esc, the taskbar's "Task Manager" and Ctrl+Alt+Del's open: a task
+manager offers it as an option of its install, and `Part.Task_Manager` says whether it is in place
+([src/md/features/default-task-manager.md](../src/md/features/default-task-manager.md) says why it is made this way).
+
+- Windows only (`supported_parts`; `admin_parts()` has it): the key is the machine's. `install` with `task_manager`
+  (and `remove`) changes it only when `ask_administrator` is on, which setup's Install and Uninstall set: it starts
+  `"<exe>" --task-manager on` (or `off`) with the verb `runas`, Windows asks the person, and `install` waits for
+  that process (On: the installed copy; Off: the machine copy). Declined, the other parts stay installed and the result
+  is `Not_Allowed`; a failure of that process is `Machine`. Off, `apply` and every other path leave the part as it is.
+- On success the account is recorded in HKCU (`TaskManagerSetHere` under `Software\<vendor_key>\<key>`). `remove`
+  gives Task Manager back only when this account put it; another account's part stays, and nothing is asked. `remove`
+  does that first: on `Not_Allowed` or `Machine` it changes nothing else, and `uninstall` stops with the install whole.
+- The process that an administrator allowed calls `task_manager_write(o, on)` (setup's `command_run` does). On copies
+  the image of that very process into the machine copy (`task_manager_copy(o)`): its file is held open with no write
+  and no delete sharing, never read again by path (a test's roots copy `o.exe`). It keeps the Debugger there before,
+  and sets the Debugger to the copy. Off gives that Debugger back with its kind, deletes the marks, and deletes the copy (at the next restart when it
+  runs). A Debugger that another program set since stays.
+- The program starts with taskmgr's path and options after its own executable: `setup.task_manager_start` takes them
+  away, and hands over to the person's own installed copy when the start is not elevated ([setup.md](setup.md)). The
+  machine copy is restricted only when it is elevated, as every program ([base.md](base.md#restricted-processes)).
+  Unelevated it has the user's own token; it never installs itself into their folder (`setup.Facts.machine_copy`).
+- In a restricted process `install` and `remove` return `Restricted`, and `apply`, `open_terminal`, `open_with` and
+  `cleanup_later` do nothing.
+- The status is read without elevation: present when the key has the mark or its Debugger runs the machine copy;
+  stale when the Debugger runs something else; partial when the machine copy is missing.
+- `image_options_on(k, debugger, ours)` and `image_options_off(k, ours)` are the rules on the key's values
+  (`Image_Options`), on every system; `task_manager_debugger(copy)` is the Debugger's text.
+- Linux, macOS: no such part.
 
 ## A handler of document types
 
@@ -436,14 +469,19 @@ per file placed; a hand-edited one never reaches outside its folder.
 
 ## The command line
 
-A program's install command line is gt:setup's (`--install`, `--uninstall`, `--setup`, `--status`, `--quit`:
+A program's install command line is gt:setup's (`--install`, `--uninstall`, `--setup`, `--status`, `--quit`, and
+`--task-manager on|off`, which Install starts as an administrator:
 `setup.command_of`, `setup.command_run`, [setup.md](setup.md)). This package has none of its own.
 
 ## The tests' scratch roots
 
 Every place is a field of `Integration_Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
-HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `thumbnailers_dir`, `install_dir`. A test points them at a scratch folder and a
-scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
+HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `thumbnailers_dir`, `install_dir`, and for the Task_Manager part
+`image_options_root` (a key under HKEY_CURRENT_USER in place of HKLM's Image File Execution Options, written in the test's
+process with no administrator) with `machine_dir` (required with it: a test's machine copy never goes to Program Files;
+without `image_options_root`, `machine_dir` is ignored, so a variable of the environment never moves HKLM's machine copy
+out of Program Files).
+A test points them at a scratch folder and a scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
 (`ROOT_NAMES`), so a program's own end-to-end tests run it on scratch places; any of them set turns the notification off.
 `delete_scratch_root` deletes a scratch registry key, and only one under the identity's `scratch_roots`.
 

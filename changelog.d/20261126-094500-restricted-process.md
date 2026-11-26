@@ -1,0 +1,3 @@
+type: Security
+
+**Elevated programs run nothing that a user can change** (`base.restricted`): a program that runs as administrator or as root no longer starts a program outside the system's and Program Files' folders (`process.start`), opens URLs, files, folders, terminals, "Open with" or the items of the shell's context menu, installs, uninstalls or updates itself, runs plugins or a devtools server. A toast, or its Installation and Updates pages, say why, in that system's words ("as administrator", "as root"), and on Windows its window's title says "(Administrator)". A token that cannot be read counts as elevated. Command-line tools made with the toolkit are not restricted: they run what the person typed.

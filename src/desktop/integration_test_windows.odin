@@ -1072,3 +1072,171 @@ windows_file_manager :: proc(t: ^testing.T) {
 	_, verb_ok := reg_get(folders, "")
 	testing.expect(t, !verb_ok, "the folders' default is the system's again")
 }
+
+// The verbs a program names (ShellExecute "open", "explore"): the program's under Directory and Drive, hidden from the
+// context menu; one that another program made stays its own, and the part is whole without it; removal leaves it.
+@(test)
+windows_file_manager_named_verbs :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	folders := fmt.tprintf("%s\\Classes\\Directory\\shell", s.root)
+	drives := fmt.tprintf("%s\\Classes\\Drive\\shell", s.root)
+	// another program's "explore" of drives, there first
+	other := fmt.tprintf("%s\\explore\\command", drives)
+	testing.expect(t, reg_set(other, "", `"C:\other\other.exe" %1`))
+	o.default_file_manager = true
+	testing.expect_value(t, install(o).error, Error.None)
+	for verb in ([]string{"open", "explore"}) {
+		key := fmt.tprintf("%s\\%s", folders, verb)
+		cmd, ok := reg_get(fmt.tprintf("%s\\command", key), "")
+		testing.expect(t, ok && cmd == fmt.tprintf("\"%s\" \"%%1\"", s.exe), "a folder's named verb runs the program")
+		hidden, hidden_ok := reg_get(key, "ProgrammaticAccessOnly")
+		testing.expect(t, hidden_ok && hidden == "", "not in the context menu")
+		delegate, delegate_ok := reg_get(fmt.tprintf("%s\\command", key), "DelegateExecute")
+		testing.expect(t, delegate_ok && delegate == "", "the command, not File Explorer's handler")
+	}
+	open, _ := reg_get(fmt.tprintf("%s\\open\\command", drives), "")
+	testing.expect_value(t, open, fmt.tprintf("\"%s\" %%1", s.exe))
+	kept, _ := reg_get(other, "")
+	testing.expect_value(t, kept, `"C:\other\other.exe" %1`)
+	st := status(o, context.temp_allocator)
+	testing.expect(t, st.parts[.File_Manager].present && !st.parts[.File_Manager].partial, "whole without another program's verb")
+
+	// an install from before the named verbs: to repair, then repaired
+	testing.expect(t, reg_delete_tree(fmt.tprintf("%s\\open", folders)))
+	testing.expect(t, status(o, context.temp_allocator).parts[.File_Manager].partial, "a named verb is missing")
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !status(o, context.temp_allocator).parts[.File_Manager].partial, "repaired")
+
+	testing.expect_value(t, remove(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(fmt.tprintf("%s\\open", folders)) && !reg_key_exists(fmt.tprintf("%s\\explore", folders)), "the program's named verbs gone")
+	testing.expect(t, !reg_key_exists(fmt.tprintf("%s\\open", drives)), "the drives' too")
+	kept, _ = reg_get(other, "")
+	testing.expect_value(t, kept, `"C:\other\other.exe" %1`)
+}
+
+// The Task_Manager part on a test's roots: a key under HKCU in place of HKLM's Image File Execution Options and a
+// scratch folder in place of Program Files, so no administrator is asked. The Debugger runs the machine copy; the one
+// there before (of its kind) comes back with Off; another program's taken since stays; removal takes the copy.
+@(test)
+windows_task_manager :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.image_options_root = fmt.tprintf("%s\\Image File Execution Options", s.root)
+	key := fmt.tprintf("%s\\taskmgr.exe", o.image_options_root)
+	o.task_manager = true
+
+	// a test's key needs its own folder for the copy: never Program Files
+	testing.expect_value(t, install(o).error, Error.Bad_Options)
+	o.machine_dir = fmt.tprintf("%s\\Program Files\\Sample", s.dir)
+	copy := fmt.tprintf("%s\\sample.exe", o.machine_dir)
+	testing.expect_value(t, task_manager_copy(o), copy)
+
+	before := `%SystemRoot%\Tools\other.exe`
+	testing.expect(t, reg_set_kind(key, "Debugger", before, expand = true))
+	testing.expect_value(t, install(o).error, Error.None)
+	debugger, expand, ok := reg_get_any(key, "Debugger")
+	testing.expect(t, ok && !expand, "a REG_SZ Debugger")
+	testing.expect_value(t, debugger, fmt.tprintf("\"%s\"", copy))
+	mark, _ := reg_get(key, "SampleIntegration")
+	testing.expect_value(t, mark, "GuiToolkit.Sample.Test")
+	kept, kept_expand, _ := reg_get_any(key, "SampleIntegrationPrevious")
+	testing.expect(t, kept == before && kept_expand, "the Debugger before, of its kind")
+	data, read_err := os.read_entire_file(copy, context.temp_allocator)
+	testing.expect(t, read_err == nil && string(data) == "MZ not a program", "the machine copy is the program")
+	st := status(o, context.temp_allocator)
+	ps := st.parts[.Task_Manager]
+	testing.expect(t, ps.present && !ps.partial && !ps.stale, "the part is there")
+	testing.expect_value(t, st.state, State.Installed)
+
+	// the machine copy gone: to repair, then repaired
+	testing.expect(t, os.remove(copy) == nil)
+	testing.expect(t, status(o, context.temp_allocator).parts[.Task_Manager].partial, "no machine copy")
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, os.is_file(copy), "copied again")
+
+	// off: the Debugger before, exactly; nothing of ours
+	o.task_manager = false
+	testing.expect_value(t, install(o).error, Error.None)
+	debugger, expand, ok = reg_get_any(key, "Debugger")
+	testing.expect(t, ok && expand && debugger == before, "given back with its kind")
+	_, marked := reg_get(key, "SampleIntegration")
+	_, kept_ok := reg_get(key, "SampleIntegrationPrevious")
+	testing.expect(t, !marked && !kept_ok, "the marks gone")
+	testing.expect(t, !os.is_file(copy), "the machine copy gone")
+	testing.expect(t, !status(o, context.temp_allocator).parts[.Task_Manager].present, "the part is gone")
+
+	// none before: none after, and the key goes
+	testing.expect(t, reg_delete_value(key, "Debugger"))
+	o.task_manager = true
+	testing.expect_value(t, install(o).error, Error.None)
+	o.task_manager = false
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(key), "nothing of ours left in the key")
+
+	// another program takes Task Manager after ours: stale; removal leaves its Debugger, takes the marks and the copy
+	o.task_manager = true
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, reg_set(key, "Debugger", `"C:\Tools\systeminformer.exe"`))
+	ps = status(o, context.temp_allocator).parts[.Task_Manager]
+	testing.expect(t, ps.present && ps.stale, "another program's now")
+	testing.expect_value(t, remove(o).error, Error.None)
+	debugger, _ = reg_get(key, "Debugger")
+	testing.expect_value(t, debugger, `"C:\Tools\systeminformer.exe"`)
+	_, marked = reg_get(key, "SampleIntegration")
+	testing.expect(t, !marked && !os.is_file(copy), "the marks and the copy gone")
+}
+
+// This account's record (HKCU): On sets it, Off and removal take it. Another account's part (marks and Debugger in the
+// machine's key, no record here) stays at this account's Uninstall: nothing is asked, nothing is changed.
+@(test)
+windows_task_manager_of_another_account :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.image_options_root = fmt.tprintf("%s\\Image File Execution Options", s.root)
+	o.machine_dir = fmt.tprintf("%s\\Program Files\\Sample", s.dir)
+	key := fmt.tprintf("%s\\taskmgr.exe", o.image_options_root)
+	record := fmt.tprintf("%s\\GuiToolkitTest\\Sample", s.root)
+	copy := task_manager_copy(o)
+
+	o.task_manager = true
+	testing.expect_value(t, install(o).error, Error.None)
+	here, here_ok := reg_get(record, "TaskManagerSetHere")
+	testing.expect(t, here_ok && here == "1", "this account put it")
+	o.task_manager = false
+	testing.expect_value(t, install(o).error, Error.None)
+	_, here_ok = reg_get(record, "TaskManagerSetHere")
+	testing.expect(t, !here_ok, "taken with the part")
+
+	// another account's: written in the machine's key, no record of this one
+	testing.expect_value(t, task_manager_write(o, true).error, Error.None)
+	_, here_ok = reg_get(record, "TaskManagerSetHere")
+	testing.expect(t, !here_ok, "not this account's")
+	testing.expect_value(t, remove(o).error, Error.None)
+	debugger, _ := reg_get(key, "Debugger")
+	testing.expect_value(t, debugger, fmt.tprintf("\"%s\"", copy))
+	testing.expect(t, os.is_file(copy), "its machine copy stays")
+	testing.expect(t, status(o, context.temp_allocator).parts[.Task_Manager].present, "the part stays")
+
+	// the box unticked by a person of this account: an explicit request, whoever put the part
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !status(o, context.temp_allocator).parts[.Task_Manager].present, "given back")
+}
+
+// The machine copy is this very process's image, read through a handle that holds it (not the file at a path).
+@(test)
+windows_image_copy_self :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	dst := fmt.tprintf("%s\\Program Files\\Sample\\sample.exe", s.dir)
+	testing.expect_value(t, image_copy_self(dst).error, Error.None)
+	got, got_err := os.read_entire_file(dst, context.temp_allocator)
+	want, want_err := os.read_entire_file(process.executable_path(), context.temp_allocator)
+	testing.expect(t, got_err == nil && want_err == nil && len(got) > 0 && string(got) == string(want), "the bytes of the running program")
+	// again over the first: replaced, no file left beside it
+	testing.expect_value(t, image_copy_self(dst).error, Error.None)
+	testing.expect(t, !os.exists(fmt.tprintf("%s.new", dst)), "no .new left")
+}

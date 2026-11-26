@@ -1,7 +1,7 @@
 package tk_desktop
 
 // Windows: everything in the user's profile (the user's Start menu folder, HKEY_CURRENT_USER), nothing that needs
-// administrator rights.
+// administrator rights, but the Task_Manager part (task_manager_windows.odin), which an administrator allows.
 //
 //   Start menu          <Programs>\<name>.lnk  made with IShellLinkW + IPersistFile: the executable, its own icon,
 //                       and the AppUserModelID (IPropertyStore, PKEY_AppUserModel_ID) that the program's windows also
@@ -25,8 +25,14 @@ package tk_desktop
 //                         Directory\shell\<key>.open\command               (`"<exe>" "%1"`), and Directory\shell's
 //                                                                          default verb set to it (a folder's double click)
 //                         Drive\shell\<key>.open\command, Drive\shell      (the same for a drive, `%1` unquoted)
+//                         Directory\shell\open, Directory\shell\explore,   (the verbs that programs name: ShellExecute
+//                         Drive\shell\open, Drive\shell\explore             "open" or "explore"; ProgrammaticAccessOnly,
+//                                                                          DelegateExecute empty; one that another
+//                                                                          program made is left to it)
 //                       Removal puts back what the system had: the keys go, and a default verb that names ours.
 //   Documents           (open_documents) a ProgID per document type and the lists that name it (documents_windows.odin)
+//   Task manager        (task_manager) the Debugger of taskmgr.exe in HKLM, run from a copy in Program Files: an
+//                       administrator allows it (task_manager_windows.odin)
 //   Thumbnails          (thumbnails) the program's thumbnail provider, a COM DLL beside the executable, and the keys
 //                       that make Explorer ask it for the document types (thumbnail_provider_windows.odin)
 //
@@ -39,12 +45,13 @@ import "core:strings"
 import win "core:sys/windows"
 import "../process"
 import ascii "../ascii"
+import base "../base"
 
 @(private = "file")
 WINDOWS_BACKEND := Backend{
 	name = "windows",
 	// (no Default_Documents: Windows keeps the default in a UserChoice that only the shell may write)
-	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager, .Documents, .Thumbnails},
+	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager, .Documents, .Thumbnails, .Task_Manager},
 	status = windows_status,
 	install = windows_install,
 	remove = windows_remove,
@@ -85,6 +92,7 @@ Layout :: struct {
 	verb_name:    string,     // <key>.open
 	shells:       [2]string,  // Software\Classes\Directory\shell, Software\Classes\Drive\shell
 	verbs:        [2]string,  // <shell>\<key>.open
+	named:        [4]string,  // <shell>\open, <shell>\explore of each: the verbs a program names (2 * shell + verb)
 }
 
 // File Explorer's shell object: Win+E and the taskbar's File Explorer open a new window through its `opennewwindow` verb
@@ -114,6 +122,8 @@ layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
 	for kind, i in ([2]string{"Directory", "Drive"}) {
 		l.shells[i] = reg_join(root, "Classes", kind, "shell")
 		l.verbs[i] = reg_join(l.shells[i], l.verb_name)
+		l.named[2 * i] = reg_join(l.shells[i], "open")
+		l.named[2 * i + 1] = reg_join(l.shells[i], "explore")
 	}
 	return l, true
 }
@@ -200,6 +210,7 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 	s.parts[.File_Manager] = file_manager_status(o, l, allocator)
 	s.parts[.Documents] = documents_status(o, allocator)
 	s.parts[.Thumbnails] = thumbnails_status(o, allocator)
+	s.parts[.Task_Manager] = task_manager_status(o, allocator)
 	return s
 }
 
@@ -220,6 +231,15 @@ file_manager_status :: proc(o: ^Integration_Options, l: Layout, allocator: runti
 		any_mine ||= mine
 		all &&= mine && cmd_ok && ascii.equal_fold(default, l.verb_name)
 		if mine && cmd_ok && (target == "" || same_path(target, o.exe)) { target = command_program(cmd) }
+	}
+	// (a named verb that another program made is its own: the part neither takes it nor misses it)
+	for key in l.named {
+		if !reg_key_exists(key) { all = false; continue }
+		cmd, cmd_ok, mine := verb_status(o, key)
+		if !mine { continue }
+		any_mine = true
+		all &&= cmd_ok
+		if cmd_ok && (target == "" || same_path(target, o.exe)) { target = command_program(cmd) }
 	}
 	if !any_mine { return }
 	ps.present, ps.partial = true, !all
@@ -344,6 +364,9 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 	} else if _, found := reg_get(run_key(o), o.identity.key); found {
 		_ = reg_delete_value(run_key(o), o.identity.key)
 	}
+	// (last: the consent prompt, when one comes, comes once the person's own parts are in place; declined, the rest
+	// stays installed and the result says it)
+	machine := task_manager_apply(o, o.task_manager, removing = false)
 	if o.notify_system {
 		notify_associations()
 		if path_changed { broadcast_environment() }
@@ -351,7 +374,7 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 		// not for scratch roots, whose install shows no window)
 		if o.default_documents && opens_documents(o) && documents_default_elsewhere(o) { _ = documents_open_defaults(o) }
 	}
-	return {}
+	return machine
 }
 
 // Deletes a shortcut when it is the program's (its AppUserModelID or its executable); another file of that name stays.
@@ -488,6 +511,17 @@ write_file_manager :: proc(o: ^Integration_Options, l: Layout) -> Result {
 		if !reg_set(reg_join(verb, "command"), "", opens[i]) { return failed(verb) }
 		// the default verb: a double click on a folder or a drive opens it with the program
 		if !reg_set(l.shells[i], "", l.verb_name) { return failed(l.shells[i]) }
+		// the verbs a program names (ShellExecute "open", "explore"), which the shell would take from Folder (File
+		// Explorer): hidden from the context menu, where the program's own verb says its name
+		for k in 0 ..< 2 {
+			named := l.named[2 * i + k]
+			if reg_key_exists(named) {
+				if _, _, mine := verb_status(o, named); !mine { continue }
+			}
+			if !reg_set(named, id.registry_mark, identity_aumid(id)) || !reg_set(named, "ProgrammaticAccessOnly", "") { return failed(named) }
+			named_command := reg_join(named, "command")
+			if !reg_set(named_command, "", opens[i]) || !reg_set(named_command, "DelegateExecute", "") { return failed(named_command) }
+		}
 	}
 	return {}
 }
@@ -505,6 +539,11 @@ remove_file_manager :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	}
 	for i in 0 ..< len(l.verbs) {
 		if _, _, mine := verb_status(o, l.verbs[i]); mine && !reg_delete_tree(l.verbs[i]) && res.error == .None { res = failed(l.verbs[i]) }
+		for k in 0 ..< 2 {
+			named := l.named[2 * i + k]
+			if !reg_key_exists(named) { continue }
+			if _, _, mine := verb_status(o, named); mine && !reg_delete_tree(named) && res.error == .None { res = failed(named) }
+		}
 		if default, ok := reg_get(l.shells[i], ""); ok && ascii.equal_fold(default, l.verb_name) {
 			if !reg_delete_value(l.shells[i], "") && res.error == .None { res = failed(l.shells[i]) }
 		}
@@ -526,6 +565,9 @@ windows_remove :: proc(o: ^Integration_Options) -> Result {
 	if !ok { return {.System, "the Start menu folder is unknown"} }
 	com := com_enter()
 	defer com_leave(com)
+	// (first, and alone when it fails: no administrator allowed giving Task Manager back, or it failed, and the
+	// install stays whole, so that the person can try again; the Debugger never runs a copy whose install is gone)
+	if r := task_manager_apply(o, false, removing = true); r.error != .None { return r }
 	res: Result
 	if r := remove_shortcut(o, l.lnk); r.error != .None { res = r }
 	if l.desktop_lnk != "" {
@@ -593,6 +635,8 @@ link_key_status :: proc(o: ^Integration_Options, key: string) -> (command: strin
 
 @(private = "file")
 windows_open_defaults :: proc() -> bool {
+	// (ms-settings: is a protocol whose handler HKCU can override: the fodhelper bypass of UAC; base.restricted)
+	if base.restricted() { return false }
 	r := win.ShellExecuteW(nil, win.L("open"), win.L("ms-settings:defaultapps"), nil, nil, win.SW_SHOWNORMAL)
 	return uintptr(r) > 32
 }

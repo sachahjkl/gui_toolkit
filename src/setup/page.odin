@@ -88,6 +88,7 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				for i in 0 ..< min(len(o.choices), len(d.choices)) {
 					ui.next({width = ui.fill()})
 					ui.checkbox(fmt.tprintf("###setup_page_choice_%d", i), i18n.tr(o.choices[i].label), &d.choices[i], wrap = true)
+					if note := choice_note(o.choices[i]); note != "" { choice_note_line(fmt.tprintf("###setup_page_choice_note_%d", i), note, em) }
 				}
 			}
 			if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {

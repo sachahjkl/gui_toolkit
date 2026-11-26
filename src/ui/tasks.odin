@@ -13,6 +13,7 @@ import "base:runtime"
 import "core:strings"
 import "core:sync"
 import "core:time"
+import base "../base"
 import "../platform"
 import "../tasks"
 
@@ -155,6 +156,13 @@ task_end :: proc(t: ^Task, delivered: bool) {
 ////////////////////////////////
 // The system's programs and dialogs, from the interface's thread
 
+// Why a URL, a file, "Open with" or a shell menu's item opened nothing in a restricted process (base.restricted: an
+// administrator's, root's), in this system's words and the language in use.
+@(private)
+restricted_open_words :: proc() -> string {
+	return base.restricted_words(.Opens)
+}
+
 // What ui.open asks of the system.
 Open_Kind :: enum u8 {
 	Url,      // a web address, in the browser
@@ -165,6 +173,8 @@ Open_Kind :: enum u8 {
 // Opens `target` with the system's program, on the chores (a launch can wait on the disk, the shell, a D-Bus call):
 // nothing waits here. `target` is copied.
 open :: proc(target: string, kind := Open_Kind.Path) {
+	// (a restricted process opens nothing with the user's programs: the toast says why, not a click that does nothing)
+	if base.restricted() { toast_add(.Bad, nil, nil, restricted_open_words()); return }
 	Open :: struct { target: string, kind: Open_Kind }
 	o := new(Open, runtime.heap_allocator())
 	o^ = {strings.clone(target, runtime.heap_allocator()), kind}

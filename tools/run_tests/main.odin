@@ -138,6 +138,8 @@ STEPS := []Step{
 	{name = "turn", oses = EVERYWHERE},
 	{name = "angles", oses = EVERYWHERE},
 	{name = "unicode_case", oses = EVERYWHERE},
+	// (the process restricts itself for good, as an elevated program or a machine copy is: its package alone)
+	{name = "restricted", oses = EVERYWHERE, one = true},
 	{name = "i18n", oses = EVERYWHERE, one = true},   // (the language in use is one for the process)
 	{name = "ime", oses = EVERYWHERE},
 	{name = "instance", oses = EVERYWHERE},   // (the launch message's encoding is every system's)

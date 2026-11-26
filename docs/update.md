@@ -71,6 +71,7 @@ what a check finds is downloaded and put in place at once. The phases:
 | `Downloading` | the program is being downloaded (at most the manifest's size) and put in place (`place`) |
 | `Installed` | the new program is in place: it runs at the next start. The program restarts when it likes: `host.restart_after_exit`, then it quits, and `host.program_end` starts the new copy (in front, with the keyboard) |
 | `Managed` | the program runs from `/nix/store`: its package manager updates it, nothing is asked |
+| `Refused` | the process runs with more rights than its user's files (`base.restricted`: elevated): nothing is checked nor downloaded, and `place` returns `Refused` |
 
 `news(user)` is called on the updater's thread at each change, never after `updater_stop` returned: the program posts to its
 interface's thread and reads `status` there. `Status.serial` grows at each change, so a program says each result once;

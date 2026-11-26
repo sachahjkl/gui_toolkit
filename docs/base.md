@@ -18,3 +18,27 @@ are `#optional_ok`: a reader that checked the lengths takes the value alone, one
 count := base.read_be16(table, 2)                 // the lengths were checked before
 offset := base.read_be32(table, at) or_return     // the procedure gives up on a short table
 ```
+
+## Restricted processes
+
+A process with more rights than its user's files starts, opens, installs, updates and loads nothing that a user can
+write ([src/md/features/elevated-process.md](../src/md/features/elevated-process.md) says why and where).
+
+```odin
+base.restrict_if_elevated()                                     // host.program_start does it; a program's own first call may
+if base.restricted() { log.info(base.restricted_reason()) }    // elevated: an administrator, or root
+if !base.may_start(path) { ... }                                // process.start asks this itself
+```
+
+| | |
+|---|---|
+| `elevated() -> bool` | the token is an administrator's (Windows: TokenElevation, or an integrity high or more; Linux: root); read once; a failure counts as elevated |
+| `restrict(r)` | restricts the process for good (`.Elevated`; tests/restricted does it to itself); nothing lifts it |
+| `restrict_if_elevated()` | elevated (Windows: an administrator's token or a high integrity, fail closed; Linux: root), the process is restricted from then on. `host.program_start`, `setup.command_run` and `setup.task_manager_start` call it first; a command-line tool (tk, run_tests) does not, and runs what the person typed |
+| `restriction() -> Restriction`, `restricted() -> bool` | `.None` or `.Elevated` |
+| `restricted_words(w) -> string` | why, to the person, in this system's words (Windows: "as administrator"; Linux: "as root") and the language in use: `.Installs`, `.Opens`, `.Plugins`, `.Updates`, `.Update_Placed` |
+| `restricted_reason() -> string` | the same, in English, for a log or a test |
+| `trusted_program(path) -> bool` | a full path in an administrator's folder: a file directly in System32 or SysWOW64 (their subfolders are not: some are the users'), System32's `WindowsPowerShell\v1.0`, anything under Program Files and Program Files (x86), never a path with a stream (`:`); Linux: the Nix store, `/run/current-system/sw`, `/usr`, `/bin`, `/sbin`, `/lib`. Never a bare name |
+| `may_start(path) -> bool` | not restricted, or `trusted_program` |
+| `dll_search_restrict()` | Windows: a library loaded by name comes from the program's folder or System32 only (SetDefaultDllDirectories); `host.program_start` calls it first |
+| `GT_ELEVATED_UNRESTRICTED` | `#config`, on in test builds and in tk's builds with the devtools endpoint: `restrict_if_elevated` does nothing (CI runners are administrators or root); the toolbox's `build release` refuses it |

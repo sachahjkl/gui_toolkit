@@ -92,6 +92,8 @@ roots_come_from_the_environment :: proc(t: ^testing.T) {
 		case "SAMPLE_DESKTOP_BIN_DIR":      return "/scratch/bin"
 		case "SAMPLE_DESKTOP_REGISTRY_ROOT": return `Software\TkDesktopTest_1`
 		case "SAMPLE_DESKTOP_CONFIG_DIR":   return "/scratch/config"
+		case "SAMPLE_DESKTOP_IMAGE_OPTIONS_ROOT": return `Software\TkDesktopTest_1\Image File Execution Options`
+		case "SAMPLE_DESKTOP_MACHINE_DIR":  return "/scratch/machine"
 		case "WREN_DESKTOP_MENU_DIR":       return "/not/this/program's"
 		}
 		return ""
@@ -99,6 +101,8 @@ roots_come_from_the_environment :: proc(t: ^testing.T) {
 	testing.expect_value(t, o.bin_dir, "/scratch/bin")
 	testing.expect_value(t, o.config_dir, "/scratch/config")
 	testing.expect_value(t, o.registry_root, `Software\TkDesktopTest_1`)
+	testing.expect_value(t, o.image_options_root, `Software\TkDesktopTest_1\Image File Execution Options`)
+	testing.expect_value(t, o.machine_dir, "/scratch/machine")
 	testing.expect_value(t, o.menu_dir, "")
 	testing.expect(t, !o.notify_system, "a scratch root tells the system nothing")
 

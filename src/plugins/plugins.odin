@@ -15,6 +15,7 @@ import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:time"
+import base "../base"
 import config "../config"
 import i18n "../i18n"
 import plugin_api "../plugin_api"
@@ -246,7 +247,12 @@ host_build :: proc(h: ^Host, palette: ^ui.Command_Palette) {
 	context.allocator = runtime.heap_allocator()
 	if !h.read_once {
 		h.read_once = true
-		folder_read(h)
+		// (a plugin is a script of the user's folder: never run with an administrator's rights; base.restricted)
+		if base.restricted() {
+			say(h, .Warn, i18n.tr("Plugins are off"), base.restricted_words(.Plugins))
+		} else {
+			folder_read(h)
+		}
 	}
 	views_build(h)
 	grant_build(h)

@@ -37,12 +37,14 @@ pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc :
 
 open_url :: proc(url: string, loc := #caller_location) -> bool {
 	base.blocking("platform.open_url", loc)
+	if base.restricted() { return false }   // (root opens nothing of the user's: base.restricted)
 	// org.freedesktop.portal.OpenURI.OpenURI forbids file: URIs (local files require OpenFile with a file descriptor).
 	if !ascii.has_prefix_fold(url, "file:") && portal_open_uri(url) { return true }
 	return launch_detached({"xdg-open", url})
 }
 open_path :: proc(path: string, loc := #caller_location) -> bool {
 	base.blocking("platform.open_path", loc)
+	if base.restricted() { return false }
 	// org.freedesktop.portal.OpenURI.OpenURI forbids file: URIs, so calling it with call_noreply silently drops the open.
 	return launch_detached({"xdg-open", path})
 }
@@ -52,6 +54,7 @@ open_path :: proc(path: string, loc := #caller_location) -> bool {
 // parent), which every desktop handles. Selecting the item itself is the portal's job, noted for later.
 reveal_in_folder :: proc(path: string, loc := #caller_location) -> bool {
 	base.blocking("platform.reveal_in_folder", loc)
+	if base.restricted() { return false }
 	dir := path
 	if i := strings.last_index_byte(path, '/'); i > 0 { dir = path[:i] }
 	return launch_detached({"xdg-open", dir})
@@ -178,15 +181,32 @@ have_program :: proc(name: string) -> bool {
 // shell leaves no zombie.
 launch_detached :: proc(args: []string, loc := #caller_location) -> bool {
 	base.blocking("platform.launch_detached", loc)
-	SHELL_ARGS := [?]string{"sh", "-c", `"$@" >/dev/null 2>&1 </dev/null &`, "sh"}
+	if len(args) == 0 { return false }
+	program, ok := program_allowed(args[0])
+	if !ok { return false }
+	SHELL_ARGS := [?]string{base.restricted() ? "/bin/sh" : "sh", "-c", `"$@" >/dev/null 2>&1 </dev/null &`, "sh"}
 	argv := make([]cstring, len(SHELL_ARGS) + len(args) + 1, context.temp_allocator)
 	for a, i in SHELL_ARGS { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
-	for a, i in args { argv[len(SHELL_ARGS) + i] = strings.clone_to_cstring(a, context.temp_allocator) }
+	for a, i in args { argv[len(SHELL_ARGS) + i] = strings.clone_to_cstring(i == 0 ? program : a, context.temp_allocator) }
 	child: posix.pid_t
 	if posix.posix_spawnp(&child, argv[0], nil, nil, raw_data(argv), posix.environ) != .NONE { return false }
 	st: i32
 	posix.waitpid(child, &st, {})
 	return true
+}
+
+// The program to spawn for `name`. Restricted (base.restricted: root), a name is looked for only in the system's folders,
+// never on the PATH, which may be the user's (sudo -E, a root shell that kept it); a path must be trusted_program's.
+// Unrestricted: as given, for posix_spawnp.
+@(private)
+program_allowed :: proc(name: string) -> (program: string, ok: bool) {
+	if !base.restricted() { return name, true }
+	if strings.contains_rune(name, '/') { return name, base.trusted_program(name) }
+	for dir in ([]string{"/run/current-system/sw/bin/", "/usr/bin/", "/bin/"}) {
+		p := strings.concatenate({dir, name}, context.temp_allocator)
+		if posix.access(strings.clone_to_cstring(p, context.temp_allocator), {.X_OK}) == .OK { return p, true }
+	}
+	return "", false
 }
 
 // The posix_spawn file-action helpers core:sys/posix does not wrap. The actions object is opaque; a byte buffer large
@@ -208,11 +228,14 @@ foreign spawnlib {
 // child's fd 1 through posix_spawn file actions.
 @(private)
 run_capture :: proc(args: []string) -> (out: string, code: int) {
+	if len(args) == 0 { return "", 1 }
+	program, allowed := program_allowed(args[0])
+	if !allowed { return "", 1 }
 	fds: [2]posix.FD
 	if posix.pipe(&fds) != .OK { return "", 1 }
 	read_fd, write_fd := fds[0], fds[1]
 	argv := make([]cstring, len(args) + 1, context.temp_allocator)
-	for a, i in args { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
+	for a, i in args { argv[i] = strings.clone_to_cstring(i == 0 ? program : a, context.temp_allocator) }
 	fa: Spawn_File_Actions
 	posix_spawn_file_actions_init(&fa)
 	posix_spawn_file_actions_adddup2(&fa, i32(write_fd), i32(posix.STDOUT_FILENO))

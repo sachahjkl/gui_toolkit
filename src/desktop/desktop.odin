@@ -1,5 +1,6 @@
 // Package desktop (tk_desktop): the files that make a portable program part of the user's desktop, and the installed
-// copy of the program. Everything is in the user's own profile: never system-wide, never with administrator rights.
+// copy of the program. Everything is in the user's own profile, with one exception: the task manager's part (Windows),
+// which is the machine's and which an administrator allows at a person's request (task_manager_windows.odin).
 // docs/desktop.md says what a program gets and how it configures it.
 //
 // The package is the interface (`Identity`, `Integration_Options`, `Status`, `status`, `install`, `remove`, `uninstall`) and one
@@ -9,6 +10,7 @@
 //                                with a console launcher, and, for a browser, the registration as a candidate browser
 //                                (StartMenuInternet, RegisteredApplications, a ProgID) with the program's URL schemes,
 //                                the default file manager, and a ProgID per document type (documents_windows.odin)
+//     task_manager_windows.odin  the program in place of Task Manager: the Debugger of taskmgr.exe (HKLM, elevated)
 //     integration_linux.odin     the XDG .desktop file, the icons of the hicolor theme, a link in ~/.local/bin, the
 //                                defaults of mimeapps.list
 //     integration_darwin.odin    nothing that makes sense for an executable outside a bundle (documented stub)
@@ -23,6 +25,7 @@
 package tk_desktop
 
 import "base:runtime"
+import base "../base"
 import "core:os"
 import "core:strings"
 import "../ascii"
@@ -123,6 +126,10 @@ Integration_Options :: struct {
 	autostart:        bool,       // the program starts with the user's session
 	autostart_arguments: string,  // what it starts with then ("--hidden": in the notification area; "": nothing)
 	default_file_manager: bool,   // the program opens folders in place of the system's file manager (Windows: also Win+E)
+	task_manager:     bool,       // the program opens in place of the system's task manager (Part.Task_Manager, Windows: Ctrl+Shift+Esc)
+	// a person asked for this install or removal (setup's Install, Uninstall): a part that needs an administrator
+	// (admin_parts) may ask Windows for one. Off: such a part is left as it is, and nothing is asked
+	ask_administrator: bool,
 	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the one the build embedded, if any
 
 	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
@@ -138,6 +145,8 @@ Integration_Options :: struct {
 	autostart_dir:    string,     // Linux: $XDG_CONFIG_HOME/autostart
 	config_dir:       string,     // Linux: $XDG_CONFIG_HOME, where mimeapps.list names the default file manager
 	thumbnailers_dir: string,     // Linux: $XDG_DATA_HOME/thumbnailers, where the Thumbnails part puts its .thumbnailer
+	machine_dir:      string,     // Windows: the folder of the Task_Manager part's machine copy ("" = %ProgramFiles%\<vendor>\<name>)
+	image_options_root: string,   // Windows: a key under HKCU that stands for HKLM\...\Image File Execution Options (a test's; "" = that one)
 	icons:            []Icon,     // Linux: the PNGs to install (the program embeds them; Windows uses the executable's own icon)
 	notify_system:    bool,       // tell the system once done (SHChangeNotify, update-desktop-database); off for scratch roots
 }
@@ -154,6 +163,7 @@ Part :: enum u8 {
 	Documents,          // the program is in "Open with" of its document types (Linux: the entry's MimeType; Windows: a ProgID each)
 	Default_Documents,  // the program is the default of its document types (Linux: mimeapps.list; Windows has no such part)
 	Thumbnails,         // the file managers show its documents as thumbnails it draws (Linux: a .thumbnailer; Windows: its COM DLL)
+	Task_Manager,       // the program opens in place of the system's task manager (Windows: the Debugger of taskmgr.exe; Linux has none)
 }
 Parts :: bit_set[Part]
 
@@ -184,6 +194,9 @@ Error :: enum u8 {
 	Bad_Options,     // an identity field is empty or malformed
 	Io,              // a file could not be written or removed
 	System,          // the system refused (COM, registry)
+	Not_Allowed,     // no administrator allowed a change of the machine (the consent prompt was declined)
+	Machine,         // the change of the machine (Task_Manager) failed or could not be checked: nothing else was changed by it
+	Restricted,      // this process runs with more rights than its user's files (base.restricted): it installs nothing
 }
 
 Result :: struct {
@@ -199,6 +212,9 @@ error_text :: proc(e: Error) -> string {
 	case .Bad_Options:   return i18n.tr("invalid options")
 	case .Io:            return i18n.tr("a file could not be written or removed")
 	case .System:        return i18n.tr("the system refused")
+	case .Not_Allowed:   return i18n.tr("no administrator allowed the change")
+	case .Machine:       return i18n.tr("the change for every account failed")
+	case .Restricted:    return base.restricted_words(.Installs)
 	}
 	return ""
 }
@@ -261,6 +277,8 @@ options_clone :: proc(o: Integration_Options, allocator := context.allocator) ->
 	c.autostart_dir = clone_or_empty(o.autostart_dir, allocator)
 	c.config_dir = clone_or_empty(o.config_dir, allocator)
 	c.thumbnailers_dir = clone_or_empty(o.thumbnailers_dir, allocator)
+	c.machine_dir = clone_or_empty(o.machine_dir, allocator)
+	c.image_options_root = clone_or_empty(o.image_options_root, allocator)
 	types := make([]string, len(o.file_types), allocator)
 	for ft, i in o.file_types { types[i] = strings.clone(ft, allocator) }
 	c.file_types = types
@@ -272,6 +290,7 @@ options_destroy :: proc(o: ^Integration_Options, allocator := context.allocator)
 	delete(o.desktop_dir, allocator); delete(o.environment_root, allocator); delete(o.install_dir, allocator)
 	delete(o.applications_dir, allocator); delete(o.icons_dir, allocator); delete(o.bin_dir, allocator)
 	delete(o.autostart_dir, allocator); delete(o.config_dir, allocator); delete(o.thumbnailers_dir, allocator)
+	delete(o.machine_dir, allocator); delete(o.image_options_root, allocator)
 	for ft in o.file_types { delete(ft, allocator) }
 	delete(o.file_types, allocator)
 	o^ = {}
@@ -292,6 +311,7 @@ parts_wanted :: proc(b: ^Backend, o: ^Integration_Options) -> Parts {
 	if !o.add_to_path { w -= {.Path} }
 	if !o.autostart { w -= {.Autostart} }
 	if !o.default_file_manager { w -= {.File_Manager} }
+	if !o.task_manager { w -= {.Task_Manager} }
 	if !o.register_browser { w -= {.Registration} }
 	if !opens_documents(o) { w -= {.Documents} }
 	if !o.default_documents || len(o.document_types) == 0 { w -= {.Default_Documents} }
@@ -329,6 +349,7 @@ status :: proc(o: ^Integration_Options, allocator := context.allocator) -> Statu
 }
 
 install :: proc(o: ^Integration_Options) -> Result {
+	if base.restricted() { return {.Restricted, base.restricted_reason()} }
 	b := platform_backend()
 	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
 	if e := validate(o, need_exe = true); e.error != .None { return e }
@@ -336,6 +357,7 @@ install :: proc(o: ^Integration_Options) -> Result {
 }
 
 remove :: proc(o: ^Integration_Options) -> Result {
+	if base.restricted() { return {.Restricted, base.restricted_reason()} }
 	b := platform_backend()
 	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
 	if e := validate(o, need_exe = false); e.error != .None { return e }
@@ -365,6 +387,10 @@ targets :: proc(browser: bool) -> string {
 	if platform_backend() == nil { return "" }
 	return targets_words(browser)
 }
+
+// The parts of this platform that only an administrator can change (Windows: Task_Manager): a setup box of one says
+// that Windows will ask, and only a person's request (Integration_Options.ask_administrator) changes one.
+admin_parts :: proc() -> Parts { return supported_parts() & ADMIN_PARTS }
 
 // True when the system has a page where the user picks the default programs.
 has_default_apps_page :: proc() -> bool {
@@ -403,6 +429,8 @@ validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 	if len(launcher_bytes(o)) > 0 && launcher_mark_of(id) == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
 	if o.thumbnail_clsid != "" && !clsid_valid(o.thumbnail_clsid) { return {.Bad_Options, "thumbnail_clsid is a CLSID (\"{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\")"} }
 	if strings.contains_any(o.thumbnail_arguments, "\n\r\x00") { return {.Bad_Options, "thumbnail_arguments is one line"} }
+	// (a test's key of the images' options writes its machine copy in its own folder, never in Program Files)
+	if o.image_options_root != "" && o.machine_dir == "" { return {.Bad_Options, "image_options_root comes with machine_dir"} }
 	if o.exe == "" { o.exe = process.executable_path() }
 	if need_exe {
 		if o.exe == "" { return {.No_Executable, error_text(.No_Executable)} }

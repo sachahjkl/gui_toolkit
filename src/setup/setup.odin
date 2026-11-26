@@ -88,6 +88,7 @@ Facts :: struct {
 	version:    string,   // of the installed copy, from its manifest
 	nixos:      bool,     // the system is NixOS: a Nix package is the better install
 	from_nix:   bool,     // this copy runs from the Nix store: never offered an install
+	machine_copy: bool,   // this copy is a task manager's machine copy (Program Files): it never installs itself
 }
 
 // What the facts make of an install. No program but something of it left: to repair, or to remove. A copy of the Nix store
@@ -159,6 +160,7 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) 
 	}
 	f.nixos = desktop.is_nixos()
 	f.from_nix = desktop.in_nix_store(f.running)
+	f.machine_copy = is_machine_copy(&integration, f.running)
 	f.state = state_of(f)
 	return
 }
@@ -167,7 +169,9 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) 
 // and the system's record. The installed program (temp memory), or why not.
 // `choices`: the program's options (nil: their first values); `folder`: another install folder than the default ("").
 install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil, folder := "") -> (ok: bool, exe_or_why: string) {
+	if base.restricted() { return false, restricted_words() }
 	integration, _ := options(o, choices)
+	if is_machine_copy(&integration, process.executable_path()) { return false, machine_copy_words() }
 	if folder != "" {
 		if why := desktop.check_install_dir(folder, o.identity.name, probe = true); why != "" { return false, why }
 		integration.install_dir = folder
@@ -181,8 +185,15 @@ install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil,
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
 	integration.exe = join({integration.install_dir, exe_name})
 	integration.desktop_shortcut = desktop_shortcut
-	if r := desktop.install(&integration); r.error != .None { return false, failure(r) }
-	if r := desktop.record_install(&integration, integration.install_dir, o.version); r.error != .None { return false, failure(r) }
+	integration.ask_administrator = true   // (a person asked: a part of the machine's may ask Windows for an administrator)
+	r := desktop.install(&integration)
+	// (the change for every account failed, or no administrator allowed it: it comes last, so the rest is in place; it
+	// is recorded, and the result says what is not)
+	machine := r.error == .Not_Allowed || r.error == .Machine
+	if r.error != .None && !machine { return false, failure(r) }
+	if rr := desktop.record_install(&integration, integration.install_dir, o.version); rr.error != .None { return false, failure(rr) }
+	if r.error == .Not_Allowed { return false, i18n.tr("Installed, but Task Manager was not changed: no administrator allowed it.") }
+	if machine { return false, fmt.tprintf(i18n.tr("Installed, but Task Manager was not changed: %s"), failure(r)) }
 	return true, integration.exe
 }
 
@@ -190,6 +201,7 @@ install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil,
 // system's record (Settings > Apps) say `version`. Nothing to do for `exe` when it is not the installed copy. why: "" when
 // done (temp memory).
 updated :: proc(o: Setup_Options, version: string, exe := "") -> (ok: bool, why: string) {
+	if base.restricted() { return false, restricted_words() }
 	running := exe != "" ? exe : process.executable_path()
 	integration, _ := options(o)
 	info := desktop.installed_info(&integration, integration.install_dir, context.temp_allocator)
@@ -209,15 +221,25 @@ updated :: proc(o: Setup_Options, version: string, exe := "") -> (ok: bool, why:
 // runs (Windows: they cannot be deleted while it runs) are in `leftovers` (heap, the caller's): remove_later deletes them
 // once this process has ended.
 uninstall :: proc(o: Setup_Options, choices: []bool = nil) -> (ok: bool, leftovers: [dynamic]string, why: string) {
+	if base.restricted() { return false, nil, restricted_words() }
 	integration, _ := options(o, choices)   // (the program's parts are taken away too)
 	integration.exe = join({integration.install_dir, desktop.exe_name_of(integration.identity)})
+	integration.ask_administrator = true   // (a person asked: a part of the machine's is given back too)
 	ur := desktop.uninstall(&integration, process.executable_path(), context.temp_allocator)
 	if len(ur.leftovers) > 0 {
 		leftovers = make([dynamic]string)
 		for l in ur.leftovers { append(&leftovers, strings.clone(l)) }
 		append(&leftovers, strings.clone(join({ur.folder, integration.identity.manifest_name})))   // (it stays while they are there)
 	}
-	if ur.result.error != .None { return false, leftovers, failure(ur.result) }
+	#partial switch ur.result.error {
+	case .None:
+	case .Not_Allowed:
+		return false, leftovers, i18n.tr("Nothing was uninstalled: giving Task Manager back needs an administrator, and none allowed it. Task Manager still opens the program. Uninstall again to be asked again.")
+	case .Machine:
+		return false, leftovers, fmt.tprintf(i18n.tr("Nothing was uninstalled: Task Manager could not be given back (%s). Task Manager still opens the program."), failure(ur.result))
+	case:
+		return false, leftovers, failure(ur.result)
+	}
 	return true, leftovers, ""
 }
 
@@ -300,10 +322,28 @@ choice_dismissed :: proc(version: string, allocator := context.temp_allocator) -
 // Whether a start opens the dialog: an older install to upgrade (unless closed for this version); no install, or one to
 // repair, unless the user said "standalone" (or closed it for this version). Never a copy of the Nix store.
 wanted :: proc(f: Facts, version, choice: string) -> bool {
+	if base.restricted() { return false }   // (an administrator's process installs nothing: never offered)
+	if f.machine_copy { return false }      // (the copy of every account: machine_copy_words)
 	if f.from_nix || f.state == .Nix_Package { return false }
 	if choice == choice_dismissed(version) { return false }
 	if is_upgrade(f, version) { return true }
 	return choice != CHOICE_STANDALONE && (f.state == .Not_Installed || f.state == .Repair)
+}
+
+// Why a restricted process (base.restricted: elevated) neither installs nor updates, in this system's words and the
+// language in use: what the page, the dialog and the command line say.
+restricted_words :: proc() -> string { return base.restricted_words(.Installs) }
+
+// Why the task manager's machine copy does not install itself into the account that runs it: it is the copy of every
+// account (a person with an install got theirs from the hand-off; one without installs from the download).
+machine_copy_words :: proc() -> string {
+	return i18n.tr("This copy serves every account: it does not install itself. Install the program from its download.")
+}
+
+// This program is the task manager's machine copy (desktop.task_manager_copy): never installed into a user's folder.
+is_machine_copy :: proc(integration: ^desktop.Integration_Options, running: string) -> bool {
+	copy := desktop.task_manager_copy(integration)
+	return copy != "" && desktop.same_path(copy, running)
 }
 
 @(private)
