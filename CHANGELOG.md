@@ -5,6 +5,24 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.361.0] - 2026-11-26 20:10
+
+### Added
+- **An install for everyone**: the install dialog and the Installation page offer "Only me" or "Everyone on this computer",
+each with what it means on this system. For everyone, the program goes to Program Files (Windows) or `/opt` (Linux), its
+menu entry, PATH and record are every account's, and an administrator allows it in one prompt (`runas`, `pkexec`).
+Each account keeps its own desktop shortcut and start with the session. Choosing the other scope moves the install.
+On NixOS the choice says that the Nix package is the install for everyone. `Setup_Options.scopes` lets a program stay
+per person; `Facts.scope`, `Facts.other_scope`, `Facts.system_refusal` and `desktop.Scope` say the state. The
+updater of a copy that its account cannot write is `Administered`: it downloads nothing and says that an administrator
+updates it. On Windows, Uninstall of an install for everyone says that the program goes at the next restart.
+
+### Changed
+- **Task Manager needs an install for everyone**: the Debugger of taskmgr.exe now runs the program installed in Program
+Files, and the box "in place of Task Manager" is off under "Only me", with the reason. The machine copy beside a user
+install, its hand-off, `Facts.machine_copy` and `--task-manager on|off` are gone; the elevated verb is
+`--system install|uninstall`. `setup.task_manager_start(args)` now returns the arguments alone.
+
 ## [0.360.1] - 2026-11-26 16:07
 
 ### Fixed
@@ -5051,6 +5069,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.361.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.361.0
 [0.360.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.1
 [0.360.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.0
 [0.359.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.359.0
