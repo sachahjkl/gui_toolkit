@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.362.0] - 2026-11-26 21:57
+
+### Added
+- **`ui.badge_dot`**: a dot on a button's corner, a state with no count. `.Pulse` makes it breathe at 20 steps a second, not a frame per refresh, and it is still when the animations are off.
+- **A tool bar's tool says more in the bar**: `Toolbar_Tool.bar_label` gives the bar shorter words ("high") while the menu row, the tooltip and a screen reader keep `label` ("Thinking: high"); `lit` shows its face while a picker it opened is open, and a screen reader hears it expanded; `icon_intent` colours its glyph in an intent's hue (a mode it shows); `badge` puts a count on its corner and `dot` a still or pulsing dot, in `badge_intent`'s hue; a screen reader hears the count after the tool's description.
+- **`Toolbar_Group_Options.end`**: a group at the end of a tool bar that folds. It stands before the "…" button and the pinned groups (a terminal and a stop beside Send); `.Fold` folds it into the "…" menu by its priority, `.Wrap` keeps it at the end of the last line.
+- **A window's taskbar button** (`platform.taskbar_progress`, `taskbar_badge`, `taskbar_attention`, `ui.taskbar_badge`): a program shows a progress, a count and a request for attention on its button. On Windows the progress has its five states, the count is a disc in the theme's accent with its words read by a screen reader, and the button flashes; the button gets the state again after Explorer restarts. On Linux, KDE Plasma, Dash to Dock, Plank and ShojiWM's task bar show the count, the progress and the urgency; X11 window managers and KWin, Mutter and sway on Wayland mark the window; no other Wayland compositor is asked, as one could give the window the focus. Each call does nothing when nothing changed. Offscreen windows send nothing, so a program's tests do not show a count in the developer's dock.
+
+### Changed
+- **A tool bar's tools in words have no face at rest**: `ui.toolbar_tool` with `words` shows its face only under the pointer, pressed, focused or lit, as a glyph tool does, so a bar reads as one surface instead of a box per word. The bar's main act, words of intent `.Primary` (Done, Send), stays raised. `Toolbar_Tool.face` chooses `.Ghost`, `.Raised` or `.Link` for one tool.
+
+### Fixed
+- **`ui.badge` on a button in words sits on its corner**: a floating box sized as a share of a box sized by its children (a badge over a button in words) is now that share of the box, not of a distant ancestor. The count stood far to the right of the button, and the layout printed a warning.
+
 ## [0.361.0] - 2026-11-26 20:10
 
 ### Added
@@ -5069,6 +5083,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.362.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.362.0
 [0.361.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.361.0
 [0.360.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.1
 [0.360.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.0
