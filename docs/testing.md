@@ -8,6 +8,17 @@ builds an interface, the failure hooks, and on Linux the native text library. A 
 A new package is a line of the list in
 `tools/run_tests/main.odin`, with its group for the WebGPU backend.
 
+## A test never reaches the person (Linux)
+
+Every test process isolates its own environment before its main, whatever started it (`base.isolated_env`): `DISPLAY`
+and `WAYLAND_DISPLAY` go, the session bus is one where nothing answers, Vulkan's drivers are lavapipe's alone with the
+implicit layers off, EGL's vendor is Mesa's, VA-API finds no driver. A test that needs a display starts its own server
+and names it in `GT_TEST_DISPLAY` (X11's `DISPLAY`, or the Wayland socket's path): `tk desktop_tests` and
+`toolbox.sway_start` do. One that needs a bus starts a `dbus-daemon` and sets `DBUS_SESSION_BUS_ADDRESS` itself, or names
+it in `GT_TEST_BUS` for its children. A test of a machine without a driver keeps what it names (files that do not exist).
+The programs that the tools start (program sessions, `tk` screenshots, the timeline test) get the same environment. Why:
+[src/md/infrastructure/test-isolation.md](../src/md/infrastructure/test-isolation.md).
+
 ## A test of an interface
 
 A test is an `@(test)` procedure on Odin's own test runner, and it calls the toolkit directly (`src/testkit/session`, `toolkit:testkit/session` from an application):

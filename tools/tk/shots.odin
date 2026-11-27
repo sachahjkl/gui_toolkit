@@ -22,6 +22,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:time"
+import base "../../src/base"
 import cdp "../../src/cdp"
 import toolbox "../../src/toolbox"
 
@@ -179,8 +180,9 @@ start_program :: proc(command: []string, extra_env: []string, dir := "", stderr:
 	}
 	append(&env, fmt.tprintf("TOOLKIT_DEVTOOLS=%d", port))
 	append(&env, ..extra_env)
+	// (a picture never takes the person's desktop, bus nor graphics card: base.isolated_env)
 	err: os.Error
-	p, err = os.process_start({command = command, env = env[:], working_dir = dir, stderr = stderr})
+	p, err = os.process_start({command = command, env = base.isolated_env(env[:]), working_dir = dir, stderr = stderr})
 	if err != nil { return p, c, fmt.tprintf("%s does not start: %v", command[0], err) }
 	connected: bool
 	ended: os.Process_State

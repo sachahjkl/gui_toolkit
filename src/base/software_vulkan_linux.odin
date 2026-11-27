@@ -1,4 +1,4 @@
-package tk_toolbox
+package gt_base
 
 import "core:fmt"
 import "core:os"

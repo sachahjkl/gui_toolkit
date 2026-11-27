@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:time"
+import base "../../src/base"
 import toolbox "../../src/toolbox"
 
 // desktop_tests [x11|randr|wayland]: the Linux backends against real servers, on a virtual desktop nobody sees (tests/linux_desktop):
@@ -167,6 +168,7 @@ run_desktop_tests :: proc(args: []string) -> string {
 		// X11: a server with RandR and XFIXES, a window manager (frames, minimize, _NET_WM_STATE)
 		env_unset(&d, "WAYLAND_DISPLAY")
 		env_set(&d, "DISPLAY", ":97")
+		env_set(&d, base.ISOLATION_DISPLAY_ENV, ":97")   // (this command's own server: a test process keeps it, base.isolated_env)
 		ok := start(&d, "xvfb.log", "Xvfb", ":97", "-screen", "0", "1280x1024x24", "+extension", "RANDR", "+extension", "XFIXES", "-nolisten", "tcp")
 		ok = ok && until(&d, 50, "xprop", "-root")
 		ok = ok && start(&d, "openbox.log", "openbox")
@@ -183,6 +185,7 @@ run_desktop_tests :: proc(args: []string) -> string {
 		// RandR: Xvfb's only mode has no timing. Xorg's dummy driver has outputs and modelines: two monitors, 60 and 144 Hz
 		env_unset(&d, "WAYLAND_DISPLAY")
 		env_set(&d, "DISPLAY", ":96")
+		env_set(&d, base.ISOLATION_DISPLAY_ENV, ":96")
 		conf := join({d.out, "xorg.conf"})
 		if os.write_entire_file(conf, XORG_DUMMY_CONF) != nil { return "xorg.conf cannot be written" }
 		xorg := os.get_env("XORG", context.temp_allocator)
@@ -216,6 +219,7 @@ run_desktop_tests :: proc(args: []string) -> string {
 		env_set(&d, "XDG_RUNTIME_DIR", sway.runtime)
 		env_set(&d, "WAYLAND_DISPLAY", sway.display)
 		env_set(&d, "SWAYSOCK", sway.ipc)
+		env_set(&d, base.ISOLATION_DISPLAY_ENV, fmt.tprintf("%s/%s", sway.runtime, sway.display))
 		// the seat's devices: a pointer the tests move with swaymsg, a keyboard (wtype sleeping); a device stays while its client
 		// does (a test takes the pointer away and makes it again: the file says which one to stop)
 		pid_file := join({d.out, "pointer.pid"})

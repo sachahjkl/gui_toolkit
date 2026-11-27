@@ -1,7 +1,7 @@
-package tk_toolbox
+package gt_base
 
-// Vulkan on the CPU for a program a tool starts: Mesa's lavapipe, never the machine's GPU. A test's picture is the same
-// on every machine, and a test never takes a person's graphics card (program_session_start).
+// Vulkan on the CPU for a test and for a program a tool starts: Mesa's lavapipe, never the machine's GPU (isolated_env).
+// A test's picture is the same on every machine, and a test never takes a person's graphics card.
 
 import "core:os"
 import "core:strings"

@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:time"
+import base "../base"
 import tk_process "../process"
 
 // Starts sway in `dir` (made anew) and waits, at most `o.wait`, until it answers on its socket. why: "" when it runs;
@@ -63,10 +64,12 @@ sway_start :: proc(s: ^Sway, dir: string, o := Sway_Options{}) -> (why: string) 
 
 	extra := make([dynamic]string, context.temp_allocator)
 	append(&extra, fmt.tprintf("XDG_RUNTIME_DIR=%s", s.runtime), fmt.tprintf("WAYLAND_DISPLAY=%s", s.display), fmt.tprintf("SWAYSOCK=%s", s.ipc))
+	// (the session's own server: an isolated program keeps this display, base.isolated_env)
+	append(&extra, fmt.tprintf("%s=%s/%s", base.ISOLATION_DISPLAY_ENV, s.runtime, s.display))
 	if o.homes {
 		// (HOME is the session's folder: what a program puts under it, an install in ~/.local/opt, stays there, not in
 		// the person's home; and the folders above are under it, so a path a program shows reads "~/config/...", with
-		// no path of the machine in a picture. The session bus stays the person's through DBUS_SESSION_BUS_ADDRESS)
+		// no path of the machine in a picture)
 		append(&extra, fmt.tprintf("HOME=%s", s.dir), fmt.tprintf("XDG_CONFIG_HOME=%s/config", s.dir), fmt.tprintf("XDG_DATA_HOME=%s/data", s.dir), fmt.tprintf("XDG_STATE_HOME=%s/state", s.dir))
 	}
 	if o.cache { append(&extra, fmt.tprintf("XDG_CACHE_HOME=%s/cache", s.dir)) }
