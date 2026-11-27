@@ -498,9 +498,10 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	sr := dock_strip_rect(d, leaf)
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
 	bar: ^Box
-	if tags("bar") { bar = build_box({.Clip, .Draw_Background}, dock_leaf_id(leaf)) }
-	// (its bottom edge a line, the stack's top border, out of which the shown tab rises: tab_box)
-	bar.custom = tab_line_draw
+	// (a bar, never a key: its ground flat, its bottom edge a line, the stack's top border, out of which the shown tab
+	// rises: tab_strip_draw)
+	if tags("bar") { bar = build_box({.Clip, .Draw_Background, .Custom_Ground}, dock_leaf_id(leaf)) }
+	bar.custom = tab_strip_draw
 	if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
 		focus, _ := dock_focus_leaf(d)
 		sd := frame_new(Dock_Strip_Draw)
@@ -516,6 +517,7 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 		// (.Fits_Width: its tabs scroll in it, its least is not theirs, or a narrow stack would push its buttons out)
 		if parent(build_box({.Clip, .Fits_Width}, DOCK_TABS_ID)) {
 			if strip(DOCK_TAB_STRIP_ID) {
+				tab_strip_start()
 				for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
 			}
 			// the rest: a floating panel's title (moved by it, docked back by a double click)
@@ -627,9 +629,9 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	a11y_set(tb, info)
 }
 
-// Where a tab's words start from its left edge, in the size in use: a panel whose content starts there (its first column
-// of text) lines up with its tab, the first tab standing at the stack's edge.
-dock_content_inset :: proc() -> f32 { return math.round(DOCK_TAB_PAD_EM * font_size()) }
+// Where the first tab's words start from the stack's left edge, in the size in use: the room before the first tab (its
+// left foot's) and the tab's own pad. A panel whose content starts there (its first column of text) lines up with it.
+dock_content_inset :: proc() -> f32 { return tab_strip_inset() + math.round(DOCK_TAB_PAD_EM * font_size()) }
 
 // (in the build: done by dock_end)
 @(private)

@@ -913,14 +913,21 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list: []^View_Record, shown: ^View_Record, maxed: bool, minimise := true) {
 	em := font_size()
 	minimised := view_zone_collapsed(sp, e) && !maxed
+	// the strip is a bar, never a button: its ground and its line (out of which the shown tab rises: tab_box) on a box
+	// that takes no press; inside it, a box with no face of its own takes the presses on the strip's free part (a double
+	// click maximises the stack or restores it, as a window's title bar does; a right click opens the shown view's menu;
+	// its tabs and buttons take their own). A clickable box with the bar's face was drawn as a key in a finish with a
+	// relief: the bar's sheen raised the whole strip (Tower's bottom terminal, 0.366).
 	next({width = fill(), height = px(math.round(DOCK_TAB_EM * em)), axis = .X, cross = .Center})
-	bar: ^Box
-	// (clickable: a double click on its free part maximises the stack or restores it, as a window's title bar does; a
-	// right click there opens the shown view's menu. Its tabs and buttons take their own clicks)
-	if tags("bar") { bar = build_box({.Draw_Background, .Clickable}, "###view_tabs") }
-	bar.custom = tab_line_draw   // (its bottom edge a line, out of which the shown tab rises: tab_box)
+	ground: ^Box
+	if tags("bar") { ground = build_box({.Draw_Background, .Custom_Ground}, "###view_strip") }
+	ground.custom = tab_strip_draw
+	push_parent(ground)
+	next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+	bar := build_box({.Clickable}, "###view_tabs")
 	push_parent(bar)
 	defer {
+		pop_parent()
 		pop_parent()
 		bs := signal(bar)
 		if bs.double_clicked { view_stack_maximise(vs, sp, e, k, !maxed) }
@@ -929,6 +936,7 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 	// the tabs, as every row of tabs of the toolkit (tab_box), on a strip: too many for the stack, they scroll with arrows
 	if strip("###view_tab_strip") {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
+		tab_strip_start()
 		for r in list {
 			on := r == shown
 			title := text_shown(view_title_shown(r))

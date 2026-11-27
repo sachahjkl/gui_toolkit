@@ -2,8 +2,7 @@ package scenarios_test
 
 // The look of a row of tabs (src/md/features/tabs.md) at 100, 125 and 150 %, `ui.tabs` in a program's row wider than its
 // tabs (fidget's, the debug window's): the line along the row's bottom lies on whole pixels (no blurred row above it),
-// and the chosen last tab, which is not at the row's end, has a foot on each side (mirror images); a straight side is for
-// the end of the row's line only.
+// and the chosen last tab has a foot on each side (mirror images), the line curving up into it.
 
 import "core:fmt"
 import "core:math"
@@ -51,11 +50,14 @@ the_line_is_sharp_and_a_tab_inside_the_row_has_both_feet :: proc(t: ^testing.T) 
 		for y in bottom - p ..< bottom {
 			testing.expectf(t, session.near(session.pixel(img, x, y), line, 4), "at %v: the line's row %d is %v, the border %v", scale, y, session.pixel(img, x, y), line)
 		}
-		// every column of the line is the border's but under the chosen tab (no outline's end on it, nothing under it)
+		// every column of the line is the border's but under the chosen tab and its feet, where the line curves up into it
+		// (no outline's end on it, nothing under it)
 		page := rgba(ui.palette_of("Midnight").bg)
+		// (the foot's reach: the control radius at the session's text size and scale, a pixel's slack)
+		foot := int(math.round(f32(session.BASE_FONT_SIZE) * scale * ui.SHAPE_DEFAULT[.Control])) + p
 		spill, under := 0, 0
 		for c in 0 ..< int(row.rect.max.x) {
-			if c >= int(last.rect.min.x) && c < int(last.rect.max.x) { continue }
+			if c >= int(last.rect.min.x) - foot && c < int(last.rect.max.x) + foot { continue }
 			for y in bottom - p ..< bottom { if !session.near(session.pixel(img, c, y), line, 4) { spill += 1 } }
 			if !session.near(session.pixel(img, c, bottom), page, 4) { under += 1 }
 		}

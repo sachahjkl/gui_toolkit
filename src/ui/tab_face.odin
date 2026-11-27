@@ -13,11 +13,14 @@ import "../draw"
 
 // Above the chosen tab, a share of the strip's height (the strip's own ground shows there).
 @(private = "file") TAB_TOP_SHARE :: 0.16
+// The line's straight run between a pane's edge and the first tab's left foot (logical px).
+@(private = "file") TAB_LINE_LEAD_PX :: 3
 // A foot's fillet, a share of the tab's top radius.
 @(private = "file") TAB_FOOT_SHARE :: 0.8
 // An unchosen tab's outline: the border's alpha, and how much lower its top is than the chosen tab's (logical px).
 @(private = "file") TAB_SOFT_EDGE_ALPHA :: 0.45
 @(private = "file") TAB_SOFT_DROP_PX :: 2
+@(private = "file") TAB_SOFT_FOOT_SHARE :: 0.5   // an unchosen tab's fillets, a share of the chosen tab's
 @(private = "file") TAB_SOFT_GAP_PX :: 1   // between an unchosen tab's outline and a chosen tab's foot (logical px)
 // The finish's light at the chosen tab's top: its face a step toward white at the top, its rim (machined, edged).
 @(private = "file") TAB_TOP_LIGHTEN :: 0.05
@@ -32,10 +35,20 @@ tab_radius :: proc() -> f32 { return math.round(font_size() * shape_of(.Control)
 // .Draw_Side_Bottom: a box's sides are drawn after its children, and the chosen tab must cover the line under it.
 tab_line_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	p := px1()
-	draw.rect(dc, {{b.rect.min.x, b.rect.max.y - p}, b.rect.max}, b.border)
+	bottom := math.round(b.rect.max.y)   // (on whole pixels, as tab_draw puts its own stroke of the line)
+	draw.rect(dc, {{b.rect.min.x, bottom - p}, {b.rect.max.x, bottom}}, b.border)
 }
 
-// What a chosen tab's foot reaches beyond its box on each side (none at the strip's ends: there its side is straight).
+// A strip of tabs' ground and line, as the custom draw of the box its tabs stand in (with .Draw_Background and
+// .Custom_Ground: its background is the ground the boxes in it stand on, painted here): the bar's colour, flat, then the
+// line. A strip is a bar, never a key: the bar's face in a finish with a relief has a lit rim, which framed the strip as
+// a button (Tower's bottom terminal).
+tab_strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	draw.rect(dc, b.rect, b.bg)
+	tab_line_draw(b, user, dc)
+}
+
+// What a chosen tab's foot reaches beyond its box on each side.
 @(private)
 tab_foot :: proc() -> f32 { return math.round(font_size() * shape_of(.Control) * TAB_FOOT_SHARE) }
 
@@ -89,6 +102,15 @@ tab_ring :: proc(b: ^Box) -> (ring: Rect, radii: [4]f32) {
 @(private = "file")
 tab_top :: proc(r: Rect) -> f32 { return math.round(r.min.y + (r.max.y - r.min.y) * TAB_TOP_SHARE) }
 
+// Draws a tab. Every coordinate of a stroke sits on its pixel centre (snap: a half pixel for a 1 px stroke, a whole one for
+// 2 px), so the line stays crisp and the arcs, whose radii are whole pixels, land on it.
+//
+// The chosen tab: the line and its outline are one path, stroked once, from the strip's left end along the line, up the
+// left fillet (tangent to the line, then to the side), over the top, down the right fillet and along the line to the
+// strip's right end; round joins inside, no cap at a foot (the ends are cut by the strip's clip). Its fill is the same
+// shape closed along the line's bottom edge, drawn before the stroke: it covers the line under the tab and nothing below.
+// An unchosen tab: its outline ends tangent on the line through small fillets, cut at the line's top edge: it flows into
+// the line and never draws on it (the line is the strip's colour, the outline a fainter one).
 @(private)
 tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	td := (^Tab_Draw)(user)
@@ -96,28 +118,25 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	p := px1()
 	r := b.rect
 	rad := min(td.radius, (r.max.y - r.min.y) / 3)
-	line := r.max.y - p * 0.5   // the middle of the strip's line
-	top := tab_top(r) + p * 0.5
-	edge := color_from_tags(s, b.tags_key, "border")
-	// (a tab at an end of its strip: no foot on that side, its side straight down the strip's end, in line with its panel's
-	// edge: the first tab starts at the edge, no room is lost before it)
-	first, last := tab_at_ends(b, p)
-	// (everything of the shape stops at the line's top edge: a stroke's round end at the line's middle spilled into the
-	// line and under it; the line is the strip's, only the chosen tab's own width covers it, below)
-	reach := td.foot + 2 * p
-	draw.push_clip(dc, {{r.min.x - reach, r.min.y}, {r.max.x + reach, r.max.y - p}})
-	defer draw.pop_clip(dc)
+	strip := tab_line_rect(b, td.foot + 2 * p)
+	bottom := math.round(strip.max.y)   // the line's bottom edge
+	line := bottom - p * 0.5            // the line's middle: its stroke's centre
+	top := tab_snap(tab_top(r) + p * 0.5, p)
+	edge := face_over(color_from_tags(s, b.tags_key, "border"), box_under(b), s.space)
 	if td.on {
 		foot := min(td.foot, rad)
-		left, right := first ? 0 : foot, last ? 0 : foot
-		outline := tab_outline(r.min.x, r.max.x, top, line, rad, left, right)
-		// the face: the page, joined to the panel (down past the strip's line, which it covers), the finish's light at its top
+		xl, xr := tab_snap(r.min.x + p * 0.5, p), tab_snap(r.max.x - p * 0.5, p)
+		shape := tab_shape(xl, xr, top, line, rad, foot)
+		draw.push_clip(dc, {{strip.min.x, r.min.y}, {strip.max.x, bottom}})
+		defer draw.pop_clip(dc)
+		// the face: the page, joined to the panel, the finish's light at its top
 		face := color_from_tags(s, b.tags_key, "background")
 		face.a = 1
 		fill := draw.path_make(allocator = context.temp_allocator)
-		draw.path_move_to(&fill, {r.min.x - left, r.max.y})
-		for q in outline.points { draw.path_line_to(&fill, q) }
-		draw.path_line_to(&fill, {r.max.x + right, r.max.y})
+		draw.path_move_to(&fill, shape.points[0])
+		for q in shape.points[1:] { draw.path_line_to(&fill, q) }
+		draw.path_line_to(&fill, {xr + foot, bottom})
+		draw.path_line_to(&fill, {xl - foot, bottom})
 		draw.path_close(&fill)
 		lit := s.theme != nil && s.theme.relief.sheen
 		if lit {
@@ -128,71 +147,81 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		} else {
 			draw.path_fill(dc, &fill, face)
 		}
-		// under the tab itself (not its feet) the line goes: the tab and its panel are one shape
-		draw.pop_clip(dc)
-		draw.rect(dc, {{r.min.x, r.max.y - p}, r.max}, face)
-		draw.push_clip(dc, {{r.min.x - reach, r.min.y}, {r.max.x + reach, r.max.y - p}})
-		// the finish's rim along the inside of its top (machined, edged): the light a raised face catches. Every stroke here
-		// is opaque, mixed over what it lies on: a translucent path_stroke draws through a layer of its own, a render target
-		// a tab and a frame
+		// the finish's rim along the inside of its top (machined, edged): the light a raised face catches. (Every stroke here
+		// is opaque, mixed over what it lies on: a translucent path_stroke draws through a layer of its own.)
 		if machined() && rad > p {
 			rim := draw.path_make(allocator = context.temp_allocator)
-			draw.path_arc(&rim, {r.min.x + rad, top + rad}, {rad - p, rad - p}, 0.5, 0.75)
-			draw.path_arc(&rim, {r.max.x - rad, top + rad}, {rad - p, rad - p}, 0.75, 1)
+			draw.path_arc(&rim, {xl + rad, top + rad}, {rad - p, rad - p}, 0.5, 0.75)
+			draw.path_arc(&rim, {xr - rad, top + rad}, {rad - p, rad - p}, 0.75, 1)
 			draw.path_stroke(dc, &rim, p, face_over(relief_shine(TAB_RIM_ALPHA), lit ? lighten(face, TAB_TOP_LIGHTEN) : face, s.space))
 		}
-		draw.path_stroke(dc, &outline, p, face_over(edge, box_under(b), s.space))
+		// the line and the outline, one path
+		outline := draw.path_make(allocator = context.temp_allocator)
+		draw.path_move_to(&outline, {strip.min.x - p, line})
+		for q in shape.points { draw.path_line_to(&outline, q) }
+		draw.path_line_to(&outline, {strip.max.x + p, line})
+		draw.path_stroke(dc, &outline, p, edge)
 		return
 	}
-	// an unchosen tab: its outline inside the room the chosen tabs' feet take, lower, no feet
-	gap := td.foot + math.round(TAB_SOFT_GAP_PX * s.scale)
-	x0, x1 := first ? r.min.x : r.min.x + gap, last ? r.max.x : r.max.x - gap
-	if x1 - x0 <= 2 * rad { return }
-	soft := tab_outline(x0, x1, top + math.round(TAB_SOFT_DROP_PX * s.scale), line, rad, 0, 0)
+	// an unchosen tab: inside the room the chosen tabs' feet take, lower, its own small feet
+	soft_foot := max(math.round(td.foot * TAB_SOFT_FOOT_SHARE), p)
+	gap := td.foot + math.round(TAB_SOFT_GAP_PX * s.scale) + soft_foot
+	xl, xr := tab_snap(r.min.x + gap + p * 0.5, p), tab_snap(r.max.x - gap - p * 0.5, p)
+	if xr - xl <= 2 * rad { return }
+	soft := tab_shape(xl, xr, top + math.round(TAB_SOFT_DROP_PX * s.scale), line, rad, soft_foot)
+	draw.push_clip(dc, {{strip.min.x, r.min.y}, {strip.max.x, bottom - p}})
+	defer draw.pop_clip(dc)
 	if hot := max(box_hot(b), box_held(b)); hot > 0.01 {
 		under := box_under(b)
 		fill := draw.mix(under, state_fill(b, box_held(b) > 0.5 ? "press_fill" : "hover_fill", under), hot)
 		shape := draw.path_make(allocator = context.temp_allocator)
 		draw.path_move_to(&shape, soft.points[0])
 		for q in soft.points[1:] { draw.path_line_to(&shape, q) }
+		draw.path_line_to(&shape, {xr + soft_foot, bottom})
+		draw.path_line_to(&shape, {xl - soft_foot, bottom})
 		draw.path_close(&shape)
 		draw.path_fill(dc, &shape, fill)
 	}
 	draw.path_stroke(dc, &soft, p, face_over(with_alpha(edge, TAB_SOFT_EDGE_ALPHA), box_under(b), s.space))
 }
 
-// Whether `b` stands at the start or the end of its row's line, where the panel under it has its edge (`p`: a device
-// pixel's slack). The line is the outermost box on the tab's baseline that draws one: `ui.tabs` draws one under its
-// own strip, as wide as its tabs, and a program's row around it draws the whole one (fidget, the debug window).
+// `v` moved to the nearest centre of a `p`-wide stroke: a half pixel when `p` is odd, a whole one when it is even.
 @(private = "file")
-tab_at_ends :: proc(b: ^Box, p: f32) -> (first, last: bool) {
-	line: ^Box
+tab_snap :: proc(v, p: f32) -> f32 { return math.round(v - p * 0.5) + p * 0.5 }
+
+// The rect of the box that draws a tab's line (its strip): the outermost on the tab's baseline whose custom draw is a
+// line (`ui.tabs` draws one under its own strip, a program's row around it the whole one). None: the tab's own rect,
+// `reach` wider on each side.
+@(private = "file")
+tab_line_rect :: proc(b: ^Box, reach: f32) -> Rect {
+	r := Rect{{b.rect.min.x - reach, b.rect.min.y}, {b.rect.max.x + reach, b.rect.max.y}}
 	for a := b.parent; a != nil; a = a.parent {
-		draws := a.custom == tab_line_draw || a.custom == dock_strip_draw || a.custom == dense_header_draw
-		if draws && abs(a.rect.max.y - b.rect.max.y) <= p { line = a }
+		draws := a.custom == tab_line_draw || a.custom == tab_strip_draw || a.custom == dock_strip_draw || a.custom == dense_header_draw
+		if draws && abs(a.rect.max.y - b.rect.max.y) <= 1 { r = a.rect }
 	}
-	if line == nil { return }
-	return b.rect.min.x <= line.rect.min.x + p * 0.5, b.rect.max.x >= line.rect.max.x - p * 0.5
+	return r
 }
 
-// A tab's outline, open, left to right: from the strip's line at `x0 - left` up through a concave fillet, round over its
-// top at `top` with corners of `rad`, and down through the other fillet to the line at `x1 + right`; a foot of 0: that
-// side straight down to the line (temp memory).
+// The room before a row's first tab: its left foot's (tab_foot) and a short run of the line before the foot curves up
+// (TAB_LINE_LEAD_PX), as the owner's sketch draws it. Every tab has its whole silhouette, the first included; this room
+// is all a strip gives before it.
+@(private)
+tab_strip_inset :: proc() -> f32 { return tab_foot() + math.round(TAB_LINE_LEAD_PX * scale()) }
+
+// Built first in a row of tabs' strip: the room before its first tab.
+@(private)
+tab_strip_start :: proc() { spacer(px(tab_strip_inset())) }
+
+// A tab's shape, open, left to right (temp memory): from the line at `x0 - foot` up through a concave fillet tangent to the
+// line and to the side, round over its top at `top` with corners of `rad`, down through the other fillet to the line at
+// `x1 + foot`. `line` and the sides are stroke centres (tab_snap); `rad` and `foot` whole pixels.
 @(private = "file")
-tab_outline :: proc(x0, x1, top, line, rad, left, right: f32) -> draw.Path {
+tab_shape :: proc(x0, x1, top, line, rad, foot: f32) -> draw.Path {
 	o := draw.path_make(allocator = context.temp_allocator)
 	// (angles in turns from +x, y down: 0.25 points down, 0.5 left, 0.75 up)
-	if left > 0 {
-		draw.path_arc(&o, {x0 - left, line - left}, {left, left}, 0.25, 0)
-	} else {
-		draw.path_move_to(&o, {x0, line})
-	}
+	draw.path_arc(&o, {x0 - foot, line - foot}, {foot, foot}, 0.25, 0)
 	draw.path_arc(&o, {x0 + rad, top + rad}, {rad, rad}, 0.5, 0.75)
 	draw.path_arc(&o, {x1 - rad, top + rad}, {rad, rad}, 0.75, 1)
-	if right > 0 {
-		draw.path_arc(&o, {x1 + right, line - right}, {right, right}, 0.5, 0.25)
-	} else {
-		draw.path_line_to(&o, {x1, line})
-	}
+	draw.path_arc(&o, {x1 + foot, line - foot}, {foot, foot}, 0.5, 0.25)
 	return o
 }

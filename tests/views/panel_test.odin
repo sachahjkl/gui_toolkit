@@ -48,9 +48,11 @@ Dock :: struct {
 	wide:       bool,              // the content holds a row of WIDE_BOXES boxes, wider than the window
 	bare:       bool,              // build the space "bare", without content (a centre zone)
 	title_bar:  bool,              // a bar of TITLE_BAR_PX above the frame (a program's title bar)
+	inset:      bool,              // the frame INSET_PX in from every edge of the window (a face at an edge has no rim)
 }
 
 @(private = "file") TITLE_BAR_PX :: 30
+@(private = "file") INSET_PX :: 40
 
 // A row of boxes of their own width, wider than the window: what a tool bar or a program's row asks of its parent.
 @(private = "file") WIDE_BOXES :: 30
@@ -82,6 +84,15 @@ dock_build :: proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(TITLE_BAR_PX)})
 		ui.build_box({}, "###title_bar")
 	}
+	if r.inset {
+		ui.spacer(ui.px(INSET_PX))
+		ui.next({width = ui.fill(), height = ui.px(f32(WINDOW.y - 2 * INSET_PX)), axis = .X})
+		ui.push_parent(ui.build_box({}, "###inset_row"))
+		ui.spacer(ui.px(INSET_PX))
+		ui.next({width = ui.px(f32(WINDOW.x - 2 * INSET_PX)), height = ui.fill(), axis = .Y})
+		ui.push_parent(ui.build_box({}, "###inset_column"))
+	}
+	defer if r.inset { ui.pop_parent(); ui.pop_parent() }
 	if ui.views_frame(&r.views, r.frame_o) {
 		if ui.key_press(.F2) { r.content_k += 1 }
 		if r.own_f6 && ui.key_press(.F6) { r.f6_taken += 1 }
@@ -1736,4 +1747,79 @@ view_restore_respects_the_user_s_choice :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.view_restore(&r.views, "side", &r, first_start_open = true, owner = s.state), "the user closed it: stays closed")
 	_ = store.set(&r.views.memory, "side", "v1 open=1")
 	testing.expect(t, ui.view_restore(&r.views, "side", &r, first_start_open = true, owner = s.state), "open at the last quit: opened")
+}
+
+// The strip of a stack docked at the bottom (Tower's terminal) is a bar, never a button: in a finish with a relief, its
+// free part is the strip's ground at rest and under the pointer, with no frame round it (its edges are that ground too);
+// a double click there still maximises the stack.
+@(test)
+a_bottom_strip_is_a_bar_not_a_button :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	dock_register(&r)
+	append(&r.want, "term")
+	r.inset = true   // (the strip touches no edge of the window: there a face has no rim)
+	// (Graphite: a theme of the machined finish whose bars have a rim, Tower's)
+	pal := ui.palette_of("Graphite")
+	pal.finish = .Machined   // (as the showcase shows it)
+	s := session.start(t, {size = WINDOW, user = &r, build = dock_build, palette = pal})
+	bar := wait_built(s, "view_tabs")
+	if bar == nil { return }
+	// the widest gap between what the strip holds: its free part
+	gap_lo, gap_hi := bar.rect.min.x, bar.rect.min.x
+	edges := make([dynamic][2]f32, context.temp_allocator)
+	collect :: proc(b: ^ui.Box, edges: ^[dynamic][2]f32) {
+		for c := b.first; c != nil; c = c.next {
+			if c.rect.max.x > c.rect.min.x && c.flags & {.Clickable, .Draw_Text, .Draw_Background} != {} { append(edges, [2]f32{c.rect.min.x, c.rect.max.x}) }
+			collect(c, edges)
+		}
+	}
+	collect(bar, &edges)
+	for x := bar.rect.min.x; x < bar.rect.max.x; x += 1 {
+		free := true
+		for e in edges { if x >= e[0] - 2 && x < e[1] + 2 { free = false; break } }
+		if !free { continue }
+		hi := x
+		for hi < bar.rect.max.x {
+			busy := false
+			for e in edges { if hi >= e[0] - 2 && hi < e[1] + 2 { busy = true; break } }
+			if busy { break }
+			hi += 1
+		}
+		if hi - x > gap_hi - gap_lo { gap_lo, gap_hi = x, hi }
+		x = hi
+	}
+	if !testing.expectf(t, gap_hi - gap_lo >= 20, "a free part on the strip (%v .. %v)", gap_lo, gap_hi) { return }
+	x := int((gap_lo + gap_hi) * 0.5)
+	// (its top rows, its middle, the row above its line)
+	rows := []int{int(bar.rect.min.y), int(bar.rect.min.y) + 1, int((bar.rect.min.y + bar.rect.max.y) * 0.5), int(bar.rect.min.y) + 2, int(bar.rect.max.y) - 2}
+	look :: proc(t: ^testing.T, img: session.Image, x: int, rows: []int, bar: ^ui.Box, when_: string) {
+		ground := session.pixel(img, x, rows[2])
+		for y in rows {
+			q := session.pixel(img, x, y)
+			testing.expectf(t, session.near(q, ground, 3), "%s: the strip's free part at row %d is %v, its ground %v (a face, a frame)", when_, y, q, ground)
+		}
+		// (its first columns, down to above the line: the strip's ground, no frame nor rim; the first tab's outline starts
+		// past them)
+		for dx in 0 ..< 3 {
+			for y in rows[1:] {
+				q := session.pixel(img, int(bar.rect.min.x) + dx, y)
+				testing.expectf(t, session.near(q, ground, 3), "%s: the strip's left edge, column %d, row %d is %v, its ground %v", when_, dx, y, q, ground)
+			}
+		}
+	}
+	session.move(s, OUT)
+	session.frames(s, 3)
+	rest := session.capture(s)
+	look(t, rest, x, rows, bar, "at rest")
+	session.move(s, {f32(x), (bar.rect.min.y + bar.rect.max.y) * 0.5})
+	session.frames(s, 6)
+	hot := session.capture(s)
+	look(t, hot, x, rows, bar, "under the pointer")
+	testing.expectf(t, session.near(session.pixel(hot, x, rows[2]), session.pixel(rest, x, rows[2]), 3), "the strip's ground does not change under the pointer: %v, at rest %v", session.pixel(hot, x, rows[2]), session.pixel(rest, x, rows[2]))
+	// still a strip that takes its presses: a double click maximises the stack
+	session.click_at(s, {f32(x), (bar.rect.min.y + bar.rect.max.y) * 0.5}, count = 2)
+	session.frames(s, 3)
+	_, _, maxed := ui.views_space_maximised(&r.views, "")
+	testing.expect(t, maxed, "a double click on the strip maximises its stack")
 }

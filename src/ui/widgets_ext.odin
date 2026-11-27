@@ -1624,6 +1624,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
 		// (the row's bottom edge a line, out of which the chosen tab rises: tab_box)
 		if outer := parent_box().parent; outer != nil { outer.custom = tab_line_draw }
+		tab_strip_start()
 		first_tab: ^Box
 		items := make([]^Box, len(labels), frame_allocator())
 		on_one := false
