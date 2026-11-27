@@ -1,7 +1,7 @@
 package ui
 
 // A preview: content (a picture, a page, a diagram) in a box that fits it, then zooms and pans. The wheel zooms around the
-// pointer (with `wheel_pans`: it moves the content, and Ctrl with it, a touchpad's pinch, zooms), a drag moves the content
+// pointer (Preview_Options.wheel gives the wheel, or Ctrl with it, to moving the content), a drag moves the content
 // when it is larger than the box, a double click goes from what fits to its pixels and
 // back; with the keyboard on it, + and - zoom, 0 fits, the arrows move. A bar over its corner may show the zoom and the
 // buttons −, +, 1:1 and Fit. The program keeps a Preview per thing shown (preview_reset when another comes).
@@ -38,6 +38,13 @@ Preview :: struct {
 	grab: Vec2,  // the pan at the press of a drag
 }
 
+// What the wheel does over a preview. Shift with the wheel that moves: across.
+Preview_Wheel :: enum u8 {
+	Zooms,       // the wheel zooms; Ctrl with it is the interface's zoom
+	Pans,        // the wheel moves the content; Ctrl with it (a touchpad's pinch on Windows) zooms the preview
+	Ctrl_Pans,   // the wheel zooms; Ctrl with it moves the content (the interface keeps its zoom)
+}
+
 Preview_Options :: struct {
 	buttons:  bool,     // the bar over the bottom right corner: the zoom in percent, −, +, 1:1, Fit
 	grow:     bool,     // fitted, the content may be larger than its pixels
@@ -45,7 +52,7 @@ Preview_Options :: struct {
 	zoom_min: f32,      // the least, of what fits (0: PREVIEW_ZOOM_MIN)
 	radius:   f32,      // the content's corners (an image's)
 	no_keys:  bool,     // its keys are the program's
-	wheel_pans: bool,   // the wheel moves the content (Shift: across); Ctrl with it (a touchpad's pinch) zooms, not the interface
+	wheel:    Preview_Wheel,
 	shift_wheel_free: bool,   // the wheel with Shift is the program's (ui.wheel_free), neither a zoom nor a pan
 }
 
@@ -117,7 +124,7 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	if !s.has_next || s.next_mod.width == nil { next_merge({width = fill()}) }
 	if s.next_mod.height == nil { next_merge({height = fill()}) }
 	flags := Box_Flags{.Clickable, .Focusable, .Scroll_Self, .Clip}
-	if o.wheel_pans { flags += {.Ctrl_Wheel} }
+	if o.wheel != .Zooms { flags += {.Ctrl_Wheel} }
 	if o.shift_wheel_free { flags += {.Shift_Wheel_Free} }
 	b := build_box(flags, id)
 	res.box = b
@@ -131,7 +138,8 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	b.cursor = pannable ? (s.active_key[.Left] == b.key ? .Grabbing : .Grab) : .Arrow
 	sig := signal(b)
 	at := sig.mouse - view * 0.5
-	if o.wheel_pans && .Ctrl not_in sig.mods {
+	ctrl := .Ctrl in sig.mods
+	if (o.wheel == .Pans && !ctrl) || (o.wheel == .Ctrl_Pans && ctrl) {
 		d := sig.scrolled
 		if .Shift in sig.mods && d.x == 0 { d = {d.y, 0} }
 		p.pan -= {d.x * wheel_step(b, .X), d.y * wheel_step(b, .Y)}

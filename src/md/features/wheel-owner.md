@@ -12,5 +12,11 @@ So a box that leaves part of the wheel says it with a flag, which the hit test r
 `ui.wheel_free` gives the program the wheel that no box took, with its modifiers. A viewer reads Shift+wheel there to go
 to the next picture, over a preview that zooms with the wheel (`Preview_Options.shift_wheel_free`).
 
+A preview gives its wheel one of three ways (`Preview_Options.wheel`): it zooms (Ctrl: the interface's zoom), it pans
+(Ctrl: the preview's zoom, a touchpad's pinch), or it zooms and Ctrl pans. The last two take Ctrl+wheel with
+`.Ctrl_Wheel`. One enum and not two switches: two switches make a fourth state (both pan) that says nothing. The third
+way gives a touchpad's pinch on Windows (Ctrl and the wheel) to the pan: a viewer that wants the pinch to zoom takes
+`.Pans`.
+
 Refused: an option of the preview that drops `sig.scrolled` with Shift. The preview's box still takes the wheel then:
 `wheel_consumed` says true, and nothing else gets it.

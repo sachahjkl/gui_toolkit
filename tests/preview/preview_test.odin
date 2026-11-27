@@ -27,7 +27,7 @@ a_zoom_keeps_its_point :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
-Run :: struct { p: ui.Preview, res: ui.Preview_Result, drawn: draw.Rect }
+Run :: struct { p: ui.Preview, res: ui.Preview_Result, drawn: draw.Rect, wheel: ui.Preview_Wheel }
 
 @(private = "file")
 start :: proc(t: ^testing.T, r: ^Run) -> ^session.Session {
@@ -102,14 +102,14 @@ start_panning :: proc(t: ^testing.T, r: ^Run) -> ^session.Session {
 		ui.next({width = ui.px(400), height = ui.px(300)})
 		r.res = ui.preview("###pv", &r.p, {800, 600}, proc(dc: ^draw.Context, dst: ui.Rect, user: rawptr) {
 			(^Run)(user).drawn = dst
-		}, r, {wheel_pans = true})
+		}, r, {wheel = r.wheel})
 	}})
 }
 
-// With wheel_pans, the wheel moves the content and Ctrl with it zooms the preview, not the interface.
+// With .Pans, the wheel moves the content and Ctrl with it zooms the preview, not the interface.
 @(test)
 the_wheel_pans_and_ctrl_zooms :: proc(t: ^testing.T) {
-	r: Run
+	r := Run{wheel = .Pans}
 	s := start_panning(t, &r)
 	session.frames(s, 2)
 	c := session.center(r.res.box)
@@ -123,6 +123,27 @@ the_wheel_pans_and_ctrl_zooms :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.p.zoom, zoom)
 	testing.expect(t, r.p.pan.y < before.y, "the wheel down moves the content up")
 	session.wheel(s, c, {0, 1}, {.Shift})
+	session.frame(s)
+	testing.expect(t, r.p.pan.x < before.x, "with Shift, across")
+}
+
+// With .Ctrl_Pans, the wheel zooms and Ctrl with it moves the content; the interface keeps its zoom.
+@(test)
+the_wheel_zooms_and_ctrl_pans :: proc(t: ^testing.T) {
+	r := Run{wheel = .Ctrl_Pans}
+	s := start_panning(t, &r)
+	session.frames(s, 2)
+	c := session.center(r.res.box)
+	session.wheel(s, c, {0, -2})
+	session.frame(s)
+	testing.expect(t, r.p.zoom > 1.5, "the wheel zooms it")
+	zoom, before := r.p.zoom, r.p.pan
+	session.wheel(s, c, {0, 1}, {.Ctrl})
+	session.frame(s)
+	testing.expect_value(t, r.p.zoom, zoom)
+	testing.expect_value(t, s.state.zoom, f32(1))   // (the interface keeps its zoom)
+	testing.expect(t, r.p.pan.y < before.y, "Ctrl and the wheel down move the content up")
+	session.wheel(s, c, {0, 1}, {.Ctrl, .Shift})
 	session.frame(s)
 	testing.expect(t, r.p.pan.x < before.x, "with Shift, across")
 }
