@@ -51,8 +51,11 @@ release :: proc(s: ^Session, at: [2]f32, button := platform.Mouse_Button.Left) {
 }
 
 // A click at a point. `count` 2: a double click. With a Left button held across a move it would be a drag: this is one place.
+// The pointer moves there first and frames are built, even when it was there: what is under it (the box in front, which
+// context_take and the hover read) comes from the last frame, and a press with no move before it met an old one (the
+// pointer left the window since, or the boxes under it moved).
 click_at :: proc(s: ^Session, at: [2]f32, button := platform.Mouse_Button.Left, count := 1) {
-	if at != s.pointer { move(s, at) }
+	move(s, at)
 	for _ in 0 ..< count {
 		s.buttons += {button}
 		event(s, {kind = .Mouse_Press, button = button, pos = at})

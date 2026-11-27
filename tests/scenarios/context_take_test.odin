@@ -49,3 +49,28 @@ the_innermost_block_takes_the_right_press :: proc(t: ^testing.T) { unwatched.run
 	testing.expect_value(t, r.outer, 1)
 	testing.expect_value(t, r.inner, 1)
 }) }
+
+@(private = "file")
+Hover_Run :: struct { hovered: int, at_click: int }
+
+// A click as a hand makes it: the pointer comes, a build sees it there, then the press. session.click_at moves first
+// even where the pointer was (it left the window since): what a build knows of the pointer before the press (the
+// hover, the box in front that context_take reads) is right.
+@(test)
+a_click_is_seen_coming_before_its_press :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r: Hover_Run
+	s := session.start(t, {size = {400, 300}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Hover_Run)(s.user)
+		ui.next({width = ui.px(200), height = ui.px(100)})
+		sig := ui.signal(ui.build_box({.Clickable, .Draw_Background}, "###target"))
+		if sig.right_clicked { r.at_click = r.hovered }
+		if sig.hovering && .Right not_in s.buttons { r.hovered += 1 }
+	}})
+	session.wait_idle(s)
+	at := session.center(session.get(s, "target"))
+	session.move(s, at)
+	session.leave(s)
+	r.hovered = 0
+	session.click_at(s, at, .Right)
+	testing.expect(t, r.at_click > 0, "a build saw the pointer over the box before its press")
+}) }
