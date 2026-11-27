@@ -1,4 +1,4 @@
-package scenarios_test
+package node_graph_test
 
 // ui.tooltip_near: a tooltip about a rectangle, on the side that covers the least of it, inside the window, at each of
 // the window's edges.

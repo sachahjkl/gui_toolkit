@@ -275,8 +275,8 @@ frame's end frees them. A string changed in `body` shows only at the next frame:
 
 ## Tests
 
-`tests/scenarios/node_graph_test.odin` drives the widget in an offscreen session: a node dragged (`Graph_Moved`), two
+`tests/node_graph/node_graph_test.odin` drives the widget in an offscreen session: a node dragged (`Graph_Moved`), two
 ports linked (`Graph_Linked`), a link of other kinds refused, a band selection, Delete, the zoom that keeps the point
 under the pointer, `graph_fit`, `hover_node`, a link from a bottom port to a top port in `.Down`, each link's look read
 by its pixels, a title on two lines then cut with its tooltip, and the minimap's corner and size that a fit avoids.
-`tests/scenarios/tooltip_near_test.odin` places `tooltip_near` at each edge of the window.
+`tests/node_graph/tooltip_near_test.odin` places `tooltip_near` at each edge of the window.

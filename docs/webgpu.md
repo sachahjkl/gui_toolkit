@@ -26,9 +26,11 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 
 The pixel tests run on both backends with the same expectations: `odin run tools/run_tests [-- -backend:wgpu]` (the wgpu ones one
 test at a time: WARP's D3D12 crashes now and then when several devices work at once). Run `tools/tk fetch_wgpu` first: with DXC
-next to the test programs a package takes a third of the time it takes with FXC. The CI splits the packages in four groups, one per
-job (`-Group ci1` .. `ci4`, defined in the script, which checks that together they hold every package once); a pull request runs
-`-Group sample`; `-Define TOOLKIT_WGPU_DX12_COMPILER=fxc` runs a package with FXC.
+next to the test programs a package takes a third of the time it takes with FXC. The CI splits the packages in eleven groups of under
+4 minutes on WARP, one per job (`-group:ci1` .. `ci11`, each step's `wgpu` in `tools/run_tests`). A package longer than that
+lists its groups in `shards`: its tests are dealt by name to one step per group (`scenarios_1`, `scenarios_2`), so a new test
+lands in a shard with no change. A pull request runs `-group:sample`; `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc` runs a package
+with FXC.
 `tools\render_probe` draws a few primitives on the offscreen renderer and writes a PPM; `tools/tk ppm_diff a.ppm b.ppm` compares two.
 
 ## One source for the shaders

@@ -2,7 +2,7 @@
 // what a test opens can take nobody's focus, mouse or keyboard.
 //   odin run tools/run_tests                                every test of this system
 //   odin run tools/run_tests -- text keyboard               those packages
-//   odin run tools/run_tests -- -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
+//   odin run tools/run_tests -- -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci11 are all of them, sample a pull request's)
 //   odin run tools/run_tests -- -list                       the names, and the groups
 //   odin run tools/run_tests -- -check:windows_amd64        every package of that system checked (odin check, its defines), not run:
 //                                                           Windows' code compiled from Linux (toolbox.check_env)
@@ -39,8 +39,9 @@ EVERYWHERE :: Oses{.Windows, .Linux}
 // The libraries a step links, which a CI step builds before it.
 Need :: enum { None, Native_Lib, Emoji }   // (Native_Lib: build/native, tools/tk build_native)
 
-// A group of the WebGPU backend: about the same time each, on a runner.
-Wgpu_Group :: enum { None, Ci1, Ci2, Ci3, Ci4 }
+// A group of the WebGPU backend, on a runner of its own: under 4 minutes of WARP each (a package longer than that is
+// sharded: Step.shards), so that a run that takes twice as long on a slow runner stays under a package's 600 s.
+Wgpu_Group :: enum { None, Ci1, Ci2, Ci3, Ci4, Ci5, Ci6, Ci7, Ci8, Ci9, Ci10, Ci11 }
 
 Step :: struct {
 	name:    string,
@@ -51,6 +52,9 @@ Step :: struct {
 	defines: []string,
 	need:    Need,
 	wgpu:    Wgpu_Group,        // on the WebGPU backend too, in this group
+	// on the WebGPU backend, its tests dealt by name to one step per group (<name>_1, <name>_2...: shards_of); elsewhere
+	// it runs whole. A new test lands in a shard with no change here
+	shards:  []Wgpu_Group,
 	sample:  bool,              // ... and in a pull request's quick set
 	target:  string,            // Check: the system
 	text:    bool,              // needs fonts: on Linux that is the native text backend (no system text stack is linked there)
@@ -183,7 +187,7 @@ STEPS := []Step{
 	{name = "views", one = true, oses = EVERYWHERE, text = true},
 	// (a process of its own: in views', its session left Windows' WARP so that a later test crashed or hung)
 	{name = "view_size", one = true, oses = EVERYWHERE, text = true},
-	{name = "keyboard", one = true, wgpu = .Ci2},
+	{name = "keyboard", one = true, wgpu = .Ci7},
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "keymap", one = true, oses = EVERYWHERE, text = true},   // (the person's keys: one language for the process)
 	{name = "status", one = true, wgpu = .Ci1},
@@ -212,24 +216,25 @@ STEPS := []Step{
 	// (no WebGPU group: over WARP its motion takes five minutes, past a group's time; Linux runs it on WebGPU)
 	{name = "licence_card", one = true, oses = EVERYWHERE, text = true},
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},
-	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
+	// (on WARP 360 s, past a group's 4 minutes: two shards)
+	{name = "scenarios", one = true, shards = {.Ci2, .Ci3}, sample = true, oses = EVERYWHERE, text = true},
+	// (ui.node_graph and tooltip_near: a process of their own, each frame of a graph is half a second on WARP)
+	{name = "node_graph", one = true, wgpu = .Ci9, sample = true, oses = EVERYWHERE, text = true},
 	{name = "cli", oses = EVERYWHERE},
-	{name = "prewarm", oses = EVERYWHERE, wgpu = .Ci3},   // (Linux's renderer is wgpu: it runs there as it is)
+	{name = "prewarm", oses = EVERYWHERE, wgpu = .Ci5},   // (Linux's renderer is wgpu: it runs there as it is)
 	{name = "edged", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the edged finish, Kernel, the dashboard's pieces: a process of their own)
 	{name = "theme_look", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a theme's look beside its colours: its values reach the drawing)
 	{name = "system_title", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the system's title bar: a process of its own, the scenarios' is full)
 	{name = "resize_grip", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a dialog's grips and corner control: a process of its own, the scenarios' is full)
-	// (ui.tween and ui.swap: a process of its own, on another runner: the scenarios took 400 s of their 420 on ci1 with
-	// them. ci2: ci4 already runs the FXC packages after its own)
-	{name = "transitions", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
+	// (ui.tween and ui.swap: a process of its own: the scenarios took 400 s of their 420 with them)
+	{name = "transitions", one = true, wgpu = .Ci11, oses = EVERYWHERE, text = true},
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
-	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
-	// (what covers a change: a process of its own, on another runner; with the scenes above it passed 420 s on WARP. Its
-	// quiet buttons in every finish are a process of their own too, on the lightest runner: the five scenes together
-	// passed 420 s on WebGPU's CPU driver)
-	{name = "partial_redraw_layers", one = true, wgpu = .Ci4, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.a_change_under_a_dialog_redraws_the_dialog_over_it,partial_redraw_layers_test.text_that_changes_under_an_internal_window_stays_under_it,partial_redraw_layers_test.a_table_with_code_in_striped_rows_is_exact_and_opaque,partial_redraw_layers_test.framed_panels_and_a_dialog_over_them_stay_opaque,partial_redraw_layers_test.an_unseen_dialog_redraws_nothing,partial_redraw_layers_test.the_palette_redraws_nothing_before_it_shows"}},
-	{name = "partial_redraw_buttons", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci3, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque"}},
-	{name = "partial_redraw_buttons_half", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque_in_half_floats"}},
+	{name = "partial_redraw", one = true, wgpu = .Ci6, oses = EVERYWHERE, text = true},
+	// (what covers a change: a process of its own; with the scenes above it passed 420 s on WARP, its six scenes 308 s:
+	// two shards. Its quiet buttons in every finish are a process of their own too, each on its runner: 280 s and 212 s)
+	{name = "partial_redraw_layers", one = true, shards = {.Ci4, .Ci5}, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.a_change_under_a_dialog_redraws_the_dialog_over_it,partial_redraw_layers_test.text_that_changes_under_an_internal_window_stays_under_it,partial_redraw_layers_test.a_table_with_code_in_striped_rows_is_exact_and_opaque,partial_redraw_layers_test.framed_panels_and_a_dialog_over_them_stay_opaque,partial_redraw_layers_test.an_unseen_dialog_redraws_nothing,partial_redraw_layers_test.the_palette_redraws_nothing_before_it_shows"}},
+	{name = "partial_redraw_buttons", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci8, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque"}},
+	{name = "partial_redraw_buttons_half", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci7, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque_in_half_floats"}},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},
@@ -244,21 +249,21 @@ STEPS := []Step{
 	{name = "tray", one = true},
 	// pixels
 	{name = "lifecycle", wgpu = .Ci3},
-	{name = "lifecycle_faults", path = "tests/lifecycle", defines = {"TOOLKIT_RENDER_FAULTS=true"}, wgpu = .Ci3},
+	{name = "lifecycle_faults", path = "tests/lifecycle", defines = {"TOOLKIT_RENDER_FAULTS=true"}, wgpu = .Ci10},
 	{name = "canvas"},
-	{name = "layers", wgpu = .Ci4, sample = true},
-	{name = "planes", wgpu = .Ci2},
-	{name = "effects", wgpu = .Ci2, sample = true},
-	{name = "blend_space", wgpu = .Ci3},
-	{name = "gradients", wgpu = .Ci2},
-	{name = "shadows", wgpu = .Ci4},
-	{name = "retained", wgpu = .Ci4},
-	{name = "masks", wgpu = .Ci3},
-	{name = "gpufx", wgpu = .Ci4},
+	{name = "layers", wgpu = .Ci10, sample = true},
+	{name = "planes", wgpu = .Ci11},
+	{name = "effects", wgpu = .Ci9, sample = true},
+	{name = "blend_space", wgpu = .Ci10},
+	{name = "gradients", wgpu = .Ci10},
+	{name = "shadows", wgpu = .Ci2},
+	{name = "retained", wgpu = .Ci6},
+	{name = "masks", wgpu = .Ci4},
+	{name = "gpufx", wgpu = .Ci11},
 	{name = "shaders", wgpu = .Ci1},
-	{name = "appshaders", wgpu = .Ci3},
-	{name = "video", wgpu = .Ci2, sample = true},
-	{name = "textures", wgpu = .Ci4},
+	{name = "appshaders", wgpu = .Ci11},
+	{name = "video", wgpu = .Ci4, sample = true},
+	{name = "textures", wgpu = .Ci2},
 	{name = "render_pkg", path = "src/render"},
 	// (wgpu's GL backend, forced: EGL surfaceless, llvmpipe where there is no GPU; no EGL: the log says the tests drew nothing)
 	{name = "gl_fallback", oses = LINUX_ONLY, text = true},
@@ -272,7 +277,7 @@ STEPS := []Step{
 	{name = "subpixel_fxc", path = "tests/subpixel", one = true, defines = {"TOOLKIT_RENDER=wgpu", "TOOLKIT_WGPU_DX12_COMPILER=fxc", "FONT_TEXT_RENDERER=slug", "ODIN_TEST_NAMES=subpixel_test.light_text_on_dark_reaches_its_colour"}},
 	{name = "slug", wgpu = .Ci1, sample = true},
 	{name = "colr", need = .Emoji, wgpu = .Ci1},
-	{name = "color_glyphs", wgpu = .Ci3},
+	{name = "color_glyphs", wgpu = .Ci9},
 	{name = "color_glyphs_builtin", path = "tests/color_glyphs", defines = {"COLR_ENGINE=builtin"}},
 	{name = "color_native", oses = LINUX_ONLY, text = true},
 	{name = "text_backends"},
@@ -361,7 +366,10 @@ main :: proc() {
 	}
 	chosen := choose(&o)
 	if o.list {
-		for s in chosen { fmt.printfln("%-24s %v%s", s.name, s.kind, s.wgpu != .None ? fmt.tprintf("  wgpu %v", s.wgpu) : "") }
+		for s in chosen {
+			groups := s.wgpu != .None ? fmt.tprintf("  wgpu %v", s.wgpu) : len(s.shards) > 0 ? fmt.tprintf("  wgpu shards %v", s.shards) : ""
+			fmt.printfln("%-28s %v%s", s.name, s.kind, groups)
+		}
 		return
 	}
 	if len(chosen) == 0 { fmt.eprintln("nothing to run"); os.exit(2) }
@@ -406,19 +414,117 @@ choose :: proc(o: ^Run_Options) -> []^Step {
 		}
 		if s.kind != .Test && THIS_OS == .Linux { continue }   // (what compiles for Linux is the Linux job's own check: tk ci)
 		if THIS_OS not_in oses { continue }
+		if o.backend == "wgpu" && len(s.shards) > 0 {
+			// (a shard is asked for by its own name or by its package's)
+			named := len(o.only) == 0 || slice.contains(o.only[:], s.name)
+			for sh in shards_of(&s) {
+				if !named && !slice.contains(o.only[:], sh.name) { continue }
+				if in_wgpu_group(sh, o) { append(&out, sh) }
+			}
+			continue
+		}
 		if len(o.only) > 0 && !slice.contains(o.only[:], s.name) { continue }
 		if o.backend == "wgpu" {
 			if s.wgpu == .None && len(o.only) == 0 { continue }
-			if s.kind != .Test { continue }
-			switch o.group {
-			case "":
-			case "sample": if !s.sample { continue }
-			case: if !ascii.equal_fold(fmt.tprintf("%v", s.wgpu), o.group) { continue }
-			}
+			if !in_wgpu_group(&s, o) { continue }
 		}
 		append(&out, &s)
 	}
 	return out[:]
+}
+
+// Whether a step runs in the WebGPU group asked for (-group:).
+in_wgpu_group :: proc(s: ^Step, o: ^Run_Options) -> bool {
+	if s.kind != .Test { return false }
+	switch o.group {
+	case "": return true
+	case "sample": return s.sample
+	case: return ascii.equal_fold(fmt.tprintf("%v", s.wgpu), o.group)
+	}
+}
+
+// The steps of a sharded step (Step.shards): its tests in the order of their names, dealt in turn to one step per group,
+// each the package built to run only its own (ODIN_TEST_NAMES). Dealt and not cut in halves: a file's tests, often of
+// one cost, share their names' start.
+shards_of :: proc(s: ^Step) -> []^Step {
+	names := test_names(s)
+	n := len(s.shards)
+	if len(names) < n {
+		// (an empty ODIN_TEST_NAMES runs every test: a shard would run them all)
+		fmt.eprintfln("%s: %d tests for %d shards", s.name, len(names), n)
+		os.exit(2)
+	}
+	out := make([]^Step, n)
+	for group, i in s.shards {
+		b := strings.builder_make()
+		for name, j in names {
+			if j % n != i { continue }
+			if strings.builder_len(b) > 0 { strings.write_byte(&b, ',') }
+			strings.write_string(&b, name)
+		}
+		defines: [dynamic]string
+		for d in s.defines { if !strings.has_prefix(d, TEST_NAMES_DEFINE) { append(&defines, d) } }
+		append(&defines, fmt.aprintf("%s%s", TEST_NAMES_DEFINE, strings.to_string(b)))
+		sh := new(Step)
+		sh^ = s^
+		sh.name = fmt.aprintf("%s_%d", s.name, i + 1)
+		sh.defines = defines[:]
+		sh.wgpu = group
+		sh.shards = nil
+		out[i] = sh
+	}
+	return out
+}
+
+TEST_NAMES_DEFINE :: "ODIN_TEST_NAMES="
+
+// A step's tests, "<package>.<name>", sorted: those of its ODIN_TEST_NAMES, else every @(test) procedure of its folder
+// (a file of another system left out by its suffix).
+test_names :: proc(s: ^Step) -> []string {
+	for d in s.defines {
+		if !strings.has_prefix(d, TEST_NAMES_DEFINE) { continue }
+		names := strings.split(d[len(TEST_NAMES_DEFINE):], ",")
+		slice.sort(names)
+		return names
+	}
+	out: [dynamic]string
+	entries, err := os.read_all_directory_by_path(s.path, context.allocator)
+	if err != nil { fmt.eprintfln("%s: cannot read %s: %v", s.name, s.path, err); os.exit(2) }
+	for e in entries {
+		if e.type == .Directory || !strings.has_suffix(e.name, ".odin") || !of_this_system(e.name) { continue }
+		data, rerr := os.read_entire_file(e.fullpath, context.allocator)
+		if rerr != nil { fmt.eprintfln("%s: cannot read %s: %v", s.name, e.fullpath, rerr); os.exit(2) }
+		pkg := ""
+		lines := strings.split_lines(string(data))
+		for line, i in lines {
+			t := strings.trim_space(line)
+			if pkg == "" && strings.has_prefix(t, "package ") { pkg = strings.trim_space(t[len("package "):]) }
+			if !strings.has_prefix(t, "@(test)") { continue }
+			// (the procedure on the same line, or on the next)
+			decl := strings.trim_space(t[len("@(test)"):])
+			if decl == "" && i + 1 < len(lines) { decl = strings.trim_space(lines[i + 1]) }
+			name, sep, _ := strings.partition(decl, "::")
+			name = strings.trim_space(name)
+			if sep == "" || name == "" || pkg == "" {
+				fmt.eprintfln("%s:%d: a @(test) whose procedure is not read", e.fullpath, i + 1)
+				os.exit(2)
+			}
+			append(&out, fmt.aprintf("%s.%s", pkg, name))
+		}
+	}
+	slice.sort(out[:])
+	return out[:]
+}
+
+// Whether a file of a package is compiled on this system, by its suffix (_windows, _linux, _unix, _darwin, _other).
+of_this_system :: proc(file: string) -> bool {
+	stem := strings.trim_suffix(file, ".odin")
+	switch {
+	case strings.has_suffix(stem, "_windows"): return THIS_OS == .Windows
+	case strings.has_suffix(stem, "_linux"), strings.has_suffix(stem, "_unix"): return THIS_OS == .Linux
+	case strings.has_suffix(stem, "_darwin"), strings.has_suffix(stem, "_other"): return false
+	}
+	return true
 }
 
 worker :: proc(p: ^Pool) {

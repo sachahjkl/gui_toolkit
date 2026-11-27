@@ -6,7 +6,8 @@ name: CI
 #   linux      odin check of every package for Linux, the examples built, the tests (tk ci), the
 #              backends on a virtual desktop (tk desktop_tests)
 #   wgpu       the WebGPU backend on WARP, one test at a time: every package on a push to master or a manual run, split in
-#              four groups of about 4 minutes (tools/run_tests -backend:wgpu -group:ci1..ci4); a pull request runs the 'sample'
+#              eleven groups of under 4 minutes (tools/run_tests -backend:wgpu -group:ci1..ci11, a longer package in shards);
+#              a pull request runs the 'sample'
 #              group only (Slug text, video, filters and blends, layers), its full run comes with the merge into master.
 on:
   push:
@@ -219,14 +220,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: ${{ fromJSON(github.event_name == 'pull_request' && '["sample"]' || '["ci1", "ci2", "ci3", "ci4"]') }}
+        group: ${{ fromJSON(github.event_name == 'pull_request' && '["sample"]' || '["ci1", "ci2", "ci3", "ci4", "ci5", "ci6", "ci7", "ci8", "ci9", "ci10", "ci11"]') }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-odin
 
       # DXC next to the test programs: wgpu compiles the shaders with it in 0.3 s instead of FXC's 2.8 s (a third of the
-      # time of a package on WARP); FXC, the fallback when the DLLs are missing, is still run on two packages (ci4)
+      # time of a package on WARP); FXC, the fallback when the DLLs are missing, is still run on two packages (ci5)
       - name: Cache DXC
         uses: actions/cache@v6
         with:
@@ -270,7 +271,7 @@ jobs:
         run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/run_tests -vet -out:build/run_tests.exe; if ($LASTEXITCODE) { exit 1 }; ./build/run_tests.exe -backend:wgpu -group:${{ matrix.group }} -timeout:600
 
       - name: Tests, WebGPU backend with FXC (no DXC)
-        if: matrix.group == 'ci4'
+        if: matrix.group == 'ci5'
         shell: pwsh
         timeout-minutes: 4
         run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/run_tests -vet -out:build/run_tests.exe; if ($LASTEXITCODE) { exit 1 }; ./build/run_tests.exe -backend:wgpu -define:TOOLKIT_WGPU_DX12_COMPILER=fxc -timeout:180 text shaders

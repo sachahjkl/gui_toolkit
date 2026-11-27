@@ -1,4 +1,4 @@
-package scenarios_test
+package node_graph_test
 
 // A node graph in a session: the events its gestures and keys return, applied to a model as a program would.
 
