@@ -1,3 +1,0 @@
-type: Fixed
-
-**`toolbox.check_scopes` finds every scope opened under a negation**: `if !debug.section(x) { continue }` closes the section at the end of the `if`, and the values after it fall outside it. The check, a step of `program_check`, now reads the scopes of all the toolkit's packages and of the program (every `@(deferred_*)` procedure, not only `ui`'s), finds `if !pkg.scope(...)`, `if scope(...)` unqualified in its own package, `== false` and `!= true`, and says the file, the line and the right form. A comment `check_scopes: on purpose` passes a line that builds the misuse on purpose. `check_scopes(src_dir, toolkit_dir)` replaces its `ui_dir` argument; `scope_names` replaces `ui_scopes`.

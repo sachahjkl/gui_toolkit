@@ -5,6 +5,42 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.368.0] - 2026-11-27 21:57
+
+### Added
+- **`ui.check_mark(id, &value)`**: a check box with no words, its mark alone, placed where the caller puts it as a value is (at a row's end, under right-aligned values). The debug panel's toggles use it: a toggle's mark now ends where the watches' words and the numbers' digits end, not in the middle of the row.
+- **`Palette_Commands_Options.hidden`**: a command that does not exist in this state (an agent that lacks it) is not offered at all: not listed, not found, not in Recent, not put first by an alias, its form does not open, while `palette_chosen_command` still gives its index in the whole table. A disabled command stays greyed and listed. A program no longer keeps its own trimmed copy of its table; it reads a hidden command's key with `command_pressed(c, disabled = hidden || disabled)`, so the key does nothing. `shortcuts_sheet_open` and `shortcuts_sheet_set` take the same slice as `hidden` and leave those commands off the sheet.
+
+### Changed
+- **The debug window is in every build, a release too.** Ctrl+Alt+Shift+D opens it in every program, with its View tab (the wireframe, the exploded view, the frame times) and the program's panels; the key or Escape closes it. The define `TOOLKIT_DEBUG_WINDOW` (true by default) holds it: build with `-define:TOOLKIT_DEBUG_WINDOW=false` to leave it out (about 1.6 MB). `TOOLKIT_DEVTOOLS` now holds only the CDP endpoint, as before off in a release. The key is read after the program's own keys: a program whose shortcut is Ctrl+Alt+Shift+D keeps it.
+- **`ui.node_graph`**: a node's widgets have the same margin above and below them (half the node's padding); the margin below was larger, so nodes with widgets are slightly shorter.
+- **`ui.mark_editor_dialog` opens at the picture's size**: the picture at 100 % with the bars around it, between its
+least size and 90 % of the window, where it opened at a fixed 72 by 46 ems. The size the person gives it is remembered
+for the next opening. A program gives another first size with `size_em`. `MARK_DIALOG_WIDTH_EM` and
+`MARK_DIALOG_HEIGHT_EM` are gone; `MARK_DIALOG_MOST` is the share of the window.
+
+### Fixed
+- **`gt:process` and `gt:toolbox` on Linux**: `process.start`, `process.tree_start`, and `toolbox.env_with` drop empty environment entries (and entries containing NUL) instead of passing the trailing `""` appended by Odin's Linux `os.environ` into a child's `envp`, which crashed strict children such as Zig.
+- **The debug window's acts line up with its labels**: a row of acts started at the row's edge, left of the labels' words above it, in a section and outside one. Its first button now starts where the labels' words start, at every depth.
+- **`toolbox.check_scopes` finds every scope opened under a negation**: `if !debug.section(x) { continue }` closes the section at the end of the `if`, and the values after it fall outside it. The check, a step of `program_check`, now reads the scopes of all the toolkit's packages and of the program (every `@(deferred_*)` procedure, not only `ui`'s), finds `if !pkg.scope(...)`, `if scope(...)` unqualified in its own package, `== false` and `!= true`, and says the file, the line and the right form. A comment `check_scopes: on purpose` passes a line that builds the misuse on purpose. `check_scopes(src_dir, toolkit_dir)` replaces its `ui_dir` argument; `scope_names` replaces `ui_scopes`.
+- **The debug window opens in every program**: Ctrl+Alt+Shift+D did nothing in a program that registered no debug panel. Every window that `gt:host` opens (`host_open`, `host_adopt`, a view's own window) now has the debug window with its View tab (the wireframe, the exploded view, the frame times, the density, the zoom); a program's panels add their tabs. In the debug window's own window, the key closes it.
+- **The setup no longer waits on the disk when it opens**: the dialog and the Installation page start and stop the watch of the install's places on a thread of their own, and the window no longer freezes while the options are read and the places opened. `setup.watching(&d)` says when the watch runs.
+- **Accessibility names that outlive the program's strings**: `ui.a11y`, `ui.a11y_set` and `ui.a11y_default` keep copies of their strings for the build, so a program that frees or reuses its model during a build no longer crashes when a screen reader (or a test) reads the tree. A node graph's node, named by its title and subtitle, crashed in this way.
+- **`ui.node_graph`**: a node's widgets sit on whole pixels with their node at any zoom and display scale, with the same gap on the left and the right; they were up to 1.6 px off to one side.
+- **Caption buttons follow the zoom**: the minimize, maximize and close buttons of a title bar the program draws now grow with the interface zoom, as the toolbar beside them (`ui.caption_button_size`); at 100 % they keep the system's size, and Snap Layouts over the maximize button stays on the drawn button.
+- **`ui.form_row`: the fields of a form start at one x, right after its labels.** The rows of one parent box are one form: their labels are a column as wide as the longest label and a gap, so every field starts at one x, with no void after short labels. Before, a field that filled the row shrank its label to its words and a field of its own width (a dropdown) left it 34 % of the row, so the fields started at a different x from row to row. The column is at most 40 % of the form: a longer label wraps on more lines, never cut. The label sits on its field's first line: a field of several lines grows the row downward instead of centring the label on it, and a widget shorter than a line stays centred on the label's line. The room between two rows is the same. A field with a note under it (a hint, a validation message) is built with its note in a box of its own as the row's widget: the note starts at the field's left edge, and the label still names the field.
+- **A segmented control with no choice draws no key**: with a value that is none of its labels (-1), `ui.segmented`
+drew its key one segment before the control, over what stood at its left (in the mark editor, over the last fill
+swatch, with a text size that is not one of the four). No segment now shows chosen until one is chosen.
+- **The mark editor's icons show in every program**: in a program whose icon font is not Lucide, the tools, the edit
+and zoom buttons, No fill, Bold and the shape's menu showed other glyphs in their place. They now always draw in the
+Lucide face.
+- **The mark editor's text field opens where you click**: in `ui.mark_editor_dialog`, or wherever the editor is not at
+the window's top left, a click of the Text tool opened the field away from the click. The field now opens on the
+clicked point at every zoom, its letters on the letters of the kept text, and it stays on its point while you zoom
+or pan. Near the canvas's edge, the field stops at the edge and scrolls, so the caret stays seen.
+`marks.to_canvas` gives a picture point from the canvas's top left.
+
 ## [0.367.0] - 2026-11-27 18:31
 
 ### Added
@@ -5238,6 +5274,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.368.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.368.0
 [0.367.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.367.0
 [0.366.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.366.0
 [0.365.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.365.0
