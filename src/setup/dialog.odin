@@ -19,8 +19,8 @@ package tk_setup
 //
 // Nothing is read or written on the interface thread: reading the state, Install, Uninstall and the folder picker run on
 // a thread of the dialog's, one at a time; meanwhile the dialog says so and its buttons wait, and the end of the work
-// wakes the program (ui.post to the State of the dialog's last frame: destroy the dialog before that State). While the dialog is open, the places of the install are watched (desktop.watch_start): what
-// changes them elsewhere (another copy, the system's settings, a file removed by hand) is read again at once.
+// wakes the program (ui.post to the State of the dialog's last frame: destroy the dialog before that State). While the dialog is open, the places of the install are watched (desktop.watch_start, started and stopped on a thread of
+// its own: setup.watching): what changes them elsewhere (another copy, the system's settings, a file removed by hand) is read again at once.
 //
 // The events tell the program what to keep (Choice_*) and when to end (Launched: the installed copy runs).
 
@@ -57,7 +57,8 @@ Dialog :: struct {
 	copied:    string,             // the line whose path was just copied (its id, owned): a check until the pointer leaves
 	confirm:   bool,               // Uninstall was clicked once: the next click does it
 	job:       ^Job,               // the work out on the dialog's thread (nil: none)
-	watcher:   ^desktop.Watcher,   // while open (nil: none could start; setup.stale reads again)
+	watch:     ^Watch_Task,        // the watch of the places while open (nil: closed)
+	watch_ended: [dynamic]^Watch_Task,   // watches let go of, their thread stopping its watcher (update frees each that ended)
 	stale_flag: bool,              // atomic: the watcher (or the program) says the install changed
 	state:     ^ui.State,          // atomic: the State of its last frame, which the threads wake (nil before one)
 	at:        [Button_Role]draw.Rect,   // where the last frame put its buttons ({}: not shown): a program's automation clicks them
@@ -186,6 +187,8 @@ finish :: proc(d: ^Dialog, o: Setup_Options) {
 destroy :: proc(d: ^Dialog) {
 	if d.job != nil { job_join(d.job); job_free(d.job) }
 	watch_end(d)
+	for w in d.watch_ended { watch_task_join(w) }
+	delete(d.watch_ended)
 	facts_free(&d.facts)
 	delete(d.note)
 	delete(d.installed)
@@ -220,23 +223,104 @@ say :: proc(d: ^Dialog, good: bool, text: string) {
 ////////////////////////////////
 // The watch
 
-@(private = "file")
-watch_begin :: proc(d: ^Dialog, o: Setup_Options) {
-	if d.watcher != nil { return }
-	integration, _ := options(o, d.choices[:])
-	d.watcher = desktop.watch_start(&integration, proc(user: rawptr) {
-		d := (^Dialog)(user)
-		sync.atomic_store(&d.stale_flag, true)
-		wake(d)
-	}, d)   // (the options are temp memory, as options() makes them: the watcher copies the places)
+// The watch lives on a thread of its own, from its start to its stop: making the options reads the disk (the record,
+// the manifest, the person's folders), desktop.watch_start opens every place, and desktop.watch_stop waits for the
+// watcher's thread. None of it may run on the interface thread. The thread starts the watcher, waits until the dialog
+// lets go of it, then stops it; the dialog only posts and reads flags.
+@(private)
+Watch_Task :: struct {
+	lock:      sync.Mutex,          // held while a wake reaches the dialog, and while the dialog lets go
+	d:         ^Dialog,             // nil once let go: a wake after that touches nothing
+	c:         Setup_Options,       // (its strings and procedures are the program's: they outlive the work)
+	choices:   []bool,              // owned
+	allocator: runtime.Allocator,   // the opener's: the watcher's memory, made and freed on the thread
+	ended:     sync.Sema,           // posted when the dialog lets go
+	thread:    ^thread.Thread,
+	watching:  bool,                // atomic: a watcher runs (false: none could start; setup.stale reads again)
+	done:      bool,                // atomic: the thread ended, its watcher stopped
 }
 
 @(private = "file")
-watch_end :: proc(d: ^Dialog) {
-	if d.watcher == nil { return }
-	desktop.watch_stop(d.watcher)
-	d.watcher = nil
+watch_begin :: proc(d: ^Dialog, o: Setup_Options) {
+	if d.watch != nil { return }
+	w := new(Watch_Task)
+	w.d, w.c, w.allocator = d, o, context.allocator
+	w.choices = make([]bool, len(d.choices))
+	copy(w.choices, d.choices[:])
+	w.thread = thread.create_and_start_with_data(w, watch_run, priority = .Low)
+	if w.thread == nil {
+		// (no thread: no watch; setup.stale reads again)
+		delete(w.choices)
+		free(w)
+		return
+	}
+	d.watch = w
 }
+
+@(private = "file")
+watch_run :: proc(data: rawptr) {
+	w := (^Watch_Task)(data)
+	context.allocator = w.allocator
+	integration, _ := options(w.c, w.choices)
+	// (the options are temp memory, as options() makes them: the watcher copies the places)
+	watcher := desktop.watch_start(&integration, proc(user: rawptr) { watch_wake((^Watch_Task)(user)) }, w)
+	free_all(context.temp_allocator)
+	if watcher != nil {
+		sync.atomic_store(&w.watching, true)
+		// (the first read may have ended before the places were watched: what changed in between is read again)
+		watch_wake(w)
+	}
+	sync.sema_wait(&w.ended)
+	desktop.watch_stop(watcher)
+	sync.atomic_store(&w.watching, false)
+	sync.atomic_store(&w.done, true)
+}
+
+// From the watcher's thread: the install changed.
+@(private = "file")
+watch_wake :: proc(w: ^Watch_Task) {
+	sync.lock(&w.lock)
+	defer sync.unlock(&w.lock)
+	if w.d == nil { return }
+	sync.atomic_store(&w.d.stale_flag, true)
+	wake(w.d)
+}
+
+// Lets go of the watch: its thread stops the watcher; update frees it once that ended.
+@(private = "file")
+watch_end :: proc(d: ^Dialog) {
+	w := d.watch
+	if w == nil { return }
+	d.watch = nil
+	sync.lock(&w.lock)
+	w.d = nil
+	sync.unlock(&w.lock)
+	sync.sema_post(&w.ended)
+	append(&d.watch_ended, w)
+}
+
+// Frees the watches whose thread ended (their join waits on nothing).
+@(private = "file")
+watch_reap :: proc(d: ^Dialog) {
+	for i := len(d.watch_ended) - 1; i >= 0; i -= 1 {
+		w := d.watch_ended[i]
+		if !sync.atomic_load(&w.done) { continue }
+		watch_task_join(w)
+		unordered_remove(&d.watch_ended, i)
+	}
+}
+
+// Waits for the thread of a watch let go of, then frees it (destroy: the end of the dialog waits for its threads).
+@(private = "file")
+watch_task_join :: proc(w: ^Watch_Task) {
+	thread.join(w.thread)
+	thread.destroy(w.thread)
+	delete(w.choices)
+	free(w)
+}
+
+// The places of the install are watched now (false: not yet, or no watcher could start; setup.stale reads again).
+watching :: proc(d: ^Dialog) -> bool { return d.watch != nil && sync.atomic_load(&d.watch.watching) }
 
 ////////////////////////////////
 // The work, on the dialog's thread
@@ -484,6 +568,7 @@ update :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 			d.open, d.in_page, d.confirm = false, false, false
 		}
 	}
+	watch_reap(d)
 	if !d.open {
 		watch_end(d)
 		return

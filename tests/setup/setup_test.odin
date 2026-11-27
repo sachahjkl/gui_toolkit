@@ -6,8 +6,10 @@ package setup_test
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "core:time"
+import base "gt:base"
 import desktop "gt:desktop"
 import i18n "gt:i18n"
 import setup "gt:setup"
@@ -271,15 +273,15 @@ the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
 	app.opening = true   // (the next build opens it: the facts are read on the dialog's thread)
 	session.wait_text(s, "Not installed")   // (the state's pill: the facts are read)
 	testing.expect(t, app.d.known)
-	testing.expect(t, app.d.watcher != nil, "the install is watched")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return setup.watching(&(^App)(s.user).d) }, "the install to be watched")
 	// something else puts a program there
 	testing.expect(t, os.make_directory_all(sc.install) == nil)
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/sample", sc.install), transmute([]byte)string("x")) == nil)
 	session.wait_text(s, "earlier setup")
 	session.key(s, .Escape)
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return !(^App)(s.user).d.open }, "Escape to close it")
-	session.frames(s, 2)
-	testing.expect(t, app.d.watcher == nil, "closed: no longer watched")
+	testing.expect(t, !setup.watching(&app.d), "closed: no longer watched")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return len((^App)(s.user).d.watch_ended) == 0 }, "the watch's thread to end")
 }
 
 // A program that draws its own screen asks the controller what to offer and closes through it: the same answers as the
@@ -607,4 +609,43 @@ page_start :: proc(t: ^testing.T, pg: ^Page_App, f: setup.Facts, palette: ui.Pal
 	s := session.start(t, {size = {760, 760}, user = pg, build = page_build, palette = palette})
 	session.wait_box(s, "setup_page")
 	return s
+}
+
+// A scratch install whose prepare counts where the options are made: options() reads the disk before it calls prepare.
+@(private = "file")
+Counted_Scratch :: struct {
+	using scratch: Scratch,
+	prepared, on_interface: int,   // atomic
+}
+
+@(private = "file")
+counted_prepare :: proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) {
+	sc := (^Counted_Scratch)(user)
+	sync.atomic_add(&sc.prepared, 1)
+	if base.on_interface_thread() { sync.atomic_add(&sc.on_interface, 1) }
+	scratch_prepare(o, choices, &sc.scratch)
+}
+
+// The Installation page opened: the install is read and its places watched on threads. Nothing of it waits on the
+// interface thread (the session's end fails on a blocking call), and the options, which read the disk, are made
+// elsewhere.
+@(test)
+the_installation_page_reads_and_watches_off_the_interface :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux { return }
+	tmp := os.get_env("TMPDIR", context.temp_allocator)
+	sc := Counted_Scratch{scratch = {root = fmt.tprintf("%s/tk_setup_page_%d", tmp != "" ? tmp : "/tmp", time.now()._nsec)}}
+	sc.install = fmt.tprintf("%s/programs/sample", sc.root)
+	testing.expect(t, os.make_directory_all(sc.root) == nil)
+	defer os.remove_all(sc.root)
+	pg: Page_App
+	defer setup.destroy(&pg.d)
+	pg.cfg = {identity = desktop.Identity{name = "Sample", slug = "sample", exe_name = "sample", manifest_name = "sample_install.txt"},
+		version = "1.0.0", prepare = counted_prepare, user = &sc}
+	s := session.start(t, {size = {760, 760}, user = &pg, build = page_build})
+	session.wait_box(s, "setup_page")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return (^Page_App)(s.user).d.known }, "the install to be read")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return setup.watching(&(^Page_App)(s.user).d) }, "the install to be watched")
+	testing.expect(t, sync.atomic_load(&sc.prepared) >= 2, "the options were made for the read and for the watch")
+	testing.expect_value(t, sync.atomic_load(&sc.on_interface), 0)
+	testing.expect_value(t, s.blocking, 0)
 }

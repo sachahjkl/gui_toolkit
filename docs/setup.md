@@ -229,6 +229,7 @@ my_setup_view :: proc(v: ^ui.View, d: ^setup.Dialog) {   // registered with ui.v
 | `can_uninstall(d)`, `busy(d)` | something of an install is there; Install, Uninstall or the picker is at work |
 | `closing(d, o) -> Closing` | `Close`, `Not_Now` (an upgrade) or `Keep_Standalone` (no install, another copy) |
 | `start_install`, `start_uninstall`, `pick_folder` | the work, on the dialog's thread (nothing while work is out) |
+| `watching(d)` | the places of the install are watched now: the watch starts and stops on a thread of its own, so not at once after `start`; false where no watcher could start (`stale` reads again) |
 | `open_installed(d)` | `Launched` when there is a `Dialog.installed`: the program ends, then starts it with `launch` once its window is closed and its single instance released (`prefs_page.install_launch` does) |
 | `close(d, how)` | closes it: `Kept_Standalone`, `Dismissed` (Not now, or no answer), or `None` (nothing to remember) |
 
