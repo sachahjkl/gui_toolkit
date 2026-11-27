@@ -415,7 +415,7 @@ host_frame :: proc(h: ^Host, inner := false) {
 	// (a frame that drew no picture, held for the compositor's word, owes it still: the patience above draws it)
 	if !inner && h.settle > 0 && shown { h.settle -= 1 }
 	// (a first frame drawn on the CPU: the next one, at once, ends the stage and is the GPU's. Nothing else may ask for it)
-	if render.cpu_stage_active(&sh.r) && h.failure == .None { h.settle = max(h.settle, 1) }
+	if owed, _ := render.cpu_stage_next(&sh.r); owed { h.settle = max(h.settle, 1) }
 	free_all(context.temp_allocator)
 }
 
@@ -523,11 +523,9 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	if after, _, _ := render.present_totals(r); after == presents { platform.frame_shown_forget(h.win) }
 	if h.paced { render.paced_present(&h.pacer) }
 	// (the device did not come after a first frame on the CPU: said as a failed host_open says it, and the window closes)
-	if render.cpu_stage_active(r) && h.failure == .None {
-		if e, _ := render.init_failure(r); e != .None {
-			open_failed(h, .No_Renderer, "", box = true)
-			platform.request_close(h.win)
-		}
+	if _, failed := render.cpu_stage_next(r); failed && h.failure == .None {
+		open_failed(h, .No_Renderer, "", box = true)
+		platform.request_close(h.win)
 	}
 	h.times = {draw = time.tick_diff(t_draw, t_present), present = time.tick_since(t_present)}
 	h.shown = h.win.size

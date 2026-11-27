@@ -341,7 +341,12 @@ wait_frame_slot :: proc(r: ^Renderer, w: ^platform.Window, timeout_ms := FRAME_W
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer readback_frame_done(f)
 	when CPU_FIRST {
-		if r.cpu.active { r.cpu.exact = cpu_raster_frame(r, f); return }
+		if r.cpu.active {
+			t0 := time.tick_now()
+			r.cpu.exact = cpu_raster_frame(r, f)
+			r.cpu.raster_ms = time.duration_milliseconds(time.tick_since(t0))
+			return
+		}
 		if r.cpu.shadow { r.cpu.exact = cpu_raster_frame(r, f) }
 	}
 	when DAMAGE_CHECK {

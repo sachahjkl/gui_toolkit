@@ -188,6 +188,8 @@ open :: proc(o: Open_Options) -> ^App {
 	app := new(App)
 	the_app = app
 	app.settings_in = o.settings_dir
+	// (the graphics device first, on a thread of its own: its adapter answers while the fonts load and the window opens)
+	if !o.headless { render.preload_device() }
 	if !o.headless { rng_state ~= u64(time.tick_now()._nsec) * 0x9e3779b97f4a7c15 }
 	font.init(&app.fonts)
 	// transparent: some palettes (Aero) let the OS backdrop show through the page background
@@ -197,7 +199,11 @@ open :: proc(o: Open_Options) -> ^App {
 		if !render.init_offscreen(&app.r, app.win.size, warp = true) { fmt.eprintln("renderer init failed"); return nil }
 	} else {
 		app.win = platform.open_window("gui_toolkit fidget", WINDOW_SIZE, transparent = true, integrated_title = app.integrated)
-		if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return nil }
+		// (the first frame on the CPU while the device asked for above comes: docs/rendering.md)
+		if !render.init_window(&app.r, app.win, app.win.size, transparent = true, cpu_first = true) {
+			fmt.eprintfln("fidget: %s", render.init_failure_text(&app.r, context.temp_allocator))
+			return nil
+		}
 		render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
 	}
 	ok: bool
@@ -304,6 +310,13 @@ main :: proc() {
 		}
 		frame(app)
 		if app.frames_requested > 0 { app.frames_requested -= 1 }
+		// (a frame drawn on the CPU while the device comes: the next one at once, which ends the stage on the GPU)
+		if owed, failed := render.cpu_stage_next(&app.r); owed {
+			app.frames_requested = max(app.frames_requested, 1)
+		} else if failed {
+			fmt.eprintfln("fidget: %s", render.init_failure_text(&app.r, context.temp_allocator))
+			app.want_quit = true
+		}
 	}
 }
 

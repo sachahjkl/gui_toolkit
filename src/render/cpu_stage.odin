@@ -40,6 +40,8 @@ Cpu_Stage :: struct {
 	window:  ^platform.Window,  // where the CPU frames are shown
 	frames:  int,               // frames drawn in the stage
 	drawn:   [2]int,            // the size of the last one
+	raster_ms: f64,             // the last one's rasterising (a trace's)
+	cores:   int,               // the processor's cores, read once: the rasteriser's bands (cpu_raster.odin)
 	shown:   bool,              // a CPU frame is on the window: drop_pixels after the first GPU present
 	shown_at: u64,              // r.present.presents when the stage ended (the first GPU present is the next one)
 	exact:   bool,              // the last CPU frame drew everything its Frame_Data asked (cpu_frame_exact)
@@ -61,6 +63,18 @@ Cpu_Stage_Init :: struct {
 // The renderer draws on the CPU: its first frame, before the device.
 cpu_stage_active :: proc(r: ^Renderer) -> bool {
 	when CPU_FIRST { return r.cpu.active } else { return false }
+}
+
+// After a frame of a loop: `owed`, the stage is on and its next frame must come at once (it ends the stage, on the GPU:
+// nothing else may ask for it); `failed`, the device did not come (init_failure says why) and the frames stay on the CPU.
+// What a program with its own loop asks after each frame, as host does.
+cpu_stage_next :: proc(r: ^Renderer) -> (owed, failed: bool) {
+	when CPU_FIRST {
+		if !r.cpu.active { return }
+		return !r.cpu.failed, r.cpu.failed
+	} else {
+		return
+	}
 }
 
 // The last frame drawn on the CPU had nothing it could not draw (no layer, filter, blend mode, picture, plane or
@@ -318,8 +332,8 @@ cpu_frame_end :: proc(r: ^Renderer) {
 			r.first_present_noted = true
 			first := base.start_mark("render: first frame shown")
 			if render_trace() {
-				fmt.eprintfln("render: first present %.0f ms after the process started (on the CPU: encoded in %.2f ms, shown in %.2f ms)",
-					base.start_ms(), time.duration_milliseconds(time.tick_diff(t0, t1)), time.duration_milliseconds(time.tick_since(t1)))
+				fmt.eprintfln("render: first present %.0f ms after the process started (on the CPU: rasterised in %.2f ms, encoded in %.2f ms, shown in %.2f ms)",
+					base.start_ms(), r.cpu.raster_ms, time.duration_milliseconds(time.tick_diff(t0, t1)), time.duration_milliseconds(time.tick_since(t1)))
 				if first { base.start_print() }
 			}
 		}

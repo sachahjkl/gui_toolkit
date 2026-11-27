@@ -159,8 +159,9 @@
 - **CPU frames until the device is ready.** The renderer stays in its CPU stage until the device and the pipelines are
   made, without a wait: input is answered during the 100 to 200 ms the GPU still takes on lavapipe. It needs a wake from
   the device's thread. Intent: [src/md/infrastructure/cpu-first-frames.md](src/md/infrastructure/cpu-first-frames.md).
-- **The programs with their own loop on the CPU's first frame.** fidget and the programs that call `render.init_window`
-  themselves ask for `cpu_first` and ask for their second frame at once, as `host_open` does.
+- **The other examples with their own loop on the CPU's first frame.** cursors, effects, markdown, panes, smoke, stream,
+  transforms and whatsnew call `render.init_window` themselves: each asks for the device first, for `cpu_first`, and for
+  its next frame while `render.cpu_stage_next` says it is owed, as fidget does.
 
 - **The first pipelines from the disk.** A pipeline cache (Vulkan's) kept between starts, once wgpu-native's C API can make
   one: the first frame then compiles nothing at a second start (110 ms on lavapipe). Intent:

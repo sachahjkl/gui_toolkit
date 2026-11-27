@@ -84,12 +84,12 @@ a_device_made_early_goes_to_the_init_of_its_kind :: proc(t: ^testing.T) {
 	// after it is made at once; with nothing being made, none is taken
 	calls: int
 	count :: proc(user: rawptr) { (^int)(user)^ += 1 }
-	testing.expect(t, !preload_when_done(count, &calls), "nothing is being made")
+	testing.expect(t, !preload_when_done(count, rawptr(&calls)), "nothing is being made")
 	testing.expect(t, preload_device(warp = true), "the thread starts a fourth time")
 	testing.expect_value(t, preload_adapter_wait(), Preload_Adapter.Vulkan)
-	testing.expect(t, preload_when_done(count, &calls), "a device is being made")
+	testing.expect(t, preload_when_done(count, rawptr(&calls)), "a device is being made")
 	testing.expect(t, made_device() != nil, "made")
-	testing.expect(t, preload_when_done(count, &calls), "made: called at once")
+	testing.expect(t, preload_when_done(count, rawptr(&calls)), "made: called at once")
 	release_preloaded_device()   // (joins the thread: its call is done)
 	testing.expect_value(t, calls, 2)
 }

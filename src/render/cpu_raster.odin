@@ -1,6 +1,8 @@
 package render
 
 import "core:math"
+import "core:os"
+import "core:thread"
 
 // The CPU rasteriser of the CPU stage (cpu_stage.odin, src/md/infrastructure/cpu-first-frames.md): a frame's instances
 // drawn as rect.wgsl's ps_main and slug.wgsl's ps_slug / ps_slug_dual draw them, pixel for pixel, with the same formulas.
@@ -36,6 +38,7 @@ Cr_Globals :: struct {
 	space:         u32,
 	text_gamma, text_contrast, text_exponent: f32,
 	dual:          bool,   // the frame blends text per colour stripe (Frame_Data.subpixel, the frame's own target)
+	dual_atlas:    bool,   // ... atlas glyphs too: Direct3D 11's per-channel blend (rect_dual.wgsl); WebGPU averages them
 }
 
 @(private)
@@ -46,6 +49,7 @@ Cr :: struct {
 	px:    [][4]f32,
 	w, h:  int,
 	exact: bool,
+	rows:  [2]int,   // the band this state draws: [first, end)
 }
 
 // Draws `f` into the CPU frame (cpu_frame_begin cleared it). The frame's own target only: false when something was
@@ -60,14 +64,42 @@ cpu_raster_frame :: proc(r: ^Renderer, f: Frame_Data) -> (exact: bool) {
 	case .Srgb: tg = -1
 	case .Power: tg = max(r.text.gamma, TEXT_GAMMA_MIN)
 	}
-	s := Cr{r = r, f = &f, px = r.cpu.frame[:], w = r.size.x, h = r.size.y, exact = true}
-	s.g = {
+	g := Cr_Globals{
 		corner_n = 2 + CORNER_N_SMOOTHING * sm, corner_boost = 1 + CORNER_BOOST_SMOOTHING * sm,
 		space = u32(r.space), text_gamma = tg, text_contrast = r.text.contrast,
 		text_exponent = max(r.text.coverage_exponent, TEXT_COVERAGE_EXPONENT_MIN),
 		dual = f.subpixel,
+		dual_atlas = f.subpixel && !USE_WGPU,
 	}
-	if len(s.px) < s.w * s.h { return false }
+	w, h := r.size.x, r.size.y
+	if len(r.cpu.frame) < w * h || w <= 0 || h <= 0 { return false }
+	// Bands of rows, one thread each: every band draws every instance clipped to its rows, so each pixel gets its
+	// instances in their order. A frame of a few hundred thousand pixels takes milliseconds a band.
+	if r.cpu.cores == 0 { r.cpu.cores = os.get_processor_core_count() }   // (once: the stage's first frame, or the shadow's)
+	bands := clamp(min(r.cpu.cores, CR_BANDS_MAX), 1, max(h / CR_BAND_MIN_ROWS, 1))
+	states: [CR_BANDS_MAX]Cr
+	threads: [CR_BANDS_MAX]^thread.Thread
+	for i in 0 ..< bands {
+		states[i] = Cr{r = r, f = &f, g = g, px = r.cpu.frame[:], w = w, h = h, exact = true, rows = {h * i / bands, h * (i + 1) / bands}}
+		if i > 0 { threads[i] = thread.create_and_start_with_poly_data(&states[i], cr_band_run) }
+	}
+	cr_band_run(&states[0])
+	exact = states[0].exact
+	for i in 1 ..< bands {
+		if threads[i] == nil { cr_band_run(&states[i]) } else { thread.join(threads[i]); thread.destroy(threads[i]) }
+		exact = exact && states[i].exact
+	}
+	return
+}
+
+// The most bands a frame is cut into, and the fewest rows a band has.
+@(private) CR_BANDS_MAX :: 8
+@(private) CR_BAND_MIN_ROWS :: 32
+
+// One band's rows of the frame (Cr.rows): every batch of the frame target, in order.
+@(private)
+cr_band_run :: proc(s: ^Cr) {
+	f := s.f
 	for b in f.batches {
 		if b.op > 0 {
 			op := f.ops[b.op - 1]
@@ -80,18 +112,18 @@ cpu_raster_frame :: proc(r: ^Renderer, f: Frame_Data) -> (exact: bool) {
 			int(clamp(b.clip.x, 0, f32(s.w))), int(clamp(b.clip.y, 0, f32(s.h))),
 			int(clamp(b.clip.z, 0, f32(s.w))), int(clamp(b.clip.w, 0, f32(s.h))),
 		}
+		rc[1], rc[3] = max(rc[1], s.rows[0]), min(rc[3], s.rows[1])
 		if rc[2] <= rc[0] || rc[3] <= rc[1] { continue }
 		end := min(b.first + b.count, len(f.insts))
 		for i in b.first ..< end {
 			inst := &f.insts[i]
 			if u32(inst.use_tex + 0.5) == KIND_SLUG {
-				cr_slug(&s, inst, rc)
+				cr_slug(s, inst, rc)
 			} else {
-				cr_inst(&s, inst, b, rc)
+				cr_inst(s, inst, b, rc)
 			}
 		}
 	}
-	return s.exact
 }
 
 ////////////////////////////////
@@ -655,6 +687,13 @@ cr_inst :: proc(s: ^Cr, inst: ^Rect_Inst, b: Batch, rc: [4]int) {
 	if kind == KIND_GLYPH && atlas == nil { s.exact = false; return }
 	if kind == KIND_IMAGE && image == nil { s.exact = false; return }
 	half := size * 0.5
+	// (a plain shape: a pixel more than one pixel inside its straight parts has coverage 1, or 0 inside a ring's hole,
+	// with no distance to compute)
+	plain := kind == KIND_SHAPE && !xf && inst.soft <= 1 && flat && inst.clip == 0
+	hx, hy := abs(half.x), abs(half.y)
+	rmax := min(max(inst.radii.x, inst.radii.y, inst.radii.z, inst.radii.w) * shape_boost, min(hx, hy))
+	bx, by := hx - inst.border, hy - inst.border
+	rin := min(max(max(inst.radii.x, inst.radii.y, inst.radii.z, inst.radii.w) - inst.border, 0) * shape_boost, max(min(bx, by), 0))
 	for y in y0 ..< y1 {
 		row := s.px[y * s.w:]
 		for x in x0 ..< x1 {
@@ -681,6 +720,7 @@ cr_inst :: proc(s: ^Cr, inst: ^Rect_Inst, b: Batch, rc: [4]int) {
 				}
 			}
 			color: [4]f32
+			lcd := [3]f32{1, 1, 1}   // (a pixel's share per colour stripe: rect.wgsl's lcd_weight)
 			if col.a > 0 { color = {col.r / col.a, col.g / col.a, col.b / col.a, col.a} } else { color = {0, 0, 0, col.a} }
 			color.rgb = cr_convert(color.rgb, lerp, g.space)
 			if kind == KIND_SHADOW {
@@ -715,13 +755,15 @@ cr_inst :: proc(s: ^Cr, inst: ^Rect_Inst, b: Batch, rc: [4]int) {
 					s1 := srcn.zw * page
 					gx := int(min(s0.x + math.floor((tt.x - s0.x) / 3) * 3, s1.x - 3))
 					gy := int(clamp(math.floor(tt.y), s0.y, s1.y - 1))
-					sum: f32 = 0
+					c3: [3]f32
 					for k in 0 ..< 3 {
 						xx := clamp(gx + k, 0, atlas_td.w - 1)
 						yy := clamp(gy, 0, atlas_td.h - 1)
-						sum += cr_text_coverage(g, &text, f32(atlas[yy * atlas_td.w + xx]) / 255)
+						c3[k] = cr_text_coverage(g, &text, f32(atlas[yy * atlas_td.w + xx]) / 255)
 					}
-					color.a *= sum / 3
+					mean := (c3.x + c3.y + c3.z) / 3
+					if g.dual_atlas { lcd = c3 / max(mean, 1.0 / 1024) }
+					color.a *= mean
 				} else {
 					h := 0.5 / tex
 					cu := [2]f32{clamp(uv.x, srcn.x + h, srcn.z - h), clamp(uv.y, srcn.y + h, srcn.w - h)}
@@ -761,6 +803,14 @@ cr_inst :: proc(s: ^Cr, inst: ^Rect_Inst, b: Batch, rc: [4]int) {
 					color = {color.r, color.g, color.b, color.a * texel.a}
 					color.rgb *= cr_convert(straight, tex_space, g.space)
 				}
+				if plain {
+					ax, ay := abs(p.x), abs(p.y)
+					if inst.border <= 0 {
+						if (ax <= hx - 1 && ay <= hy - rmax - 1) || (ax <= hx - rmax - 1 && ay <= hy - 1) { cr_blend(&row[x], color); continue }
+					} else if (ax <= bx - 1 && ay <= by - rin - 1) || (ax <= bx - rin - 1 && ay <= by - 1) {
+						continue
+					}
+				}
 				r := cr_corner_radius(p, inst.radii)
 				border, soft := inst.border, inst.soft
 				coverage: f32
@@ -792,6 +842,15 @@ cr_inst :: proc(s: ^Cr, inst: ^Rect_Inst, b: Batch, rc: [4]int) {
 					e := cr_encode3(color.rgb)
 					color.rgb = cr_decode3(e + nz)
 				}
+			}
+			if lcd != {1, 1, 1} {
+				// (rect_dual.wgsl's blend: the colour by a factor per channel, the alpha by its own)
+				a := cr_saturate(color.a)
+				fac := [3]f32{cr_saturate(a * lcd.x), cr_saturate(a * lcd.y), cr_saturate(a * lcd.z)}
+				px := &row[x]
+				px.rgb = [3]f32{cr_saturate(color.r), cr_saturate(color.g), cr_saturate(color.b)} * fac + px.rgb * ([3]f32{1, 1, 1} - fac)
+				px.a = a + px.a * (1 - a)
+				continue
 			}
 			cr_blend(&row[x], color)
 		}

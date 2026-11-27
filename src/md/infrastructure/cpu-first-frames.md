@@ -37,12 +37,19 @@ given on the CPU, rasterises each frame on the CPU and gives the pixels to the w
   more CPU frames until the device is ready, with no wait. This needs a wake from the device's thread and a CPU frame
   for each input during the stage. The gain (input answered about 100 ms earlier on lavapipe) is small compared with
   the risk (the whole frame loop on the CPU path). See ROADMAP.md, Later.
-- **The caller asks for it.** `host_open` asks for the CPU stage. A program with its own loop (fidget) calls
-  `init_window` without `cpu_first` and keeps the old start, until it asks too. Its `frame_begin` ends the stage by
-  itself, so a program that asks for the stage needs no other call.
+- **The caller asks for it.** `host_open` asks for the CPU stage. A program with its own loop (fidget) asks for the
+  device first (`render.preload_device`), passes `cpu_first` to `init_window`, and after each frame asks
+  `render.cpu_stage_next`: `owed`, its next frame must come at once (nothing else would ask for it); `failed`, the
+  device did not come. Its `frame_begin` ends the stage by itself.
 - **A CPU copy only while a CPU rasteriser can read it.** The texture uploads, the Slug pages and the heap writes keep a
   CPU copy (`Cpu_Mirror`) while the stage is active, or while the CPU shadow of a test is on (`TOOLKIT_CPU_SHADOW=1`, see
   below). At the end of the stage the copies are freed. A frame on the GPU costs nothing more.
+- **The rasteriser draws in bands, one thread each** (eight at most): each band draws every instance clipped to its
+  rows, so a pixel gets its instances in their order, and no band waits for another. A pixel more than one pixel
+  inside a plain shape's straight parts has coverage 1 (0 in a ring's hole): no distance, no corner's power function.
+  fidget's 1180 x 780 first screen took 346 ms on one core of a loaded machine, 31 to 90 ms in bands, 9 to 17 ms with
+  the plain pixels skipped. Its first picture then shows at 87 to 175 ms (median 106) from the process's start, where
+  the GPU's came at 270 to 470 ms (median 285), on lavapipe and Xvfb.
 - **The rasteriser is the shaders, in Odin.** `cpu_raster.odin` evaluates rect.wgsl's `ps_main` and slug.wgsl's
   `ps_slug` and `ps_slug_dual` per pixel, with the same formulas: the rounded rectangle's distance with the corner
   smoothing, the borders, the soft shapes, the analytic shadows, the gradients, the atlas glyphs with their text
