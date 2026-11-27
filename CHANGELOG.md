@@ -5,6 +5,28 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.366.0] - 2026-11-27 14:15
+
+### Added
+- **`ui.tooltip_near` avoids what it must not cover.** Its new `avoid` argument takes lists of rectangles by priority (a
+point is a rectangle of no size): the tooltip takes the side or corner next to its anchor that covers the fewest of the
+first list, then of the next. A graph's link tooltip stays off the hovered link, the nodes' titles and the other links.
+- **`ui.node_graph`: the link under the pointer stands out of the links that cross it.** It is drawn over the others,
+thicker and lighter, on a halo of its colour, its ports and the edges of its nodes lit, while the other links fade.
+The nearest link to the pointer is the one hovered; where several are under it, a tooltip names it and Alt+wheel
+takes the next. A node under the pointer lights its links the same way; the links of the selected nodes are drawn
+over the others. The emphasis fades in and out with the animations. In every theme the hovered link reads at 3:1 on
+the canvas at least and a faded link keeps 1.5:1.
+- **`base.start_mark`, `base.start_steps`**: a program's start measured from the process's start as the system knows it, not from `main`. The toolkit marks the device made early, its first pipelines, the window, the font, the renderer and the first frame shown; a program adds its own steps and reads them all, so its probe of the start measures what a person waits for. `TOOLKIT_RENDER_TRACE=1` prints them at the first present, on Linux too.
+- **`fsx.write_atomic` keeps a person's document as it was**: `fsx.DOCUMENT` writes through a symbolic link to the file at its end, keeps the file's mode, owner and group (Unix) or its access list, attributes and creation time (Windows, `ReplaceFileW`), and puts the file and its folder on the disk before it returns. The temporary file is its user's alone until it is whole. A `Write_Report` says what was written over, among it the other names of a hard-linked file, which keep the old content. The options are one `Write_Options` value: `fsx.write_atomic(path, data, {flush = true, private = true})`. A settings export keeps the file it replaces.
+
+### Changed
+- **A program shows its first frame sooner**: the graphics device's thread also makes the shaders and the two pipelines of the first frame, side by side, and `host.host_open` asks for the device before it opens the window and loads the font meanwhile. A frame no longer waits behind the compile of a pipeline it does not use. A small window on lavapipe: the first frame shown 592 ms after the process started before, 205 ms now. X11 asks for its atoms in one round trip.
+
+### Fixed
+- **A test's folder is a Windows path as the system writes it**: `testkit.temp_folder` and `fsx.temp_dir` give backslashes alone and long names (`C:\Users\runneradmin\AppData\Local\Temp\gui_toolkit-...`, not `C:\Users\RUNNER~1\...\Temp/gui_toolkit-...`), with no separator at the end. A program's test that compared it with a path from the system failed on the CI. A session's folder (`build/session/<test>`) is joined the same way.
+- **A frame of any size draws, it never ends the program**: the renderer uploads a frame's instances in pages under the device's largest buffer and cuts a draw where a page ends. A frame of 2.9 million rectangles (413 MB) aborted every program on WebGPU, and drew nothing on Direct3D 11. A table past the device's limit draws what fits and says so once; an error in a frame's commands loses that frame only. `gt:draw` makes no instance of a rectangle or an image wholly outside the clip, as for text: a row drawn for every line of a long text costs only the rows in view.
+
 ## [0.365.0] - 2026-11-27 12:34
 
 ### Added
@@ -5188,6 +5210,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.366.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.366.0
 [0.365.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.365.0
 [0.364.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.364.0
 [0.363.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.1
