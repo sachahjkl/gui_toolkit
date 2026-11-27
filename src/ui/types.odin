@@ -168,6 +168,8 @@ Box :: struct {
 	middle_at:   proc(b: ^Box, p: Vec2) -> bool,   // the parts that take the middle button (window point): no autoscroll starts on them; a rich paragraph's links (middle-press.md; reset each build)
 	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
 	hit_outset:  f32,              // frame pixels its hit area reaches past its rect on each side: a thin handle grabbed wider than it is drawn (reset each build)
+	ring_at:     proc(b: ^Box) -> (ring: Rect, radii: [4]f32),   // where its focus ring goes when its visible shape is not its rect (a tab's: tab_face.odin; reset each build)
+	clip_overhang: f32,            // a .Clip box: frame pixels its clip reaches past its left and right edges while its content fits along X: a chosen tab's feet past a strip's view (tab_face.odin; reset each build)
 	gap_step:    f32,              // a .Gap made by space: its step of the spacing scale (0: a gap off the scale; reset each build)
 	plate:       ^Plate_Look,      // a .Plate box's own face and frame (nil: the theme's, from its background; this build's arena; reset each build)
 	swap:        ^Swap_Memory,     // a swap's memory (swap.odin): its layout glides and its drawing crosses faces (State.swaps; reset each build)

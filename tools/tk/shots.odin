@@ -3,7 +3,8 @@ package tk
 // screenshots [-build] [-only:name,name] [-width:px]: docs/screenshots/*.png, and the copies of them in site/img, from the examples,
 // over the Chrome DevTools Protocol (src/cdp): the picture is the frame the program rendered, so the mouse, the keyboard and the
 // windows in front are left alone. Each program runs with an empty settings folder: the user's settings are neither read nor changed.
-// The showcase's scenes (examples/showcase, SHOWCASE_SHOTS) run with no window at all (--headless) and are kept as WebP
+// Every program runs with no window at all (--headless): a picture never opens a window on the person's desktop.
+// The showcase's scenes (examples/showcase, SHOWCASE_SHOTS) are kept as WebP
 // (toolbox.webp_encode, cwebp): docs/screenshots/showcase_*.webp and site/img/showcase_*.webp, a tenth of their PNG.
 //   -build   builds the examples first
 //   -only    just these pictures
@@ -98,20 +99,20 @@ SHOWCASE_SHOTS := []Shot {
 }
 
 SHOTS := []Shot {
-	{"controls",   "fidget",     {"--page=0", "--anim=on"}, 1500, "", false, nil},
-	{"inputs",     "fidget",     {"--page=1", "--anim=on"}, 1500, "", false, nil},
-	{"data",       "fidget",     {"--page=2", "--anim=on"}, 1500, "", false, nil},
-	{"playground", "fidget",     {"--page=3", "--anim=on"}, 3200, "", false, nil},
-	{"palette",    "fidget",     {"--palette_query=theme", "--theme=3", "--anim=on"}, 1500, "", false, nil},
-	{"settings",   "fidget",     {"--settings", "--anim=on"}, 1500, "", false, nil},
-	{"toasts",     "fidget",     {"--page=2", "--toasts", "--toast_pos=2", "--anim=on"}, 1800, "", false, nil},
-	{"about",      "fidget",     {"--about", "--theme=4", "--anim=on"}, 1500, "", false, nil},
-	{"light",      "fidget",     {"--page=0", "--theme=2", "--anim=on"}, 1500, "", false, nil},
-	{"bootstrap",  "fidget",     {"--page=0", "--theme=7", "--anim=on"}, 1500, "", false, nil},
-	{"compact",    "fidget",     {"--page=2", "--compact", "--anim=on"}, 1500, "", false, nil},
-	{"todo",       "todo",       {}, 1500, "", false, nil},
-	{"transforms", "transforms", {"--time=2.0"}, 1500, "", false, nil},
-	{"effects",    "effects",    {"--time=2.0"}, 1500, "", false, nil},
+	{"controls",   "fidget",     {"--headless", "--page=0", "--anim=on"}, 1500, "", false, nil},
+	{"inputs",     "fidget",     {"--headless", "--page=1", "--anim=on"}, 1500, "", false, nil},
+	{"data",       "fidget",     {"--headless", "--page=2", "--anim=on"}, 1500, "", false, nil},
+	{"playground", "fidget",     {"--headless", "--page=3", "--anim=on"}, 3200, "", false, nil},
+	{"palette",    "fidget",     {"--headless", "--palette_query=theme", "--theme=3", "--anim=on"}, 1500, "", false, nil},
+	{"settings",   "fidget",     {"--headless", "--settings", "--anim=on"}, 1500, "", false, nil},
+	{"toasts",     "fidget",     {"--headless", "--page=2", "--toasts", "--toast_pos=2", "--anim=on"}, 1800, "", false, nil},
+	{"about",      "fidget",     {"--headless", "--about", "--theme=4", "--anim=on"}, 1500, "", false, nil},
+	{"light",      "fidget",     {"--headless", "--page=0", "--theme=2", "--anim=on"}, 1500, "", false, nil},
+	{"bootstrap",  "fidget",     {"--headless", "--page=0", "--theme=7", "--anim=on"}, 1500, "", false, nil},
+	{"compact",    "fidget",     {"--headless", "--page=2", "--compact", "--anim=on"}, 1500, "", false, nil},
+	{"todo",       "todo",       {"--headless"}, 1500, "", false, nil},
+	{"transforms", "transforms", {"--headless", "--time=2.0"}, 1500, "", false, nil},
+	{"effects",    "effects",    {"--headless", "--time=2.0"}, 1500, "", false, nil},
 }
 
 Shots_Options :: struct {
@@ -351,7 +352,7 @@ run_finish_shots :: proc(args: []string) -> string {
 	page := toolbox.flag_value(args, "page", "0")
 	theme := toolbox.flag_value(args, "theme", "0")
 	for f in FINISHES {
-		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200, "", false, nil}
+		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {"--headless", fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200, "", false, nil}
 		if why := capture_shot(root, s, 0, out); why != "" { return why }
 	}
 	return ""

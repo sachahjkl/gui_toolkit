@@ -82,14 +82,18 @@ a_highlight_is_a_run_in_the_find_bars_colours :: proc(t: ^testing.T) {
 	runs := ui.box_rich_runs(b)
 	if !testing.expect(t, len(runs) > 0, "the text is no rich paragraph") { return }
 	background := ui.color_from_tags(s.state, b.tags_key, "find_match background")
-	letters := ui.color_from_tags(s.state, b.tags_key, "find_text")
+	edge := ui.color_from_tags(s.state, b.tags_key, "find_match border")
+	// (the letters of a match keep the text's colour: that of the runs around it)
+	letters: Maybe(ui.Color)
+	for r in runs { if r.background != background { letters = r.color; break } }
 	found := make([dynamic]string, context.temp_allocator)
 	for r in runs {
 		if r.background == background {
-			testing.expect_value(t, r.color, letters)
+			testing.expect_value(t, r.edge, edge)
+			if l, ok := letters.?; ok { testing.expect_value(t, r.color, l) }
 			append(&found, r.text)
 		} else {
-			testing.expectf(t, r.background.a == 0, "the run '%s' has a background", r.text)
+			testing.expectf(t, r.background.a == 0 && r.edge.a == 0, "the run '%s' has a background", r.text)
 		}
 		// (mono: every run in one face of its own, the monospace one, not the box's)
 		testing.expectf(t, r.font != 0 && r.font == runs[0].font, "the run '%s' is not in the text's face", r.text)

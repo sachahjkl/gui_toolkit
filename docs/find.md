@@ -17,8 +17,10 @@ The bar has:
 A pointer press on an option, a scope or an arrow leaves the keyboard in the field: the person goes on typing. Tab and
 Space still reach and press each button.
 
-Every match is painted behind its letters in the theme's `find_match background`, the current one in
-`find_current background`, their letters in `find_text`. Every match is also a tick on the view's vertical scroll bar, the
+Every match is painted behind its letters: a light fill of the theme's `find_match background` inside a 1 px edge of
+its `find_match border`, the current one in `find_current background` with a 2 px edge of `find_current border`. The
+letters keep their own colours (a code's colours stay). The edge reaches 3:1 against what is under the view's text
+(`ui.FIND_EDGE_RATIO`) in every theme. Every match is also a tick on the view's vertical scroll bar, in the edge's colour, the
 current one twice as tall, over the program's own marks ([scroll-marks.md](scroll-marks.md)).
 
 ## Use
@@ -56,9 +58,7 @@ if res.scrolled { app.follow_bottom = false }   // the find moved the view to a 
   rows (a terminal) brings that row in itself.
 - `ui.find_count()`, `ui.find_index()` (the current match, -1 none), `ui.find_pending()` (rows not counted yet),
   `ui.find_needle()` (the field's text), `ui.find_matches()` (what the last layout lit: box, window rect, ordinal),
-  `ui.find_row_matches(row)` (a row's byte ranges), `ui.find_ticks(view)` (the ticks' places on the bar, for tests),
-  `ui.find_match_ink(ink, ground)` (the text ink used in a match: `find_text` when it reads at 4.5:1 on the composite
-  match colour, else black or white).
+  `ui.find_row_matches(row)` (a row's byte ranges), `ui.find_ticks(view)` (the ticks' places on the bar, for tests).
 
 ## A view that builds all of its content
 

@@ -220,10 +220,44 @@ session) is the program's to say: `find_close`, or nothing (the rows' identities
 filter (which kept prompt marks by their text) and opencode native's Jump to message (a palette of the prompts): "Prompts" and
 Enter go to a prompt that says the word, lit, counted. A scope applies to rows only; a view in box mode shows none.
 
+## The look of a match
+
+The code is `find_draw` (`src/ui/find.odin`) and the `Find_Edge` and `Find_Fill` slots (`theme_default.odin`).
+
+- **A light fill and an edge, the letters in their own colours.** Every match is a fill of the theme's `find_match
+  background` inside a 1 px edge of its `find_match border`; the current match has a 2 px edge (`find_current`), and its
+  rect grows by that pixel so the edge does not touch the letters. The box draws its text over them as everywhere else:
+  a code's comment stays grey, a keyword purple.
+- **Why.** Up to 0.363 a match was an opaque amber (0.62, the current one 0.85) and its letters were drawn again in
+  `find_text`, black or white. On a code view the colours of the code went away under each match, and in plume's
+  captures a grey comment on amber did not read. The person looks for where the word is, then reads it in its context:
+  the edge says where, the letters keep what they say.
+- **The edge reaches 3:1** (WCAG 1.4.11, a part of the interface that is no text). `Find_Edge` is the theme's warn hue
+  made readable at `FIND_EDGE_RATIO` on the page (`readable`: a light theme's amber is darkened); at the draw, it is
+  checked again against what is under the box (`box_under`: a selected row, a bar).
+- **The fill looks like 15 % of the edge's colour in every theme** (`FIND_FILL`). An alpha mixes in linear light, where
+  0.15 of amber on a black page looks like 40 % (measured `#69562A` on `#151515`): `Find_Fill` is the edge's colour at
+  the alpha whose mix has the luminance of an sRGB step of 0.15 from the page.
+- **The fill gives way before the text.** Where the theme's text would drop under 4.5:1 on it (or the weak text under
+  3:1), the share shrinks by steps of 0.8 until both read (Tokyo Night's light text read 4.07 on the full share).
+  `tests/theme_look` checks it, and the edge's 3:1, in every theme.
+- **On a selected row, the edge alone.** A selected row's inks are made to read at 4.5:1 on its own ground
+  (selection-contrast.md); a fill over it took a nav row's title to 4.06:1 (Naysayer). There the match is its edge only.
+- The scroll bar's ticks are in the edge's colour (`find_match border`, `find_current border`): a tick is a thin line,
+  and needs the edge's contrast, not the fill's.
+
+Refused:
+
+- **An opaque fill with letters drawn again in a colour that reads on it** (the look up to 0.363): it removes the
+  text's own colours, and it needs a second pass of the text clipped round each match.
+- **A fill alone, without the edge**: at 15 % the fill alone is below 1.5:1 on the page and does not show where a match
+  is; strong enough to show it, it covers the colours again.
+- **The selection's colour for the matches**: a match is not a selection, and a selection inside a match must show.
+
 ## Ticks on the scroll bar
 
-Every match is a tick on the view's vertical bar, in the theme's `find_match background`, the current one in
-`find_current background`, drawn over the thumb and over the program's marks: those (prompts, headings) are navigation and
+Every match is a tick on the view's vertical bar, in the theme's `find_match border`, the current one in
+`find_current border` and twice as tall, drawn over the thumb and over the program's marks: those (prompts, headings) are navigation and
 keep their accent; the ticks are the find's and go when it closes. With rows, a tick is a row's top (from the lazy column's
 `y` before its item, `find_place_row` for a custom view); in box mode, each occurrence's top. Ticks closer than a pitch are one.
 The merge is made again only when the counts, the places, the track or the content height change.

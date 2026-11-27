@@ -121,7 +121,7 @@ syntax and underlines lines its engine would drop.
 **Rich text** (`src/ui/rich_text.odin`). `ui.box_rich_runs(box)` gives a rich paragraph's runs as built, for a test or
 a tool that reads their styles (nil for any other box); `ui.box_text(box)` its words. `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
 each run has its text and a `Rich_Style` (face, size, `bold`, `italic`, `code` (mono font, the theme's `code_bg`),
-colour, background, `underline`, `strike`, `link`). Lines break at the backend's opportunities computed on the whole
+colour, background, `edge` (a 1 px line round the background), `underline`, `strike`, `link`). Lines break at the backend's opportunities computed on the whole
 text, so a word whose style changes in the middle is not broken there; "\n" always breaks; a word wider than the line is
 cut between grapheme clusters; `max_lines` ends the last line with "…"; the box's `text_align` aligns the lines. The box
 is full width and as tall as its lines (`Box.measure_y`: its height follows the width the layout gave it). Links: the
@@ -365,7 +365,8 @@ report no color glyph, so a caller falls back to the outline.
 ## Find in a view
 
 The find bar (`ui.find_bar`) finds a needle in a view and paints each match behind its letters: [find.md](find.md). Theme
-entries: `find_match background` (every match), `find_current background` (the current one), `find_text` (their letters).
+entries: `find_match background` and `find_match border` (every match: a light fill, a 1 px edge), `find_current
+background` and `find_current border` (the current one: a 2 px edge). The letters keep their own colours.
 A match may span the runs of one rich paragraph, never two boxes.
 
 ## Limits

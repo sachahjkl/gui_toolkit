@@ -88,5 +88,5 @@ muted `accent` (a weak mark fainter, and shorter). The marks within the thumb's 
 they say where the view is. The mark under the pointer and the keyboard's are the full `accent`, twice as tall, across the
 track. The bar is the toolkit's ([scroll-bar.md](scroll-bar.md)), wider; its thumb has no grip lines, which would cross
 the marks drawn over it. The magnifier is `weak text`, `accent` under the pointer and while the find is open over the view. The find's ticks
-are drawn over the marks, in `find_match background`. With `set_scrollbar_autohide`, a bar
+are drawn over the marks, in `find_match border`. With `set_scrollbar_autohide`, a bar
 with marks still shows.

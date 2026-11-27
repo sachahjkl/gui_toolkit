@@ -99,6 +99,18 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	draw.set_interpolation(dc, interp)
 }
 
+// What a .Clip box cuts what is in it to: its rect, wider along X by its overhang while all its content shows along X
+// (scrolled, the content past an end is hidden there, and must not show beside it).
+@(private)
+box_clip :: proc(b: ^Box) -> Rect {
+	r := b.rect
+	if b.clip_overhang > 0 && b.view_off.x == 0 && b.view_bounds.x <= b.size.x + 0.5 {
+		r.min.x -= b.clip_overhang
+		r.max.x += b.clip_overhang
+	}
+	return r
+}
+
 // Below these a state value or an alpha draws nothing.
 @(private = "file") DRAW_INVISIBLE_EPS :: 0.001
 @(private = "file") DISABLED_FADE_EPS :: 0.005
@@ -212,6 +224,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	// (a row's ring goes round its face, what the user sees of it, not round its box)
 	ring, ring_radii := r, radii
 	if focus_ring && .Row in flags { ring, ring_radii, _, _, _ = row_face_of(s, b) }
+	if focus_ring && b.ring_at != nil { ring, ring_radii = b.ring_at(b) }
 	focus_look := s.theme != nil ? s.theme.look.focus : Theme_Focus{}
 	if focus_ring && s.theme != nil && s.theme.relief.sheen && focus_look.style == .Ring_Glow {
 		// glow around the focused widget, under its background
@@ -234,11 +247,11 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	}
 	if .Draw_Text in flags && b.text != "" {
 		paint := .Text_Wrap in flags ? draw_wrapped_text : draw_box_text
-		if s.find.needle != "" { find_paint_text(s, dc, b, paint) } else { paint(s, dc, b) }
+		paint(s, dc, b)
 		if .Selectable in flags && b.custom != rich_draw { paint_selected(s, dc, b, paint) }
 	}
 
-	if .Clip in flags { draw.push_clip(dc, r) }
+	if .Clip in flags { draw.push_clip(dc, box_clip(b)) }
 	faded := .Clip in flags && (b.edge_fade != {} || b.edge_hold != {})
 	if faded { draw.push_mask(dc, r) }   // (no cache_id: it always asks for the content)
 	if b.custom != nil { b.custom(b, b.custom_user, dc) }

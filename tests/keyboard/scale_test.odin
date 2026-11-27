@@ -63,8 +63,8 @@ sizes_follow_the_scale :: proc(t: ^testing.T) {
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts) }
 
-	// a tab's plate: the rows of a column of its left padding (no text there, past its rounded corner) that its being
-	// chosen changes: the raised plate's height, which follows the scale
+	// a chosen tab's face: the rows of a column of its left padding (no text there) that its being chosen changes: the
+	// shape from under the strip's ground over it down to the line (src/md/features/tabs.md), which follows the scale
 	tabs :: proc(user: rawptr) {
 		r := (^Tab_Run)(user)
 		ui.next({width = ui.fill(), height = ui.px(ui.scale() * 40), axis = .X})
@@ -81,9 +81,9 @@ sizes_follow_the_scale :: proc(t: ^testing.T) {
 		return n
 	}
 	p1, p2 := plate(f, 1), plate(f, 2)
-	// (0.8 of a row of 40 px: about 32 rows, then 64; the finish's rim or shadow may add a row or two at each side)
-	testing.expectf(t, p1 >= 28 && p1 <= 38, "the plate at 100 %%: %d rows", p1)
-	testing.expectf(t, p2 >= 2 * p1 - 4 && p2 <= 2 * p1 + 4, "the plate at 200 %%: %d rows, twice %d", p2, p1)
+	// (0.84 of a row of 40 px: about 34 rows, then 68; the outlines' antialiased rows may add one or two)
+	testing.expectf(t, p1 >= 30 && p1 <= 38, "the chosen tab at 100 %%: %d rows", p1)
+	testing.expectf(t, p2 >= 2 * p1 - 4 && p2 <= 2 * p1 + 4, "the chosen tab at 200 %%: %d rows, twice %d", p2, p1)
 
 	// a radio's ring: the pixels of the row through its middle, from its left edge in, that differ from no radio at all
 	ring :: proc(f: ^Sx, dpi: f32) -> int {

@@ -318,7 +318,8 @@ the lip of a well). A region redrawn on its own must hold that much around its b
 A state is drawn by the face itself ([widgets.md](widgets.md), "States"). The theme gives its steps under each tag:
 `hover_fill` and `press_fill` (fractions toward the tint, in sRGB values: about 7 % and 12 %), `hover_border` (a border
 that much toward the tint: fields, buttons' rims) and `hover_sheen` (a face that has none at rest appears raised: the
-ghost and glyph buttons, the tabs; 0 for rows).
+ghost and glyph buttons; 0 for rows and tabs). A row of tabs has its own entry: `tab_on background` (the chosen tab,
+the page's colour); its outline is the `border`, its light the finish's, its corners the control radius.
 
 | Finish | Under the pointer | Pressed or toggled |
 |---|---|---|

@@ -27,6 +27,7 @@ Rich_Style :: struct {
 	code:       bool,           // inline code: the mono font, the theme's "code_bg" behind
 	color:      Color,          // alpha 0: the box's text colour (a link's: the theme's "link")
 	background: Color,
+	edge:       Color,          // alpha 0: none; a 1 px line round its background (what a search lit: find_match border)
 	underline:  bool,
 	strike:     bool,
 	link:       string,         // a link: its target (the result says when it is hovered, clicked or chosen)
@@ -488,7 +489,7 @@ rich_hash :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines: int,
 		fnv64_mix(&h, transmute([]u8)r.text)
 		rich_hash_value(&h, r.font); rich_hash_value(&h, r.size)
 		rich_hash_value(&h, r.bold); rich_hash_value(&h, r.italic); rich_hash_value(&h, r.code)
-		rich_hash_value(&h, r.color); rich_hash_value(&h, r.background)
+		rich_hash_value(&h, r.color); rich_hash_value(&h, r.background); rich_hash_value(&h, r.edge)
 		rich_hash_value(&h, r.underline); rich_hash_value(&h, r.strike)
 		fnv64_mix(&h, transmute([]u8)r.link)
 		h = (h ~ 0xff) * FNV64_PRIME   // run boundary
@@ -682,16 +683,15 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			x0, x1 := o.x + f.x, o.x + f.x + f.width
 			bg := r.background
 			if r.code && bg.a == 0 { bg = d.code_bg }
-			if bg.a > 0 { draw.rect(dc, {{x0, o.y + li.y}, {x1, o.y + li.y + li.height}}, bg, r.code ? RICH_CODE_RADIUS_PX * s.scale : 0) }
+			at := Rect{{x0, o.y + li.y}, {x1, o.y + li.y + li.height}}
+			if r.edge.a > 0 { at = rect_whole_px(at) }   // (whole pixels: a 1 px edge across two would blur)
+			if bg.a > 0 { draw.rect(dc, at, bg, r.code ? RICH_CODE_RADIUS_PX * s.scale : 0) }
+			if r.edge.a > 0 { draw.rect(dc, at, r.edge, 0, border = max(math.round(s.scale), 1)) }
 		}
 	}
 	if .Selectable in b.flags { draw_selection(s, dc, b) }
-	if s.find.needle != "" {
-		find_draw(s, dc, b)
-		find_paint_text(s, dc, b, rich_paint_text)
-	} else {
-		rich_paint_text(s, dc, b)
-	}
+	if s.find.needle != "" { find_draw(s, dc, b) }
+	rich_paint_text(s, dc, b)
 	if .Selectable in b.flags { paint_selected(s, dc, b, rich_paint_text) }
 }
 
@@ -710,7 +710,7 @@ rich_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 			r := d.runs[f.run]
 			x0, x1 := o.x + f.x, o.x + f.x + f.width
 			col := d.colors[f.run]
-			if col.a == 0 || s.find.in_match || s.sel_painting { col = b.text_color }
+			if col.a == 0 || s.sel_painting { col = b.text_color }
 			base := Vec2{math.round(x0), o.y + li.baseline}
 			draw.text(dc, f.face, f.size, base, col, r.text[f.start:f.end])
 			m := font.metrics(s.fonts, f.face, f.size)

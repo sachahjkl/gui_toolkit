@@ -79,8 +79,15 @@ the first frame a strip is in.
 
 ## The look of a row of tabs
 
-`ui.tabs`, a stack of views and a dock's stack show their tabs one way: the chosen tab a raised plate (the finish's
-face of a button), the others flat in the weak ink, a plate of the hover tint under the pointer.
+`ui.tabs`, a stack of views and a dock's stack show their tabs one way. A line in the border's colour runs along the
+row's bottom; the chosen tab rises out of it as one shape with the panel it shows: concave fillets at its feet, rounded
+top corners (the theme's control radius), the page's colour inside with the finish's light at its top, no line under
+it. The others have a faint rounded outline on the line, filled with the hover tint under the pointer. A tab at an end
+of the row has a straight side there, in line with its panel: the first tab starts at the row's edge. The words sit in
+the middle of the shape. The theme's entries: `tab_on background` and the states of `tab` ([themes.md](themes.md)).
+
+A program that puts `ui.tabs` in a row of its own and wants the line across the whole row makes that row's custom draw
+`ui.tab_line_draw` (the debug window, fidget): not `.Draw_Side_Bottom`, which is drawn over the chosen tab.
 
 ## When a row is not a strip
 

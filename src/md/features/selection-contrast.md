@@ -17,6 +17,7 @@ The toolkit's palette (`palette.odin`) had the same pattern: a weak detail line 
 
 A second fault surfaced when testing every theme: in Old Head (light), `find_text` was fixed to black on the find bar's
 matches (`.Warn`, olive `#808000`, at 0.62 and 0.85) over its navy selection (`#000080`), dropping to 3.60:1 and 4.45:1.
+Since 0.364 a find's match no longer changes its letters' colour (see below).
 
 ## Decisions
 
@@ -43,9 +44,10 @@ matches (`.Warn`, olive `#808000`, at 0.62 and 0.85) over its navy selection (`#
   On a selection (`match_on_selection()`), the tint goes away and matched letters are underlined in the row's ink. An
   underline does not depend on colour, needs no bold font weight to be loaded, and works identically in `rich_paragraph`
   and `label_fuzzy`.
-- **Find matches adapt their ink** (`find_match_ink`): `find_paint_text` checks the theme's `find_text` against each
-  match's composite colour over what is under the box (selection ground or page). When `find_text` drops below 4.5:1,
-  it picks black or white — mathematically, one of the two always reaches at least 4.58:1 on any opaque colour.
+- **Find matches keep the row's inks** ([find-in-view.md](find-in-view.md), "The look of a match"): a match is a light
+  fill and an edge, its letters drawn as the rest of the row. On a selected row it is the edge alone, so the row's inks
+  hold inside a match too. The edge is made to reach 3:1 against what is under the box (a selection's ground or the page). Up to 0.363 an opaque tint
+  carried its own ink (`find_text`, checked against the composite by `find_match_ink`); it went with the tint.
 - **Off a selection, weak text on the page is held to 3:1** (WCAG AA for non-text / large text): weak text on the page
   is a hint beside a title that already reads at 4.5:1, and keeping a clear step below the main text is its point.
 - **Checked on every theme** (`tests/theme_look/selection_contrast_test.odin`): walks every theme in `ui.THEMES` (dark
@@ -58,5 +60,5 @@ matches (`.Warn`, olive `#808000`, at 0.62 and 0.85) over its navy selection (`#
   selection roles, and any new theme or user colour would break again. Computing from the ground guarantees AA everywhere.
 - **Bold for matched letters on a selection**: a program or font may not carry a bold face for every weight/size, and
   bold shifts glyph widths when a row is selected or unselected. An underline keeps the exact layout and works with any font.
-- **Opaque yellow for find matches**: it would look harsh on dark themes and break the theme's own `warn` hue. Checking
-  `find_text` against the composite colour fixes Old Head and every future theme without changing any theme's tint.
+- **Opaque yellow for find matches**: it looks harsh on dark themes and removes the letters' own colours. A light fill
+  and an edge (find-in-view.md) keep the text as it is on every theme.

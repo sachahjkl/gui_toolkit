@@ -72,12 +72,11 @@ window_build :: proc(v: ^ui.View, sf: ^Surface) {
 				if ui.view_header_tools(v) { in_head = true; tabs_build(sf, labels[:], at[:], &chosen, head, h) }
 			}
 			if !in_head {
+				// (its first tab at the edge, the line under the row from edge to edge: the chosen tab rises out of it)
 				ui.next({width = ui.fill(), height = ui.px(head), axis = .X, cross = .Center})
-				if ui.row(.Center) {
-					ui.spacer(ui.px(gap * 2))
-					tabs_build(sf, labels[:], at[:], &chosen, head, h)
-				}
-				ui.hline(ui.fill())
+				tab_row := ui.build_box({}, "###debug_tab_row")
+				tab_row.custom = ui.tab_line_draw
+				if ui.parent(tab_row) { tabs_build(sf, labels[:], at[:], &chosen, head, h) }
 			}
 			filter := filter_row(sf, "###debug_filter", gap, h)
 			ui.next({width = ui.fill(), height = ui.fill()})

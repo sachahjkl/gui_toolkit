@@ -4,6 +4,7 @@ package todo
 import "core:fmt"
 import "core:math"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "gt:devtools"
@@ -369,7 +370,8 @@ close :: proc(app: ^App) {
 }
 
 main :: proc() {
-	app := open({})
+	// (--headless: no window of the system, what tk screenshots runs)
+	app := open({headless = slice.contains(os.args[1:], "--headless")})
 	if app == nil { return }
 	defer close(app)
 	platform.show_window(app.main.win)

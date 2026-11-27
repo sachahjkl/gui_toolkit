@@ -499,6 +499,8 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
 	bar: ^Box
 	if tags("bar") { bar = build_box({.Clip, .Draw_Background}, dock_leaf_id(leaf)) }
+	// (its bottom edge a line, the stack's top border, out of which the shown tab rises: tab_box)
+	bar.custom = tab_line_draw
 	if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
 		focus, _ := dock_focus_leaf(d)
 		sd := frame_new(Dock_Strip_Draw)
@@ -572,13 +574,14 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	sig := signal(tb)
 	held := d.drag.state == .Dragging && d.drag.panel == p
 	closable := dock_closable(d, p)
-	if parent(tb) {
+	if parent(tb) { if tab_body() {
 		if d.opts.tab != nil {
 			d.opts.tab(d.opts.user, {panel = p, box = tb, active = active, hot = sig.hovering || hot_within(tb.key), focused = sig.focused, held = held})
 		} else {
 			if !active { push_tags("weak") }
 			spacer(px(math.round(DOCK_TAB_PAD_EM * em)))
-			next({width = text_size(), height = pct(1)})
+			// (its words start at the pad: where a panel's content starts, dock_content_inset)
+			next({width = text_size(), height = pct(1), text_pad = 0})
 			build_box({.Draw_Text}, fmt.tprintf("%s###dock_title", title))
 			spacer(px(math.round(DOCK_TAB_PAD_EM * em)))
 			if !active { pop_tags() }
@@ -594,7 +597,7 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 			a11y_default(cb, {role = .Button, name = fmt.tprintf(dock_labels(d).close_panel, title)})
 			spacer(px(math.round(DOCK_TAB_PAD_EM * em * 0.5)))
 		}
-	}
+	} }
 	if sig.pressed {
 		if !active { d.nodes[leaf].active = p; dock_changed(d) }
 		if sig.pointer_pressed {
@@ -623,6 +626,10 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	if active { info.controls = dock_body_key(d, p) }
 	a11y_set(tb, info)
 }
+
+// Where a tab's words start from its left edge, in the size in use: a panel whose content starts there (its first column
+// of text) lines up with its tab, the first tab standing at the stack's edge.
+dock_content_inset :: proc() -> f32 { return math.round(DOCK_TAB_PAD_EM * font_size()) }
 
 // (in the build: done by dock_end)
 @(private)
@@ -891,4 +898,6 @@ Dock_Strip_Draw :: struct { bar: Color, lit: bool }
 dock_strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Dock_Strip_Draw)(user)
 	caption_face(dc, b.rect, d.bar, d.bar, d.lit)
+	// (the line the caption covered: the stack's top border, out of which the shown tab rises)
+	tab_line_draw(b, nil, dc)
 }

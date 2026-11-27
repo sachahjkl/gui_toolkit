@@ -31,14 +31,14 @@ import "gt:render"
 import "gt:ui"
 import "gt:ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers, Values, Wheels }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers, Values, Wheels, Editor }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
 	.Toolbar = "toolbar", .Views = "views", .Files = "files", .Steppers = "steppers", .Values = "values",
-	.Wheels = "wheels",
+	.Wheels = "wheels", .Editor = "editor",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
@@ -98,6 +98,9 @@ App :: struct {
 
 	// the values scene (values.odin): its registry, its page's state, the value chosen
 	values:         Values,
+
+	// the editor's scene (editor.odin): its dock
+	editor:         Editor,
 
 	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,   // (its usage memory in memory only: the showcase keeps no file)
@@ -199,6 +202,7 @@ open :: proc(o: Open_Options) -> ^App {
 close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
 	graph_destroy(app)
+	if app.editor.ready { ui.dock_destroy(&app.editor.dock) }
 	values_close(&app.values)
 	settings_close(app)
 	ui.palette_destroy(&app.palette)

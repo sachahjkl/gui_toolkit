@@ -656,8 +656,9 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	r.header = b.key
 	push_parent(b)
 	if small {
-		// (no title: the tools the body puts here come first, the free part after them moves the window)
-		spacer(px(math.round(em * 0.3)))
+		// (no title: the tools the body puts here come first, at its edge (a row of tabs: its first tab at the window's
+		// edge, its line across the strip: dense_header_draw), the free part after them moves the window)
+		b.custom = dense_header_draw
 		pop_parent()
 		return
 	}
@@ -673,6 +674,14 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###view_header_title", text_shown(title)))
 	spacer(fill())
 	pop_parent()
+}
+
+// A dense header (a window's strip of tabs): its ground, then its bottom line from edge to edge, out of which a chosen
+// tab in it rises (tab_box: drawn before the children, so the tab covers it).
+@(private)
+dense_header_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	top_strip_draw(b, user, dc)
+	tab_line_draw(b, nil, dc)
 }
 
 // The second step, after the body: the buttons of this presentation, its drag, its menu.

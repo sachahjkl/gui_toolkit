@@ -13,13 +13,13 @@ import prefs_page "gt:prefs_page"
 import "gt:ui"
 
 // The scenes the sidebar lists (the overlays' scenes stand on one of them), their titles and icons.
-NAV := [?]Scene{.Intents, .Controls, .Values, .Wheels, .Steppers, .Menus, .Toolbar, .Views, .Graph, .Themes, .Settings}
+NAV := [?]Scene{.Intents, .Controls, .Values, .Wheels, .Steppers, .Menus, .Toolbar, .Views, .Editor, .Graph, .Themes, .Settings}
 
 SCENE_TITLES := [Scene]string{
 	.Intents = "Intents and hues", .Controls = "Numbers and ranges", .Palette = "Command palette", .Menus = "Menus",
 	.Dialog = "Dialogs", .Confirm = "Confirmation", .Prompt = "Prompt", .Settings = "Settings", .Graph = "Node graph",
 	.Toasts = "Toasts", .Themes = "Themes", .Toolbar = "Tool bars", .Views = "Views", .Files = "File browser",
-	.Steppers = "Steppers", .Values = "Values", .Wheels = "Wheels",
+	.Steppers = "Steppers", .Values = "Values", .Wheels = "Wheels", .Editor = "Editor",
 }
 
 SCENE_ICONS := [Scene]string{
@@ -27,7 +27,7 @@ SCENE_ICONS := [Scene]string{
 	.Dialog = lucide.DOWNLOAD, .Confirm = lucide.TRASH_2, .Prompt = lucide.KEY_ROUND, .Settings = lucide.SETTINGS,
 	.Graph = lucide.GIT_BRANCH, .Toasts = lucide.BELL, .Themes = lucide.SUN, .Toolbar = lucide.PENCIL_RULER,
 	.Views = lucide.LAYOUT_DASHBOARD, .Files = lucide.FOLDER_OPEN, .Steppers = lucide.LIST_CHECKS, .Values = lucide.SHAPES,
-	.Wheels = lucide.TIMER,
+	.Wheels = lucide.TIMER, .Editor = lucide.CODE,
 }
 
 // The page under an overlay's scene.

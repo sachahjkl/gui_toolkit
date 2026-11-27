@@ -102,7 +102,13 @@ press, so it ends with it (the release, the box held going, the user leaving the
 | `on_save(user, d)` | save the layout (`dock_format`) |
 | `labels` | the menus' words (nil: `dock_default_labels`, the toolkit's, in the language in use) |
 | `size`, `tab_height`, `handle` | frame pixels (0: the defaults: `DOCK_TAB_EM`, the splitter's handle) |
-| `close_buttons` | a close button on the tabs of the panels that can be closed (on the shown tab and the one under the pointer) |
+| `close_buttons` | a close button on the tabs of the panels that can be closed (on the shown tab and the one under the pointer; its room kept on the others, so no tab moves) |
+
+A stack's tabs have the look of every row of tabs ([strip.md](strip.md), "The look of a row of tabs"): the shown tab
+rises out of the strip's bottom line as one shape with its panel, the first tab at the stack's edge. A tab's words start
+`ui.dock_content_inset()` from its edge: a panel whose content starts there lines up with its tab. The shown tab is in
+the page's colour: a panel that paints its own ground in another colour builds its tab itself (`tab`) or sets the
+theme's `tab_on background`.
 
 ### What the user does
 

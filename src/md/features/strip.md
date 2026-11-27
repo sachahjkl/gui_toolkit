@@ -104,17 +104,9 @@ the axis, a side is an axis and an end. Refused: a vertical strip as a second wi
 ## One look for every row of tabs
 
 `ui.tabs`, a dock's stack and a stack of views are three rows of tabs, each on a strip (a dock's stack: its tabs on a
-strip, its fold and menu buttons after it, always in view); they have one look, `tab_box`
-(`src/ui/widgets_ext.odin`): the chosen tab a raised plate, the finish's face of a button (a bevel when machined, a
-sheen with a gradient), 0.8 of the row's height, rounded; the others flat in the weak ink, a plate of the theme's "tab"
-hover under the pointer; each a Tab stop.
-
-- The first look was an accent underline under the chosen tab's words. On the shot of the six terminals the tabs
-  looked alike: three px of accent under a word in a dark bar did not read as the page in front. Overturned for the
-  plate the user asked for (the segmented control's chosen segment, opencode native's server tabs).
-- No underline beside the plate: the plate already says which tab is in front, and a line under it was a second mark.
-- Refused: the views' own look of before, a block tinted with the accent for the shown tab and ghost buttons for the
-  others. A tinted block reads as a selected row of a list.
+strip, its fold and menu buttons after it, always in view); they have one look, `tab_box` (`src/ui/widgets_ext.odin`),
+whose rule and history are in [tabs.md](tabs.md): the chosen tab rising out of the strip's line as one shape with its
+panel, the others a faint outline in the weak ink; each a Tab stop.
 
 ## Refused
 

@@ -2,7 +2,7 @@ package theme_look_test
 
 // Words on a selection (src/md/features/selection-contrast.md), in every theme of ui.THEMES, dark and light: a selected
 // row's title, its weak and faint words, a colour of its own and what a search lit in it read on the row's face at rest and
-// under the pointer (WCAG AA, 4.5); off a selection, the lit letters read on their tint, the text on the page at 4.5 and the weak
+// under the pointer (WCAG AA, 4.5); a find's match keeps the text readable and its edge at 3:1; off a selection, the lit letters read on their tint, the text on the page at 4.5 and the weak
 // text at 3 (a hint beside the text, not the text).
 
 import "core:fmt"
@@ -78,6 +78,15 @@ every_theme_reads_on_its_selection :: proc(t: ^testing.T) {
 			weak := ui.theme_lookup(s.state.theme, nil, "weak text")
 			testing.expectf(t, ui.contrast(text, page) >= TEXT_RATIO, "%s: the text on the page (%.2f)", name, ui.contrast(text, page))
 			testing.expectf(t, ui.contrast(weak, page) >= WEAK_PAGE_RATIO, "%s: the weak text on the page (%.2f)", name, ui.contrast(weak, page))
+			// a find's match on the page (src/md/features/find-in-view.md): its edge reaches 3:1 as the theme gives it, and
+			// on its light fill the text and the weak text keep the thresholds they have on the page
+			for kind in ([]string{"find_match", "find_current"}) {
+				edge := ui.theme_lookup(s.state.theme, nil, fmt.tprintf("%s border", kind))
+				testing.expectf(t, ui.contrast(edge, page) >= ui.FIND_EDGE_RATIO, "%s: the edge of a find's match (%s, %.2f)", name, kind, ui.contrast(edge, page))
+				fill := ui.face_over(ui.theme_lookup(s.state.theme, nil, fmt.tprintf("%s background", kind)), page, s.state.space)
+				testing.expectf(t, ui.contrast(text, fill) >= TEXT_RATIO, "%s: the text on a find's match (%s, %.2f)", name, kind, ui.contrast(text, fill))
+				testing.expectf(t, ui.contrast(weak, fill) >= WEAK_PAGE_RATIO, "%s: the weak text on a find's match (%s, %.2f)", name, kind, ui.contrast(weak, fill))
+			}
 			// off a selection: the lit letters on their tint over the page
 			on_tint := ui.face_over(p.off.background, page, s.state.space)
 			testing.expectf(t, ui.contrast(p.off.color, on_tint) >= TEXT_RATIO, "%s: the lit letters on their tint (%.2f)", name, ui.contrast(p.off.color, on_tint))
@@ -104,16 +113,11 @@ every_theme_reads_on_its_selection :: proc(t: ^testing.T) {
 					d := (^ui.Fuzzy_Draw)(fz.custom_user)
 					testing.expectf(t, d.underline, "%s, selection %v: label_fuzzy underlined on a selection", name, SELECTION_TAGS[i])
 				}
-				// what the find bar found, on the page and on this selection: find_match_ink on the match's composite ground
-				find_ink := ui.theme_lookup(s.state.theme, nil, "find_text")
-				for name_bg in ([]string{"find_match background", "find_current background"}) {
-					tint := ui.theme_lookup(s.state.theme, nil, name_bg)
-					for g in ([]ui.Color{page, ground}) {
-						over := ui.face_over(tint, g, s.state.space)
-						ink := ui.find_match_ink(find_ink, over)
-						c := ui.contrast(ink, over)
-						testing.expectf(t, c >= TEXT_RATIO, "%s, selection %v: what the find found (%s, %.2f)", name, SELECTION_TAGS[i], name_bg, c)
-					}
+				// what the find bar found, on this selection: no fill (find_draw: the row's inks stay on its ground, checked
+				// above), and the edge drawn there (made readable on what is under the box) reaches 3:1
+				for kind in ([]string{"find_match", "find_current"}) {
+					edge := ui.readable(ui.theme_lookup(s.state.theme, nil, fmt.tprintf("%s border", kind)), ground, ui.FIND_EDGE_RATIO)
+					testing.expectf(t, ui.contrast(edge, ground) >= ui.FIND_EDGE_RATIO, "%s, selection %v: the edge of what the find found (%s, %.2f)", name, SELECTION_TAGS[i], kind, ui.contrast(edge, ground))
 				}
 				// a lit range on a selection: the row's ink (no colour of its own), no tint, and a mark that is no colour
 				lit := p.lit[i]

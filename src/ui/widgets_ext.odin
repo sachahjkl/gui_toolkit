@@ -1614,41 +1614,16 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	return
 }
 
-// A tab's plate: its share of its row's height (centred in it: the row's own surface shows around it), and its corners.
-@(private = "file") TAB_PLATE_HEIGHT :: 0.8
-@(private = "file") TAB_RADIUS_EM :: 0.35
 
-// One tab: the look of every row of tabs of the toolkit (tabs, a dock's stack, a stack of views). The chosen tab is a
-// raised plate, the finish's face of a button (a bevel when machined, a sheen with a gradient); the others are flat, in
-// the weak ink, a plate of the theme's "tab" hover under the pointer. A Tab stop, as wide as what the caller builds in it
-// (`if parent(b)`); the caller pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own.
-@(private)
-tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
-	s := gs()
-	em := font_size()
-	set_next_axis(.X, .Center)
-	s.next_mod.width = children_sum()
-	s.next_mod.height = pct(TAB_PLATE_HEIGHT)
-	s.next_mod.radius = math.round(em * TAB_RADIUS_EM)
-	f := Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects} + flags
-	if on {
-		f += {.Draw_Background, .Draw_Border}
-		push_tags("button")
-	} else {
-		push_tags("tab", "weak")
-	}
-	b := build_box(f, id)
-	pop_tags()
-	return b
-}
-
-// Row of tabs, the chosen one a raised plate (tab_box), on a strip (strip.odin): too many for the row, it scrolls with
+// Row of tabs, the chosen one joined to what it shows (tab_box), on a strip (strip.odin): too many for the row, it scrolls with
 // arrows, never a bar; the chosen tab is brought into view when it changes. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
 // its tab list. `icons` may be nil. Returns true when the selection changed.
 tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
 	em := font_size()
 	if strip(id) {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
+		// (the row's bottom edge a line, out of which the chosen tab rises: tab_box)
+		if outer := parent_box().parent; outer != nil { outer.custom = tab_line_draw }
 		first_tab: ^Box
 		items := make([]^Box, len(labels), frame_allocator())
 		on_one := false
@@ -1660,7 +1635,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 			// (one Tab stop, the chosen tab: the arrows move along the row, choice_group_step)
 			if i != chosen { not_a_tab_stop(b) }
 			items[i] = b
-			if parent(b) {
+			if parent(b) { if tab_body() {
 				if !on { push_tags("weak") }
 				spacer(px(em))
 				if i < len(icons) { icon(icons[i], em * 1.6) }
@@ -1668,7 +1643,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 				build_box({.Draw_Text}, label)
 				spacer(px(em))
 				if !on { pop_tags() }
-			}
+			} }
 			sig := signal(b)
 			if sig.focused { on_one = true }
 			if sig.clicked && !on { selected^ = i; changed = true }

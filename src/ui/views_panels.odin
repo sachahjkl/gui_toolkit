@@ -917,7 +917,8 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 	bar: ^Box
 	// (clickable: a double click on its free part maximises the stack or restores it, as a window's title bar does; a
 	// right click there opens the shown view's menu. Its tabs and buttons take their own clicks)
-	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom, .Clickable}, "###view_tabs") }
+	if tags("bar") { bar = build_box({.Draw_Background, .Clickable}, "###view_tabs") }
+	bar.custom = tab_line_draw   // (its bottom edge a line, out of which the shown tab rises: tab_box)
 	push_parent(bar)
 	defer {
 		pop_parent()
@@ -933,12 +934,12 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 			title := text_shown(view_title_shown(r))
 			tb := tab_box(fmt.tprintf("###view_tab_%s", r.modal_name), on)
 			if on { strip_reveal(tb) }   // (a tab its "+" opened at the end, or one a command showed, comes into view)
-			if parent(tb) {
+			if parent(tb) { if tab_body() {
 				if !on { push_tags("weak") }
 				next({width = text_size(em * DOCK_TAB_PAD_EM * 2), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
 				build_box({.Draw_Text}, fmt.tprintf("%s###view_tab_title", title))
 				if !on { pop_tags() }
-			}
+			} }
 			a11y_default(tb, {role = .Tab, selected = on, name = title})
 			view_stack_tab_input(vs, sp, e, k, r, tb, on, minimised)
 		}

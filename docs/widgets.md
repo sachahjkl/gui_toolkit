@@ -436,6 +436,9 @@ The chosen label of a pill `segmented` always reads on its key (WCAG AA, 4.5): w
 it takes the page's or the text's colour made readable there. `segmented_key_color()` gives the key's colour in the
 style in effect (the accent; machined, the page's face a step toward it).
 
+`tabs(id, labels, icons, &selected)` is a row of tabs on a strip, a line along its bottom: the chosen tab rises out of
+it as one shape with what it shows, the others a faint outline, weak ([strip.md](strip.md), "The look of a row of tabs").
+
 A group of choices, `segmented` (pills or words), `tabs` and the `radio` buttons of one `selected`, is one Tab stop: the
 chosen one. While it has the
 keyboard, the arrows change the choice and the keyboard follows: Left and Right (and Up and Down in a segmented

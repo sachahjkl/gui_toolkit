@@ -769,7 +769,8 @@ its search did not show what it found. The toolkit had all of it; the API did no
 - **Highlight.** `highlight` (a string or an array of strings: `Words`, a distinct string the bridge fills from either,
   its words joined by "\x1f") marks each occurrence in the text, by an ASCII fold of case (`ascii.lower` per byte: a
   plugin's query is matched as the find bar's is, and the unicode_case test checks it). The text is then a rich
-  paragraph whose matches are runs of the find bar's colours (`find_match background`, `find_text`): the toolkit draws
+  paragraph whose matches are runs of the find bar's colours (`find_match background` and its `find_match border` as
+  the run's `edge`), their letters in their own colour: the toolkit draws
   them as any run. Refused: the find bar itself over the view (it finds what the person typed in it, not what the
   plugin filters by) and painting rectangles in the replay (the runs already lay out, wrap and select).
 - **`badge`**: `{ kind: "badge", text, tone, icon }`, a `ui.pill` in the tone's colour. It takes no press: a state is

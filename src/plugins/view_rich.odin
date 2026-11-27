@@ -87,8 +87,8 @@ text_body :: proc(t: ^plugin_api.Text_Node, box: string, in_row: bool, fg: ui.Co
 }
 
 // `text` as runs, each occurrence of one of `words` (joined by WORDS_SEPARATOR) a run in the find bar's colours: its
-// background "find_match background", its letters "find_text". Case aside by an ASCII fold, as the find bar matches.
-// Overlapping words: the earliest match wins, then the longest. Temp memory.
+// light "find_match background" inside an edge of "find_match border", its letters in their own colour. Case aside by an
+// ASCII fold, as the find bar matches. Overlapping words: the earliest match wins, then the longest. Temp memory.
 @(private)
 highlight_runs :: proc(text, words: string, mono: bool, fg: ui.Color, toned: bool) -> []ui.Rich_Run {
 	plain := ui.Rich_Style{}
@@ -96,7 +96,7 @@ highlight_runs :: proc(text, words: string, mono: bool, fg: ui.Color, toned: boo
 	if toned { plain.color = fg }
 	found := plain
 	found.background = ui.color("find_match background")
-	found.color = ui.color("find_text")
+	found.edge = ui.color("find_match border")
 	runs := make([dynamic]ui.Rich_Run, context.temp_allocator)
 	folded := ascii.lower(text, context.temp_allocator)
 	needles := make([dynamic]string, context.temp_allocator)

@@ -290,7 +290,8 @@ close :: proc(app: ^App) {
 }
 
 main :: proc() {
-	app := open({args = os.args[1:]})
+	// (--headless: no window of the system, what tk screenshots runs)
+	app := open({args = os.args[1:], headless = slice.contains(os.args[1:], "--headless")})
 	if app == nil { return }
 	defer close(app)
 	platform.show_window(app.win)

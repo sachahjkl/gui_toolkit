@@ -32,6 +32,11 @@ FILES := [?][3]string{
 FILE_CHOSEN :: 2   // the row the menu was opened on
 
 scene_build :: proc(app: ^App, s: Scene, em: f32) {
+	// (an editor's dock is the whole page, edge to edge: no margin is lost around its panes)
+	if s == .Editor {
+		editor_build(app, em)
+		return
+	}
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
 	if ui.row(id = "###page") {
 		ui.spacer(ui.px(em * 1.6))

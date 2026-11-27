@@ -21,8 +21,9 @@ import "../font"
 //   ui.find_set_current(s, i)              // the i-th match current, brought in (once counted)
 //   ui.find_count(), ui.find_index(), ui.find_pending(), ui.find_matches(), ui.find_row_matches(row)
 //
-// Painting: every match in the theme's "find_match background", the current one in "find_current background", their
-// letters in "find_text"; a tick on the view's scroll bar for each match (scrollbar.odin).
+// Painting: every match a light fill of the theme's "find_match background" inside an edge of its "find_match border",
+// the current one in "find_current" with a thicker edge, the letters in their own colours (find_draw); a tick on the
+// view's scroll bar for each match (scrollbar.odin).
 
 Find_Match :: struct {
 	box:   Key,
@@ -131,7 +132,6 @@ Find_State :: struct {
 	matches:     [dynamic]Find_Match,
 	count:       int,            // box mode: the occurrences found
 	by_box:      map[Key][2]int, // box -> [first, end) in matches
-	in_match:    bool,           // find_paint_text: painting the letters of a match (a rich paragraph: every run in b.text_color)
 	lit:         bool,           // the last build lit the view: its ticks are drawn
 	box_tops:    [dynamic]f32,   // box mode: each occurrence's top in the view's content
 	ticks:       [dynamic]f32,   // merged ticks, from the track's top (pixels)
@@ -759,16 +759,14 @@ find_ticks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, track: Rect) {
 	h := track.max.y - track.min.y
 	thick := max(1, math.round(FIND_TICK_THICK_PX * s.scale))
 	inset := math.round(FIND_TICK_INSET_PX * s.scale)
-	c := color_from_tags(s, b.tags_key, "find_match background")
-	c.a = 1
+	c := color_from_tags(s, b.tags_key, "find_match border")
 	for y in f.ticks {
 		yy := math.round(track.min.y + y - thick * 0.5)
 		draw.rect(dc, {{track.min.x + inset, yy}, {track.max.x - inset, yy + thick}}, c)
 	}
 	// the current one, across the track, twice as tall
 	if cur := find_current_top(f); cur >= 0 {
-		k := color_from_tags(s, b.tags_key, "find_current background")
-		k.a = 1
+		k := color_from_tags(s, b.tags_key, "find_current border")
 		big := thick * 2
 		yy := math.round(track.min.y + clamp(cur / content, 0, 1) * h - big * 0.5)
 		draw.rect(dc, {{track.min.x, yy}, {track.max.x, yy + big}}, k)
@@ -778,83 +776,45 @@ find_ticks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, track: Rect) {
 // ---- painting
 
 @(private = "file") FIND_MATCH_RADIUS_PX :: 2
+@(private = "file") FIND_EDGE_PX :: 1          // a match's edge
+@(private = "file") FIND_CURRENT_EDGE_PX :: 2  // the current match's
+// The least contrast of a match's edge with what is under it (WCAG 1.4.11, a part of the interface that is no text).
+FIND_EDGE_RATIO :: 3
 
-// What a match of a box covers (a pixel beyond its letters on each side).
+// `r` out to whole device pixels: an edge drawn on it is sharp.
+@(private)
+rect_whole_px :: proc(r: Rect) -> Rect { return {{math.floor(r.min.x), math.floor(r.min.y)}, {math.ceil(r.max.x), math.ceil(r.max.y)}} }
+
+// What a match of a box covers: a pixel beyond its letters on each side, and its edge's width more for the current one
+// (its thicker edge would touch the letters).
 @(private = "file")
 find_match_rect :: proc(s: ^State, m: Find_Match) -> Rect {
-	return {{m.rect.min.x - s.scale, m.rect.min.y}, {m.rect.max.x + s.scale, m.rect.max.y}}
+	r := Rect{{m.rect.min.x - s.scale, m.rect.min.y}, {m.rect.max.x + s.scale, m.rect.max.y}}
+	if m.index >= 0 && m.index == s.find.current { r = draw.rect_pad(r, (FIND_CURRENT_EDGE_PX - FIND_EDGE_PX) * s.scale) }
+	return r
 }
 
-// Behind the text of a box: its matches.
+// Behind the text of a box: its matches (src/md/features/find-in-view.md, "The look of a match"). Each a light fill of the
+// theme's "find_match background" and an edge of its "find_match border" (the current one "find_current", its edge
+// thicker); the letters keep their own colours (a code's), drawn over them by the box as everywhere else. The edge is made
+// to reach FIND_EDGE_RATIO against what is under the box (a selected row, a bar), not only against the page. On a
+// selected row there is no fill: the row's inks read at 4.5 on its ground, and a fill took a nav row below it.
 @(private)
 find_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	span, ok := s.find.by_box[b.key]
 	if !ok { return }
-	all := color_from_tags(s, b.tags_key, "find_match background")
-	cur := color_from_tags(s, b.tags_key, "find_current background")
-	rad := FIND_MATCH_RADIUS_PX * s.scale
-	for m in s.find.matches[span[0]:span[1]] {
-		draw.rect(dc, find_match_rect(s, m), m.index >= 0 && m.index == s.find.current ? cur : all, rad)
-	}
-}
-
-// The text of a box (`paint`, with b.text_color) around its matches, then in their rects in "find_text". Never both in one
-// place: the edges of light letters under dark ones would show as a halo.
-@(private)
-find_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
-	span, ok := s.find.by_box[b.key]
-	if !ok { paint(s, dc, b); return }
-	clipped :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, paint: proc(s: ^State, dc: ^draw.Context, b: ^Box)) {
-		if r.max.x <= r.min.x || r.max.y <= r.min.y { return }
-		draw.push_clip(dc, r)
-		paint(s, dc, b)
-		draw.pop_clip(dc)
-	}
-	matches := s.find.matches[span[0]:span[1]]
-	// around them: the bands between their rows, and on each row the pieces between them (reading order: rows top down)
-	area := draw.current_clip(dc)
-	y := area.min.y
-	for i := 0; i < len(matches); {
-		top, bottom := matches[i].rect.min.y, matches[i].rect.max.y
-		j := i
-		for j < len(matches) && matches[j].rect.min.y == top { j += 1 }
-		clipped(s, dc, b, {{area.min.x, y}, {area.max.x, top}}, paint)
-		row := make([]Rect, j - i, context.temp_allocator)
-		for m, k in matches[i:j] { row[k] = find_match_rect(s, m) }
-		slice.sort_by(row, proc(p, q: Rect) -> bool { return p.min.x < q.min.x })
-		x := area.min.x
-		for r in row {
-			clipped(s, dc, b, {{x, top}, {r.min.x, bottom}}, paint)
-			x = max(x, r.max.x)
-		}
-		clipped(s, dc, b, {{x, top}, {area.max.x, bottom}}, paint)
-		y = max(y, bottom)
-		i = j
-	}
-	clipped(s, dc, b, {{area.min.x, y}, area.max}, paint)
-	// in them: each match's ink checked against its own tint over what is under the box
-	saved := b.text_color
-	defer b.text_color = saved
-	ink := color_from_tags(s, b.tags_key, "find_text")
-	all := color_from_tags(s, b.tags_key, "find_match background")
-	cur := color_from_tags(s, b.tags_key, "find_current background")
 	under := b.ink_ground.a > 0 ? b.ink_ground : box_under(b)
 	if under.a <= 0 { under = theme_lookup(s.theme, nil, "background"); under.a = 1 }
-	all_ink := find_match_ink(ink, face_over(all, under, s.space))
-	cur_ink := find_match_ink(ink, face_over(cur, under, s.space))
-	s.find.in_match = true
-	defer s.find.in_match = false
-	for m in matches {
-		b.text_color = m.index >= 0 && m.index == s.find.current ? cur_ink : all_ink
-		clipped(s, dc, b, find_match_rect(s, m), paint)
+	all := color_from_tags(s, b.tags_key, "find_match background")
+	cur := color_from_tags(s, b.tags_key, "find_current background")
+	all_edge := readable(color_from_tags(s, b.tags_key, "find_match border"), under, FIND_EDGE_RATIO)
+	cur_edge := readable(color_from_tags(s, b.tags_key, "find_current border"), under, FIND_EDGE_RATIO)
+	rad := FIND_MATCH_RADIUS_PX * s.scale
+	for m in s.find.matches[span[0]:span[1]] {
+		current := m.index >= 0 && m.index == s.find.current
+		r := rect_whole_px(find_match_rect(s, m))   // (whole pixels: a 1 px edge across two would blur)
+		// (on a selected row its inks were made for the selection's ground, at 4.5: the edge alone says where the match is)
+		if b.ink_ground.a <= 0 { draw.rect(dc, r, current ? cur : all, rad) }
+		draw.rect(dc, r, current ? cur_edge : all_edge, rad, border = math.round((current ? FIND_CURRENT_EDGE_PX : FIND_EDGE_PX) * s.scale))
 	}
-}
-
-// The ink of text in a find match (`ground`: the match's tint over what is under the box): the theme's `find_text` when
-// it reads there, else black or white (whichever reads better on `ground`: one of them always reaches 4.58:1). Old Head's
-// olive warn over its navy selection is dark enough that black dropped to 3.6:1 while white reads above 4.7:1.
-find_match_ink :: proc(ink, ground: Color) -> Color {
-	if contrast(ink, ground) >= SELECTION_INK_RATIO { return ink }
-	black, white := Color{0, 0, 0, ink.a}, Color{1, 1, 1, ink.a}
-	return contrast(white, ground) > contrast(black, ground) ? white : black
 }

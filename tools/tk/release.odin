@@ -46,7 +46,7 @@ release_write :: proc(version: string, user: rawptr) -> (paths: []string, subjec
 	if !toolbox.run({job.changelog, "-assemble", fmt.tprintf("-version:%s", version)}, {dir = job.root}) { return nil, "", "assembling the CHANGELOG failed" }
 	if !toolbox.run({job.changelog, "-check", fmt.tprintf("-release:%s", version)}, {dir = job.root}) { return nil, "", "the release is not consistent" }
 	when ODIN_OS == .Windows {
-		if shot := screenshots(job.root, {build = true, only = {"about"}, width = SHOTS_WIDTH}); why != "" { return nil, "", fmt.tprintf("the About picture failed: %s", shot) }
+		if shot := screenshots(job.root, {build = true, only = {"about"}, width = SHOTS_WIDTH}); shot != "" { return nil, "", fmt.tprintf("the About picture failed: %s", shot) }
 	} else {
 		fmt.println("tk release: the About picture is taken on Windows (fidget): it stays as it is")
 	}

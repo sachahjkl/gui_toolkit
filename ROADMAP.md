@@ -180,6 +180,11 @@
 - **Tab tear-off and a tab dropped on another window.** A tab dragged out of its row opens in a new window; dropped on
   another window's row, it moves there. `ui/reorder.odin` says when a drag leaves the row and where it lands; where
   positions are not known (Wayland), a system drag carries the tab. classeur and Wren drop their own.
+- **A dock's tab dragged out of the window, and back.** A dock stack's tab dragged past the window's edge becomes a
+  window of its own that follows the pointer, and dropped on a stack's strip of any window it docks there again, its
+  content's state kept. Borrowed from Wren's tab drag (`browser/tab_drag.odin`: the captured pointer, the window held
+  where the tab was, xdg-toplevel-drag on Wayland or a system drag where positions are not known); today a dock's tab
+  only floats inside its window.
 - **Places, volumes and network locations in the file picker.** The places column shows the drives with their free
   space and the mounted shares, and the path bar opens `smb://`, `sftp://` and `trash:///`. classeur's volumes,
   locations and mDNS reader move to `gt:platform` and `gt:fsx`.

@@ -299,22 +299,29 @@ bench_report :: proc(app: ^App) {
 main :: proc() {
 	app := new(App)
 	app.freeze = -1
+	headless := false
 	for a in os.args[1:] {
 		if strings.has_prefix(a, "--time=") { if v, ok := strconv.parse_f32(a[7:]); ok { app.freeze = v } }
 		if strings.has_prefix(a, "--stress=") { if v, ok := strconv.parse_int(a[9:]); ok { app.stress = v } }
 		if strings.has_prefix(a, "--bench=") { if v, ok := strconv.parse_int(a[8:]); ok { app.bench_n = v } }
 		if a == "--srgb" { app.space = .Srgb }
+		if a == "--headless" { headless = true }   // (no window of the system: what tk screenshots runs)
 		if a == "--nocache" { app.nocache = true }
 		if a == "--half" { app.half = true }
 	}
 	font.init(&app.fonts)
 	// a composition swap chain whose buffers keep the screen's size: a resize never stretches a frame. Not for --bench: the
 	// figures of docs/draw.md are of the ordinary 8-bit swap chain
-	fixed := app.bench_n == 0
-	app.win = platform.open_window("gui_toolkit effects", {1280, 820}, app, transparent = fixed)
-	if !render.init_window(&app.r, app.win, app.win.size, transparent = fixed, space = app.space) { fmt.eprintln("renderer init failed"); return }
+	fixed := app.bench_n == 0 && !headless
+	if headless {
+		app.win = platform.open_window_offscreen("gui_toolkit effects", {1280, 820}, user = app)
+		if !render.init_offscreen(&app.r, app.win.size, warp = true, space = app.space) { fmt.eprintln("renderer init failed"); return }
+	} else {
+		app.win = platform.open_window("gui_toolkit effects", {1280, 820}, app, transparent = fixed)
+		if !render.init_window(&app.r, app.win, app.win.size, transparent = fixed, space = app.space) { fmt.eprintln("renderer init failed"); return }
+	}
 	if fixed { render.set_fixed_surface(&app.r, platform.monitor_size(app.win)) }
-	id, ok, _ := font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeuib.ttf"), font.FALLBACK_UI_DATA)
+	id, ok, _ := font.load_system_or_embedded(&app.fonts, headless ? "" : platform.system_font_path("segoeuib.ttf"), font.FALLBACK_UI_DATA)
 	if !ok { fmt.eprintln("font load failed"); return }
 	app.ui = id
 	draw.init(&app.dc, &app.r, &app.fonts)

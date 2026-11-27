@@ -24,6 +24,12 @@ FAINT_STEP :: 0.4
 SOFT_STEP :: 0.7
 // The accent's share in the tint behind what a search found (match_bg), mixed in linear light.
 MATCH_TINT :: 0.18
+// The share of the find's colour in the fill under a match, as the eye sees it (an sRGB step from the page): light, the
+// letters keep their own colours on it (src/md/features/find-in-view.md, "The look of a match").
+FIND_FILL :: 0.15
+// How the fill gives way where the text would not read on it: this share of itself at each step, at most so many steps.
+FIND_FILL_GIVE :: 0.8
+FIND_FILL_STEPS :: 10
 
 // Slots a theme entry can point at.
 @(private)
@@ -31,7 +37,10 @@ Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Faint, Soft, Bright, Bor
 	// an intent's soft pair (soft_pair_on of its hue on the page): its fill, its words
 	Accent_Soft, Accent_Ink, Info_Soft, Info_Ink, Good_Soft, Good_Ink, Warn_Soft, Warn_Ink, Bad_Soft, Bad_Ink,
 	// the text readable on the tint of what a search found (match_bg over the page)
-	Match_Ink }
+	Match_Ink,
+	// the edge of a find's match: the warn hue, made to reach FIND_EDGE_RATIO on the page; its fill: that colour at the
+	// alpha that looks FIND_FILL of the way from the page to it
+	Find_Edge, Find_Fill }
 
 @(private)
 Entry :: struct { tags: string, slot: Slot, alpha: f32 }
@@ -49,7 +58,9 @@ entries := [?]Entry{
 	{"hue_accent", .Accent, 1}, {"hue_blue", .Blue, 1}, {"hue_purple", .Purple, 1}, {"hue_green", .Good, 1}, {"hue_yellow", .Warn, 1},
 	{"hue_red", .Bad, 1}, {"hue_cyan", .Cyan, 1}, {"hue_rose", .Rose, 1},
 	{"accent", .Accent, 1}, {"accent_text", .Accent_Text, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
-	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
+	// a find's matches (find.odin): a light fill and an edge of one colour, the letters in their own
+	{"find_match background", .Find_Fill, 1}, {"find_match border", .Find_Edge, 1},
+	{"find_current background", .Find_Fill, 1}, {"find_current border", .Find_Edge, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
 	// what a search found in a line (match.odin): the text's own colour on a tint of the accent (the accent's own colour on
 	// its tint read badly: two shades of one hue), made readable on that tint (a bright accent lifts a dark page)
@@ -111,6 +122,8 @@ entries := [?]Entry{
 	{"dock_marker background", .Panel2, 0.94}, {"dock_marker border", .Border, 1},
 	// a folded pane's strip (panes.odin, a dock's folded side): the surface of the bars it sits beside
 	{"pane_strip background", .Bar, 1},
+	// a row of tabs (tab_face.odin, src/md/features/tabs.md): the chosen tab is the page it shows, joined to it
+	{"tab_on background", .Bg, 1},
 	// containers (last)
 	{"card background", .Panel, 1}, {"card border", .Border, 1},
 	{"bar background", .Bar, 1}, {"bar border", .Border, 1}, {"bar sheen", .White, 0.6},
@@ -128,7 +141,7 @@ state_entries := [?]Entry{
 	// (a field is no key: its press puts the caret, its face does not sink)
 	{"bare input hover_fill", .Hover, 0}, {"bare input press_fill", .Hover, 0},   // (its input_frame reacts)
 	{"input hover_fill", .Hover, 0.035}, {"input press_fill", .Hover, 0.035},
-	{"ghost_button hover_sheen", .White, 0.6}, {"icon_button hover_sheen", .White, 0.6}, {"tab hover_sheen", .White, 0.6},
+	{"ghost_button hover_sheen", .White, 0.6}, {"icon_button hover_sheen", .White, 0.6}, 
 	{"menu_item hover_fill", .Hover, 0}, {"menu_item press_fill", .Hover, 0.08},   // a hovered item is the selected one
 	{"remove_button hover_fill", .Bad, 0.14}, {"remove_button press_fill", .Bad, 0.24},
 	{"accent_button hover_fill", .Hover, 0.10}, {"accent_button press_fill", .Hover, 0.18},
@@ -178,7 +191,7 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	case .Purple: return p.purple != 0 ? p.purple : p.accent
 	case .Cyan: return p.cyan != 0 ? p.cyan : p.accent
 	case .Rose: return p.rose != 0 ? p.rose : p.accent
-	case .Accent_Soft, .Accent_Ink, .Info_Soft, .Info_Ink, .Good_Soft, .Good_Ink, .Warn_Soft, .Warn_Ink, .Bad_Soft, .Bad_Ink, .Match_Ink:
+	case .Accent_Soft, .Accent_Ink, .Info_Soft, .Info_Ink, .Good_Soft, .Good_Ink, .Warn_Soft, .Warn_Ink, .Bad_Soft, .Bad_Ink, .Match_Ink, .Find_Edge, .Find_Fill:
 		return 0xff00ffff   // (computed colours: slot_rgba)
 	}
 	return 0xff00ffff
@@ -210,6 +223,27 @@ slot_rgba :: proc(p: Palette, s: Slot) -> draw.Color {
 		// (the tint as drawn: its alpha is made to look in any blend space as it does mixed in linear light)
 		page := draw.hex(slot_color(p, .Bg_Solid))
 		return readable(draw.hex(p.text), draw.mix(page, draw.hex(p.accent | 0xff), MATCH_TINT), 4.5)
+	case .Find_Edge:
+		return readable(draw.hex(p.warn | 0xff), draw.hex(slot_color(p, .Bg_Solid)), FIND_EDGE_RATIO)
+	case .Find_Fill:
+		// (an alpha mixes in linear light, where a share of a bright hue on a dark page looks much more than that share:
+		// 0.15 of amber read as 40 % on a black page. The alpha is the one whose mix has the sRGB step's luminance.)
+		// (the fill gives way before the text: its share shrinks until the text keeps 4.5 and the weak text 3 on it, or
+		// what they had on the page when that was less; Tokyo Night's light text read 4.07 on the full share)
+		page := draw.hex(slot_color(p, .Bg_Solid))
+		edge := slot_rgba(p, .Find_Edge)
+		text, weak := draw.hex(p.text | 0xff), draw.hex(p.weak | 0xff)
+		need_text, need_weak := min(f32(4.5), contrast(text, page)), min(f32(3), contrast(weak, page))
+		share: f32 = FIND_FILL
+		for _ in 0 ..< FIND_FILL_STEPS {
+			under := srgb_step(page, edge, share)
+			if contrast(text, under) >= need_text && contrast(weak, under) >= need_weak { break }
+			share *= FIND_FILL_GIVE
+		}
+		span := luminance(edge) - luminance(page)
+		a := abs(span) > 1e-4 ? clamp((luminance(srgb_step(page, edge, share)) - luminance(page)) / span, 0, 1) : share
+		edge.a = a
+		return edge
 	}
 	return draw.hex(slot_color(p, s))
 }

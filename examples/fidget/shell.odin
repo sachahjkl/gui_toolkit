@@ -209,9 +209,11 @@ build_menubar :: proc(app: ^App, em: f32) {
 }
 
 build_tab_row :: proc(app: ^App, em: f32) {
-	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.9))})
-	if ui.row(.Start, id = "###tabrow") {
-		ui.spacer(ui.px(em * 0.8))
+	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.9)), axis = .X})
+	// (its first tab at the window's edge, its line from edge to edge: the chosen tab rises out of it)
+	row := ui.build_box({}, "###tabrow")
+	row.custom = ui.tab_line_draw
+	if ui.parent(row) {
 		sel := int(app.page)
 		if ui.tabs("tab", page_names[:], page_icons[:], &sel) { app.page = Page(sel) }
 	}

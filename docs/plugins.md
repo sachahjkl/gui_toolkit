@@ -286,7 +286,7 @@ views.register("main", () => ({ kind: "list", key: "items", count: items.length,
 - `tone` on a text: `plain`, `info`, `good`, `warn`, `bad` or `weak`, the theme's colour of each (`weak: true` is
   `tone: "weak"`). `mono: true` sets it in the monospace face.
 - `highlight` on a text: a string or an array of strings. Each occurrence, case aside for ASCII letters, is drawn in
-  the find bar's colours (`find_match background`, `find_text`).
+  the find bar's colours (`find_match background` inside an edge of `find_match border`), its letters in their own colour.
 - A `badge` (`text`, `tone`, `icon`) is a pill in its tone's colour. It takes no press.
 - A program older than level 6 ignores these fields: the view shows, without them. It refuses a `badge` node: a
   plugin that uses one writes `"api": 6`.
