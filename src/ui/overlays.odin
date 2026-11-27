@@ -606,6 +606,8 @@ modal_corner :: proc(flags: Box_Flags, id: string) -> ^Box {
 modal_fit :: proc(s: ^State, m: ^Modal_Scope) {
 	panel := box_from_key(m.panel)
 	if panel == nil || !m.fit { return }
+	// (its forms' label columns first: a row is measured with its form's column, not its own label's words)
+	form_columns(s, panel, max(m.most, m.wh.x) - 2 * border_inset(panel))
 	need: f32
 	for c := panel.first; c != nil; c = c.next {
 		if !is_floating(c, .X) { need = max(need, natural_width(c)) }

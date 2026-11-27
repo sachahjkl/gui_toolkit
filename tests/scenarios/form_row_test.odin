@@ -104,3 +104,48 @@ a_form_label_longer_than_the_cap_wraps :: proc(t: ^testing.T) { unwatched.run(t,
 	one := session.get(s, "lbl", within = session.get(s, "frow_Team"))
 	testing.expectf(t, label.size.y > one.size.y + EPS, "on more than one line: %v, one line %v", label.size.y, one.size.y)
 }) }
+
+////////////////////////////////
+// A dialog that grows to what is in it measures the form's column
+
+@(private = "file")
+Fitted :: struct {
+	views: ui.Views,
+	team:  int,
+	title: ui.Line_Edit,
+}
+
+// A dialog sized by what is in it (no size of its own) measures its rows during the build: a short label beside a wide
+// field asks for the form's column, not for its own words, or that field ends past the dialog's edge.
+@(test)
+a_fitted_dialog_holds_its_form_s_column :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	f := new(Fitted)
+	testing.cleanup(t, proc(p: rawptr) {
+		f := (^Fitted)(p)
+		ui.views_destroy(&f.views)
+		ui.line_edit_destroy(&f.title)
+		free(f)
+	}, f)
+	s := session.start(t, {size = {900, 600}, no_renderer = true, user = f, build = proc(s: ^session.Session) {
+		f := (^Fitted)(s.user)
+		if !ui.view_registered(&f.views, "form") {
+			em := ui.font_size()
+			ui.view_register(&f.views, "form", proc(v: ^ui.View, f: ^Fitted) {
+				if ui.form_row(LONG_LABEL) { ui.line_edit("###fit_title", &f.title) }
+				if ui.form_row("Team") {
+					teams := [?]string{"Design", "Engine", "Research"}
+					ui.next({width = ui.px(320)})
+					ui.dropdown("###fit_team", teams[:], &f.team)
+				}
+			}, ui.View_Options{width_em = 200 / em, no_header = true})
+			ui.view_open(&f.views, "form", f)
+		}
+	}})
+	session.wait_until(s, proc(s: ^session.Session) -> bool {
+		b := session.find(s, "modal_view_form")
+		return b != nil && b.transparency < 1
+	}, "the dialog shows")
+	panel, team := session.get(s, "modal_view_form"), session.get(s, "fit_team")
+	testing.expectf(t, team.rect.max.x <= panel.rect.max.x + EPS, "the wide field within the dialog: %v in %v", team.rect, panel.rect)
+	testing.expectf(t, team.rect.max.x - team.rect.min.x >= 320 - EPS, "the wide field at its width: %v", team.rect)
+}) }

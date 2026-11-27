@@ -462,6 +462,9 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 @(private = "file")
 view_internal_fit :: proc(r: ^View_Record, frame: ^Box, w: f32) -> f32 {
 	s := gs()
+	// (its forms' label columns first: a row is measured with its form's column; capped by the most it can be: the
+	// window's width while it fits, else the person's width)
+	form_columns(s, frame, (r.ifit ? s.window_size.x : w) - 2 * border_inset(frame))
 	need: f32
 	for c := frame.first; c != nil; c = c.next {
 		if !is_floating(c, .X) { need = max(need, natural_width(c)) }

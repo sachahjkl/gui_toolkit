@@ -1772,24 +1772,42 @@ form_label_need :: proc(lbl: ^Box) -> f32 {
 	return math.ceil(lbl.text_pad + lbl.text_dim.x) + math.round(lbl.font_size * CONTROL_GAP)
 }
 
-// Each form's label column, once its rows are built (end_build, before the layout): the rows of one parent box share
-// the widest need, so every field of the form starts at one x and no label leaves a void before its field. One pass
-// over the labels built: the words were measured when their boxes were built. The cap is of the form's width in the
-// last layout (none before its first); a label longer than the column wraps, its first line where a label of one
+// Each form's label column, once its rows are built: the rows of one parent box share the widest need, so every field
+// of the form starts at one x and no label leaves a void before its field. One pass over the labels built: the words
+// were measured when their boxes were built. A label longer than the column wraps, its first line where a label of one
 // line sits (a label a user must read is never cut).
+//
+// end_build settles every form left (within nil), before the layout; its cap is of the form's width in the last layout
+// (none before its first). A panel that grows to what is in it (a dialog, a view's panel) settles its own forms first
+// (within: the panel), before it measures them: its rows are built, and a short label beside a wide field must ask for
+// the column, not for its own words. Its cap is of `room`, the most the panel can be, not of its last width: a width
+// measured from the cap would move the cap at the next build.
 @(private)
-form_columns :: proc(s: ^State) {
+form_columns :: proc(s: ^State, within: ^Box = nil, room: f32 = 0) {
 	if len(s.form_labels) == 0 { return }
 	form_of :: proc(lbl: ^Box) -> ^Box { return lbl.parent.parent.parent }   // the label, its line, its row, the form
-	widest := make(map[^Box]f32, 8, context.temp_allocator)
+	inside :: proc(b, within: ^Box) -> bool {
+		if within == nil { return true }
+		for p := b; p != nil; p = p.parent { if p == within { return true } }
+		return false
+	}
+	// (settled once: a wrapped label's height is no longer its line's)
+	settled := make([dynamic]^Box, context.temp_allocator)
+	kept := 0
 	for l in s.form_labels {
+		if inside(form_of(l), within) { append(&settled, l) } else { s.form_labels[kept] = l; kept += 1 }
+	}
+	resize(&s.form_labels, kept)
+	widest := make(map[^Box]f32, 8, context.temp_allocator)
+	for l in settled {
 		f := form_of(l)
 		widest[f] = max(widest[f], form_label_need(l))
 	}
-	for l in s.form_labels {
+	for l in settled {
 		f := form_of(l)
 		col := max(widest[f], math.round(l.font_size * FORM_LABEL_MIN_EM))
-		if room := f.size.x - content_pad(f, .X); room > 0 { col = min(col, math.floor(room * FORM_LABEL_CAP)) }
+		cap_room := room > 0 ? room : f.size.x - content_pad(f, .X)
+		if cap_room > 0 { col = min(col, math.floor(cap_room * FORM_LABEL_CAP)) }
 		line_h := l.pref[.Y].value
 		l.pref[.X] = px(col)
 		if form_label_need(l) > col {

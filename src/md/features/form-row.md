@@ -18,8 +18,14 @@ after the labels, and every label sits on its field's first line.
 - **Resolved in the build that makes the rows.** Each row puts its label in `State.form_labels`. `form_columns`, in
   `end_build` before the layout (and after the dialogs' builds), gives every label of a form the column. The words
   were measured when the label's box was built, so the pass reads them: one pass over the labels built, nothing kept
-  from one build to the next, no build late, no build asked again. Until that pass, a label's width is its own need:
-  a dialog's measure during the build counts its words whole.
+  from one build to the next, no build late, no build asked again. Until that pass, a label's width is its own need.
+- **A panel that grows to what is in it settles its own forms first.** A dialog (`modal_fit`) and a view's panel
+  (`view_internal_fit`) measure their content during the build, before `end_build`. Measured with each label's own
+  need, a short label beside a wide field asked for its words only: the field then ended past the dialog's edge (95 px
+  in the test). So each calls `form_columns` for the forms inside it, whose rows are all built when it ends, and then
+  measures. The pass takes those labels out of `State.form_labels`: each label is settled once. Their cap is of the
+  most the panel can be (a dialog's `most`, the window's width while a panel fits), not of its last width: a width
+  measured from the cap would move the cap at the next build, and the dialog would shrink one build after another.
 
 Refused:
 
@@ -65,3 +71,5 @@ centred under the whole row, read as the form's and not the field's.
   x, under it, and the field is named by its row's label.
 - A form 360 px wide with a label longer than its cap: the label wraps on more than one line, the column is within
   40 % of the form, the fields still start at one x.
+- A dialog that grows to what is in it, with a long label beside a `fill()` field and a short one beside a field
+  320 px wide: the wide field is within the dialog, at its width.
