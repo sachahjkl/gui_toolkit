@@ -541,6 +541,18 @@ gpu_xform :: proc(c: ^Context, xf: ^Transform) -> u32 {
 ////////////////////////////////
 // Primitives
 
+// A rectangle (screen pixels) wholly outside the clip is no instance: the batch's scissor is the clip, nothing of it
+// would show. Only when nothing is recorded (a picture is replayed elsewhere). A program that draws a row per line of a
+// long text needs no cull of its own for the frame to stay bounded (plume: a 52 MB line, selected, drew 2.9 million
+// rectangles). The pixel of margin covers an antialiased edge and a clip that does not fall on whole pixels.
+@(private)
+outside_clip :: proc(c: ^Context, dst: [4]f32) -> bool {
+	if c.rec != nil { return false }
+	cl := c.clips[len(c.clips) - 1].rect
+	return dst[2] + CLIP_CULL_MARGIN <= cl.min.x || dst[0] - CLIP_CULL_MARGIN >= cl.max.x || dst[3] + CLIP_CULL_MARGIN <= cl.min.y || dst[1] - CLIP_CULL_MARGIN >= cl.max.y
+}
+@(private) CLIP_CULL_MARGIN :: 1
+
 Rect_Style :: struct {
 	radius: [4]f32,     // top-left, bottom-left, top-right, bottom-right
 	border: f32,        // > 0: outline only
@@ -609,6 +621,7 @@ rect_corners :: proc(c: ^Context, r: Rect, colors: [4]Color, radii: [4]f32, bord
 	if xf.simple {
 		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 		inst.dst = {r.min.x * s + o.x, r.min.y * s + o.y, r.max.x * s + o.x, r.max.y * s + o.y}
+		if outside_clip(c, inst.dst) { return }
 		inst.radii, inst.border = radii * s, border * s
 		if soft > 1 { inst.soft = soft * s }
 	} else {
@@ -690,19 +703,20 @@ image_tiled :: proc(c: ^Context, tex: render.Texture, dst: Rect, tile: Rect, tin
 @(private)
 image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tint: Color, radii: [4]f32, flags: u32) {
 	xf, alpha, shape := cur(c)
-	image_batch(c, tex, flags & render.FLAG_TILE != 0)
 	col := tint
 	col.a *= alpha
 	inst := render.Rect_Inst{src = src, colors = {col, col, col, col}, soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, clip = shape, flags = flags | (c.circular ? render.FLAG_CIRCLE : 0)}
 	if xf.simple {
 		s, o := xf.m.a, Vec2{xf.m.e, xf.m.f}
 		inst.dst = {dst.min.x * s + o.x, dst.min.y * s + o.y, dst.max.x * s + o.x, dst.max.y * s + o.y}
+		if outside_clip(c, inst.dst) { return }
 		inst.radii = radii * s
 	} else {
 		inst.dst = {dst.min.x, dst.min.y, dst.max.x, dst.max.y}
 		inst.radii = radii
 		inst.xform = gpu_xform(c, xf)
 	}
+	image_batch(c, tex, flags & render.FLAG_TILE != 0)   // (after the cull: a picture not drawn starts no batch)
 	append(&c.insts, inst)
 }
 

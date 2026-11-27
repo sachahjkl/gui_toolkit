@@ -562,3 +562,25 @@ a_layer_left_open_in_an_offscreen_target_ends_with_it :: proc(t: ^testing.T) {
 	render.readback_release(&f.r, id)
 	testing.expect_value(t, len(f.dc.open_layers), 0)
 }
+// A row per line of a long text, a million of them, under a clip of a few rows: only the rows the clip shows are
+// instances, and they are drawn (plume: a 52 MB line, selected, drew 2.9 million rectangles; the frame passed the
+// device's largest buffer).
+@(test)
+rows_outside_the_clip_make_no_instance :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no device (WARP)") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+	@(static) insts: int
+	img := frame(&f, proc(dc: ^draw.Context) {
+		draw.push_clip(dc, {{0, 16}, {64, 32}})
+		for row in 0 ..< ROWS { draw.rect(dc, {{0, f32(row) * 4}, {64, f32(row) * 4 + 2}}, RED) }
+		draw.pop_clip(dc)
+		insts = len(dc.insts)
+	})
+	// the clip's 16 pixels hold four rows, and one more row each side within the pixel of margin
+	testing.expectf(t, insts <= 8, "%d instances for the rows of 16 pixels", insts)
+	testing.expectf(t, close_px(px(img, 10, 16), {255, 0, 0, 255}), "a row in the clip is drawn: %v", px(img, 10, 16))
+	testing.expectf(t, close_px(px(img, 10, 18), {255, 255, 255, 255}), "between the rows: %v", px(img, 10, 18))
+	testing.expectf(t, close_px(px(img, 10, 8), {255, 255, 255, 255}), "above the clip: %v", px(img, 10, 8))
+}
+@(private = "file") ROWS :: 1_000_000

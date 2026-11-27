@@ -113,7 +113,12 @@ d3d_heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr,
 d3d_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 	h := &r.heaps[kind]
 	stride := HEAP_STRIDE[kind]
-	ncap := max(h.cap * 2, h.cap + need, HEAP_MIN)
+	room := elements_within(D3D11_BUFFER_BYTES_MAX, stride)
+	if h.cap + need > room {
+		fmt.eprintln("render: the retained heap", kind, "cannot hold", h.cap + need, "elements: a buffer holds", room)
+		return false
+	}
+	ncap := min(max(h.cap * 2, h.cap + need, HEAP_MIN), room)
 	desc := d3d11.BUFFER_DESC{ByteWidth = u32(ncap * stride), Usage = .DEFAULT}
 	if kind == .Insts {
 		desc.BindFlags = {.VERTEX_BUFFER}
@@ -253,7 +258,9 @@ release_device_objects :: proc(r: ^Renderer) {
 	video_pipeline_destroy(r)
 	d3d_app_objects_release(r)
 	canvas_pipeline_release(r)
-	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
+	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.globals)
+	for &p in r.inst_pages { rel(&p.buf) }
+	clear(&r.inst_pages)
 	rel(&r.ps_dual); rel(&r.blend_dual)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
@@ -266,7 +273,7 @@ release_device_objects :: proc(r: ^Renderer) {
 	readback_device_lost(r)
 	heaps_destroy(r)
 	if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
-	r.inst_cap, r.xform_cap, r.clip_cap, r.points_cap, r.grads_cap = 0, 0, 0, 0, 0
+	r.xform_cap, r.clip_cap, r.points_cap, r.grads_cap = 0, 0, 0, 0
 }
 
 @(private)

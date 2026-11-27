@@ -43,6 +43,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import base "../base"
 import "../draw"
 import "../font"
 import "../platform"
@@ -182,6 +183,9 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 	// (only when not set: a program that wants another count sets it before; one that wants none sets 0 after)
 	if h.after_input == 0 { h.after_input = AFTER_INPUT }
 	if first {
+		// (the graphics device and its first pipelines on a thread of their own while the window opens and the font
+		// loads: the longest steps of a start, side by side. A program may have asked for it earlier: it is not asked again)
+		if render.device_preload_state() == .Not_Started { render.preload_device(warp = o.headless && !o.headless_gpu) }
 		font.init(&sh.fonts)
 		// (the system's light or dark, read once before any frame: a frame then reads the kept value and waits on nothing)
 		_ = platform.dark_mode_preferred()
@@ -194,10 +198,14 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 		h.win = platform.open_window(o.title, o.size, transparent = true, integrated_title = o.integrated_title)
 	}
 	if h.win == nil {
-		if first { font.destroy(&sh.fonts) }
+		if first {
+			font.destroy(&sh.fonts)
+			render.release_preloaded_device()
+		}
 		open_failed(h, .No_Window, o.title, box = first && !o.headless)
 		return false
 	}
+	if first { base.start_mark("host: window open") }
 	failure := Open_Failure.None
 	if first {
 		failure = shared_open(sh, h.win, o.headless, o.headless_gpu)
@@ -223,6 +231,14 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 
 @(private = "file")
 shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless, gpu: bool) -> Open_Failure {
+	// the font first: the device is made on its thread meanwhile (host_open), and the renderer's init waits for it
+	ok: bool
+	sh.font, ok = load_ui_font(&sh.fonts, headless)
+	if !ok {
+		render.release_preloaded_device()
+		return .No_Font
+	}
+	base.start_mark("host: interface font")
 	if headless {
 		// (the graphics card asked: init_offscreen takes the software one itself when there is none)
 		if !render.init_offscreen(&sh.r, w.size, warp = !gpu) { return .No_Renderer }
@@ -230,12 +246,7 @@ shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless, gpu: bool) -> Op
 		if !render.init_window(&sh.r, w, w.size, transparent = true) { return .No_Renderer }
 		render.set_fixed_surface(&sh.r, platform.monitor_size(w))
 	}
-	ok: bool
-	sh.font, ok = load_ui_font(&sh.fonts, headless)
-	if !ok {
-		render.destroy(&sh.r)
-		return .No_Font
-	}
+	base.start_mark("host: renderer")
 	draw.init(&sh.dc, &sh.r, &sh.fonts)
 	ui.apply_palette(&sh.theme, ui.palette_of("Midnight"))
 	return .None

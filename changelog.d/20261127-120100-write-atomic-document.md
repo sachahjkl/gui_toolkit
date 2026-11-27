@@ -1,0 +1,3 @@
+type: Added
+
+**`fsx.write_atomic` keeps a person's document as it was**: `fsx.DOCUMENT` writes through a symbolic link to the file at its end, keeps the file's mode, owner and group (Unix) or its access list, attributes and creation time (Windows, `ReplaceFileW`), and puts the file and its folder on the disk before it returns. The temporary file is its user's alone until it is whole. A `Write_Report` says what was written over, among it the other names of a hard-linked file, which keep the old content. The options are one `Write_Options` value: `fsx.write_atomic(path, data, {flush = true, private = true})`. A settings export keeps the file it replaces.

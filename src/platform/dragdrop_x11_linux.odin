@@ -29,24 +29,6 @@ import "core:sys/posix"
 @(private = "file") XCB_VISUAL_CLASS_TRUE_COLOR :: 4
 @(private) X11_ARGB_DEPTH :: 32
 
-@(private)
-x11_dnd_intern_atoms :: proc() {
-	x11c.xdnd_aware = x11_atom("XdndAware")
-	x11c.xdnd_enter = x11_atom("XdndEnter")
-	x11c.xdnd_position = x11_atom("XdndPosition")
-	x11c.xdnd_status = x11_atom("XdndStatus")
-	x11c.xdnd_leave = x11_atom("XdndLeave")
-	x11c.xdnd_drop = x11_atom("XdndDrop")
-	x11c.xdnd_finished = x11_atom("XdndFinished")
-	x11c.xdnd_type_list = x11_atom("XdndTypeList")
-	x11c.xdnd_selection = x11_atom("XdndSelection")
-	x11c.xdnd_action_copy = x11_atom("XdndActionCopy")
-	x11c.xdnd_action_move = x11_atom("XdndActionMove")
-	x11c.xdnd_action_link = x11_atom("XdndActionLink")
-	x11c.xdnd_proxy = x11_atom("XdndProxy")
-	x11c.xdnd_action_list = x11_atom("XdndActionList")
-}
-
 // Mark the window as an XDND target (or not).
 @(private)
 x11_dnd_set_aware :: proc(w: ^Window, on: bool) {

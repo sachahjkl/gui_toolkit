@@ -13,6 +13,13 @@ base/blocking.odin blocking_sites process  # the call sites already said (locked
 base/trust.odin restriction_said process  # what restricts the process, said once at its start (atomic)
 base/trust.odin elevation_once process  # reads the token once
 base/trust.odin elevation_seen process  # the token's elevation, written once under elevation_once, then only read
+base/start.odin start_origin process  # the process's start on the monotonic clock, written once by its @(init) before main, then only read
+base/start.odin start_lock process  # guards start_kept and start_count
+base/start.odin start_kept process  # the steps of the start marked so far (locked)
+base/start.odin start_count process  # how many of them (locked)
+fsx/fsx_windows.odin temp_lock process  # guards the temporary folder's form kept for the process
+fsx/fsx_windows.odin temp_kept_named process  # the name of the temporary folder its kept form is of (locked)
+fsx/fsx_windows.odin temp_kept_form process  # the temporary folder's long form, read on the disk once per name (locked)
 changelog/changelog.odin TYPE_NAMES const  # Keep a Changelog's types, a table
 plugins/page.odin PAGE_TAGS const  # the words the palette finds the Plugins page by, a table
 config/config_test.odin DEFS test
@@ -483,7 +490,7 @@ render/render.odin srgb_tables_once process  # the once of a table
 render/retained.odin HEAP_STRIDE const  # a table
 render/shaders.odin MODULES const  # a table
 render/shaders.odin SHADERS const  # a table
-render/wgpu_core.odin g_compile_lock process  # the shader compiler, one at a time for the process (DXC crashes when devices compile at once)
+render/wgpu_core.odin g_compile_lock process  # the compiles of the process: the toolkit's side by side, an application's alone; one at a time on Direct3D 12 (DXC crashes when devices compile at once)
 render/wgpu_dcomp.odin panel_vtable const  # a COM vtable (passed by address)
 render/wgpu_dcomp.odin IID_ISwapChainPanelNative const  # a COM interface id (passed by address)
 render/wgpu_dcomp.odin IID_IUnknown_ const  # a COM interface id (passed by address)

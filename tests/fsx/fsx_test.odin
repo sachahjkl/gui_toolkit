@@ -8,6 +8,7 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
+import base "gt:base"
 import "gt:fsx"
 
 // The smaller file of two (read_all_never_gives_a_part).
@@ -237,4 +238,25 @@ a_folder_made_again_is_there :: proc(t: ^testing.T) {
 	dir := fmt.tprintf("%s/a/b", root)
 	testing.expect(t, fsx.make_dirs(dir), "made")
 	testing.expect(t, fsx.make_dirs(dir), "already there")
+}
+
+// The temporary folder is asked from an interface's thread (a menu that writes a file to open): it waits on nothing
+// there. On Windows its long form was read on the disk before main, and is kept. With the check (a debug build), a
+// blocking call would be counted on that thread.
+@(test)
+the_temporary_folder_blocks_no_interface_thread :: proc(t: ^testing.T) {
+	Ask :: struct { before, after: int, dir: string }
+	ask: Ask
+	th := thread.create_and_start_with_poly_data(&ask, proc(a: ^Ask) {
+		base.interface_thread_mark()
+		a.before = base.blocking_count_here()
+		a.dir = fsx.temp_dir(context.temp_allocator)
+		_ = fsx.temp_dir(context.temp_allocator)
+		a.after = base.blocking_count_here()
+		a.dir = len(a.dir) > 0 ? "named" : ""
+	})
+	thread.join(th)
+	thread.destroy(th)
+	testing.expect_value(t, ask.dir, "named")
+	testing.expect_value(t, ask.after - ask.before, 0)
 }

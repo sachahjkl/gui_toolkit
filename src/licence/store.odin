@@ -197,7 +197,7 @@ install_locked :: proc(s: ^Store, text: string) -> Error {
 	if path == "" { return .Not_Written }
 	fsx.make_dirs(filepath.dir(path))
 	data := strings.concatenate({canonical, "\n"}, context.temp_allocator)
-	return fsx.write_atomic(path, transmute([]byte)data, flush = true, private = true) ? .None : .Not_Written
+	return fsx.write_atomic(path, transmute([]byte)data, {flush = true, private = true}) ? .None : .Not_Written
 }
 
 // The licence a build is handed out with goes where the store keeps its licence ONCE: only when nothing is stored and it was

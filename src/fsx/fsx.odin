@@ -35,6 +35,7 @@ package fsx
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "../ascii"
 import base "../base"
@@ -100,25 +101,84 @@ read_all :: proc(path: string, allocator := context.allocator, max_size: i64 = R
 // What a read through one open file gave (read_open).
 @(private) Read_Got :: enum u8 { No, Whole, Changed }
 
+// How write_atomic writes. The zero value is for a program's own file (its settings, its state).
+Write_Options :: struct {
+	flush:   bool,   // the file, then its folder, on the disk before it returns
+	private: bool,   // readable by its user only (POSIX: mode 0600, from its creation and after; Windows: the folder's access list)
+	keep:    bool,   // a file written over keeps what it had: POSIX its mode, owner and group (the owner where the system
+	                 // lets this user give it); Windows its access list, attributes and creation time (ReplaceFileW)
+	follow:  bool,   // a symbolic link is written through: the file at the end of its chain is replaced, the link stays
+}
+
+// A person's document: on the disk when it returns, what the file had kept, its link followed (an editor's save).
+DOCUMENT :: Write_Options{flush = true, keep = true, follow = true}
+
+// What write_atomic did, beyond its answer.
+Write_Report :: struct {
+	target:     string,   // the file replaced: `path`, or the end of its chain of links (temp memory)
+	existed:    bool,     // a file was there and was written over
+	kept:       bool,     // keep: everything the file had was given to the new one (false: a part the system refused,
+	                      // an owner this user may not give; the file is then this user's, its mode no wider than before)
+	hard_links: int,      // the other names of the file written over: they keep its old content (a rename makes a new file)
+	flushed:    bool,     // flush asked and done: the file and its name on the disk. Windows with `keep`: false when the
+	                      // file replaced could not be opened for writing (a file this user may replace, not write): its
+	                      // data was on the disk before the replace, the replace is done and write_atomic is true
+}
+
+// The most links write_atomic follows (`follow`): a longer chain, or a loop, is refused, as the system refuses to open it
+// (ELOOP). Writing over the last name reached would make a file of a link the person did not name.
+@(private) LINK_CHAIN_MAX :: 40
+
 // Writes `data` to `path` through a temporary file next to it, renamed over it: a reader sees the old file or the new
 // one, and two writers each their own whole file (the last rename stays). The name is this thread's, so no other live
-// writer has it: a crash leaves it behind, `<path>.<pid>.<thread>.tmp`. `flush`: on the disk when it returns; false then
-// may also mean the file was replaced but its directory could not be synced (replace). `private`: readable by its user
-// only (POSIX: mode 0600; Windows: the folder's access list, as any file).
-write_atomic :: proc(path: string, data: []byte, flush := false, private := false, loc := #caller_location) -> bool {
+// writer has it: a crash leaves it behind, `<path>.<pid>.<thread>.tmp`. With `keep` (or `private`) the temporary file is
+// its user's alone until it is complete and given its mode. `flush`: on the disk when it returns; false then may also
+// mean the file was replaced but its folder could not be synced (replace). `report`, when given, says what was written
+// over (Write_Report). A person's document: `o = fsx.DOCUMENT`.
+write_atomic :: proc(path: string, data: []byte, o: Write_Options = {}, report: ^Write_Report = nil, loc := #caller_location) -> bool {
 	base.blocking("fsx.write_atomic", loc)
-	tmp := fmt.tprintf("%s.%d.%d.tmp", path, os.get_pid(), os.get_current_thread_id())
-	parts := [1][]byte{data}
-	if !write_parts(tmp, parts[:], flush, private) { delete_file(tmp); return false }
-	if !replace(tmp, path, flush) { delete_file(tmp); return false }
+	rep: Write_Report
+	defer if report != nil { report^ = rep }
+	rep.target = path
+	if o.follow {
+		ok: bool
+		if rep.target, ok = link_end(path); !ok { return false }
+	}
+	tmp := fmt.tprintf("%s.%d.%d.tmp", rep.target, os.get_pid(), os.get_current_thread_id())
+	if !write_over(tmp, rep.target, data, o, &rep) { delete_file(tmp); return false }
 	return true
 }
 
+// The end of the chain of symbolic links that starts at `path` (temp memory): the first name that is not a link, or
+// the name a broken link points to (writing there makes the file it names). False: a chain longer than LINK_CHAIN_MAX
+// (a loop), or a link that cannot be read.
+@(private)
+link_end :: proc(path: string) -> (end: string, ok: bool) {
+	at := path
+	for _ in 0 ..< LINK_CHAIN_MAX {
+		if path_kind(at) != .Link { return at, true }
+		to, err := os.read_link(at, context.temp_allocator)
+		if err != nil || to == "" { return at, false }
+		at = filepath.is_abs(to) ? to : path_join(filepath.dir(at), to)
+	}
+	return at, path_kind(at) != .Link
+}
+
 // The directory for temporary files: TEMP when it is set (what a test harness points at a throwaway folder, on every
-// system), otherwise the system's (TMPDIR or /tmp on Unix, GetTempPathW on Windows). "" if there is none.
-temp_dir :: proc(allocator := context.allocator) -> string {
-	if t := os.get_env("TEMP", allocator); t != "" { return t }
-	d, err := os.temp_directory(allocator)
+// system), otherwise the system's (TMPDIR or /tmp on Unix, GetTempPathW on Windows). "" if there is none. In the
+// system's form, as a program finds a path from the system: no separator at its end, and on Windows backslashes and
+// long names (TEMP is often `C:\Users\RUNNER~1\...`, and a path compared with a file dialog's then differs). It waits on
+// nothing: Windows' long form is read on the disk once, before main, and again only when TEMP changes (temp_form).
+temp_dir :: proc(allocator := context.allocator, loc := #caller_location) -> string {
+	t := temp_named()
+	return t == "" ? "" : temp_form(t, allocator, loc)
+}
+
+// The temporary folder as the environment or the system names it (temp memory; "" when there is none).
+@(private)
+temp_named :: proc() -> string {
+	if t := os.get_env("TEMP", context.temp_allocator); t != "" { return t }
+	d, err := os.temp_directory(context.temp_allocator)
 	return err == nil ? d : ""
 }
 

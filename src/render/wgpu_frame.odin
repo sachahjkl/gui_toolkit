@@ -141,6 +141,7 @@ Submit :: struct {
 	bound_tex, bound_image, bound_backdrop: Texture,
 	bound_wrap:    bool,               // GL: the sampler of `image` bound with them repeats (Batch.image_wrap)
 	vb_retained, vb_set: bool,
+	vb_page:    int,                   // the page of instances bound (upload_instances); -1: none
 	replace:    bool,                  // the batch's composite replaces what it read (FLAG_BLEND)
 	slug_ok:    bool,
 }
@@ -153,15 +154,85 @@ arena_write :: proc(g: ^Wgpu_State, data: rawptr, size: int) -> u32 {
 	return u32(off)
 }
 
+// WebGPU's defaults, for a device that did not say its limits.
+@(private) WGPU_DEFAULT_BUFFER_BYTES :: 256 << 20
+@(private) WGPU_DEFAULT_BINDING_BYTES :: 128 << 20
+
+// The device's limits on one buffer (bytes; 0: WebGPU's default), and the instances a page holds. Pages of another
+// size are released: the next frame makes them again.
 @(private)
-upload_table :: proc(g: ^Wgpu_State, t: ^Wgpu_Table, data: rawptr, n, stride: int) {
+wgpu_set_limits :: proc(g: ^Wgpu_State, buffer, binding: int) {
+	g.max_buffer = buffer > 0 ? buffer : WGPU_DEFAULT_BUFFER_BYTES
+	g.max_binding = min(binding > 0 ? binding : WGPU_DEFAULT_BINDING_BYTES, g.max_buffer)
+	page := elements_within(g.max_buffer, size_of(Rect_Inst))
+	if page == g.inst_page { return }
+	g.inst_page = page
+	for &t in g.inst { if t.buf != nil { wgpu.BufferRelease(t.buf) } }
+	clear(&g.inst)
+}
+
+// A frame passed a limit that cannot be split (a table of a bind group, the constants): said once, and what is past it
+// is not drawn.
+@(private)
+wgpu_over_limit :: proc(g: ^Wgpu_State, what: string, bytes, limit: int) {
+	if g.over_limit { return }
+	g.over_limit = true
+	fmt.eprintfln("render: wgpu: a frame's %s need %d bytes, the device binds %d: what is past them is not drawn", what, bytes, limit)
+}
+
+// `limit`: the bytes the table can bind; elements past it are not uploaded (the shader reads zeros for them).
+@(private)
+upload_table :: proc(g: ^Wgpu_State, t: ^Wgpu_Table, data: rawptr, n, stride: int, limit: int) -> bool {
+	room := elements_within(limit, stride)
+	n := n
+	if n > room { wgpu_over_limit(g, "tables", n * stride, limit); n = room }
 	if t.buf != nil && shrink_due(t.cap, n, &t.low) { wgpu.BufferRelease(t.buf); t.buf, t.cap = nil, 0 }
 	if t.buf == nil || n > t.cap {
 		if t.buf != nil { wgpu.BufferRelease(t.buf) }
-		t.cap = max(n, t.cap * 2, TABLE_CAP_MIN)
+		t.cap = min(max(n, t.cap * 2, TABLE_CAP_MIN), room)
 		t.buf = wgpu.DeviceCreateBuffer(g.device, &{label = "table", usage = {.Storage, .CopyDst}, size = u64(t.cap * stride)})
+		if t.buf == nil { t.cap = 0; return false }
 	}
 	if n > 0 { wgpu.QueueWriteBuffer(g.queue, t.buf, 0, data, uint(n * stride)) }
+	return true
+}
+
+// The frame's instances, page by page. A page no frame used for a while is released (shrink_due); false: a buffer
+// could not be made, the frame is not drawn.
+@(private)
+upload_instances :: proc(g: ^Wgpu_State, insts: []Rect_Inst) -> bool {
+	page := g.inst_page
+	pages := pages_for(len(insts), page)
+	if len(g.inst) < pages { runtime.resize(&g.inst, pages) }
+	for &t, k in g.inst {
+		part := k < pages ? insts[k * page:min(len(insts), (k + 1) * page)] : nil
+		if t.buf != nil && shrink_due(t.cap, len(part), &t.low) { wgpu.BufferRelease(t.buf); t.buf, t.cap = nil, 0 }
+		if len(part) == 0 { continue }
+		if t.buf == nil || len(part) > t.cap {
+			if t.buf != nil { wgpu.BufferRelease(t.buf) }
+			t.cap = min(max(len(part), t.cap * 2, INST_CAP_MIN), page)
+			t.buf = wgpu.DeviceCreateBuffer(g.device, &{label = "instances", usage = {.Vertex, .CopyDst}, size = u64(t.cap * size_of(Rect_Inst))})
+			if t.buf == nil { t.cap = 0; return false }
+		}
+		wgpu.QueueWriteBuffer(g.queue, t.buf, 0, raw_data(part), uint(len(part) * size_of(Rect_Inst)))
+	}
+	for len(g.inst) > pages && g.inst[len(g.inst) - 1].buf == nil { pop(&g.inst) }
+	return true
+}
+
+// Binds the page of the frame's instances that holds `first`: its place in that page, and how many of the `count`
+// instances from it the page holds.
+@(private)
+wgpu_bind_page :: proc(r: ^Renderer, s: ^Submit, first, count: int) -> (at, n: int, ok: bool) {
+	g := &r.wg
+	p: int
+	p, at, n = page_run(first, count, g.inst_page)
+	if p >= len(g.inst) || g.inst[p].buf == nil { return }
+	if p != s.vb_page {
+		s.vb_page = p
+		wgpu.RenderPassEncoderSetVertexBuffer(s.pass, 0, g.inst[p].buf, 0, wgpu.WHOLE_SIZE)
+	}
+	return at, n, true
 }
 
 @(private)
@@ -233,8 +304,11 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	if !g.first_shown && g.surface != nil {
 		g.first_shown = true
 		t_first = time.tick_now()
+		// (the pipelines made early, when they are this frame's format: it waits for their compile, which it needs)
+		wgpu_early_adopt(g, g.view_format)
 		sync.mutex_lock(&g.pipe_lock)
-		compiling := len(g.pipes) == 0
+		compiling := true
+		for p in g.pipes { if p.ready { compiling = false } }
 		sync.mutex_unlock(&g.pipe_lock)
 		if compiling {
 			wgpu_clear_frame(r)
@@ -256,32 +330,30 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		delete(s.groups); delete(s.views); delete(s.replay_off)
 	}
 	t_enter := time.tick_now()
+	// (queue writes, before the encoder: they reach the GPU before what it encodes all the same. A buffer the device
+	// could not make leaves the frame undrawn, and nothing of it encoded)
+	uploaded := upload_table(g, &g.xforms, raw_data(f.xforms), len(f.xforms), size_of(Xform_Data), g.max_binding)
+	uploaded &&= upload_table(g, &g.clips, raw_data(f.clips), len(f.clips), size_of(Clip_Data), g.max_binding)
+	uploaded &&= upload_table(g, &g.points, raw_data(f.points), len(f.points), size_of([2]f32), g.max_binding)
+	uploaded &&= upload_table(g, &g.grads, raw_data(f.grads), len(f.grads), size_of([4]f32), g.max_binding)
+	if len(f.apps) > 0 { uploaded &&= upload_table(g, &g.app_params, raw_data(f.app_params), len(f.app_params), size_of([4]f32), g.max_binding) }
+	uploaded &&= upload_instances(g, f.insts)
+	if !uploaded { wgpu_frame_lost(r); return }
+	// uniform arena: the constants of every target bound, replay and filter pass of this submit, at their own offsets
+	passes := 0
+	for op in f.ops { if op.kind == .Pass { passes += 1 } }
+	need := (len(f.batches) + len(f.replays) + ARENA_SPARE_ENTRIES) * ARENA_ALIGN + passes * PASS_CONSTANTS_SIZE
+	if need > g.max_buffer { wgpu_over_limit(g, "constants", need, g.max_buffer); wgpu_frame_lost(r); return }
 	s.enc = wgpu.DeviceCreateCommandEncoder(g.device)
 	if GPU_TIMING || r.gpu_timing || r.prof.on { wprof_begin(r, s.enc); s.timed = g.pf.slot >= 0 }
 	wgpu_generate_mips(r, &s)
 	if s.timed { wprof_step(r, s.enc, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst)) }
 
-	upload_table(g, &g.xforms, raw_data(f.xforms), len(f.xforms), size_of(Xform_Data))
-	upload_table(g, &g.clips, raw_data(f.clips), len(f.clips), size_of(Clip_Data))
-	upload_table(g, &g.points, raw_data(f.points), len(f.points), size_of([2]f32))
-	upload_table(g, &g.grads, raw_data(f.grads), len(f.grads), size_of([4]f32))
-	if len(f.apps) > 0 { upload_table(g, &g.app_params, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
-	if g.inst.buf != nil && shrink_due(g.inst.cap, len(f.insts), &g.inst.low) { wgpu.BufferRelease(g.inst.buf); g.inst.buf, g.inst.cap = nil, 0 }
-	if g.inst.buf == nil || len(f.insts) > g.inst.cap {
-		if g.inst.buf != nil { wgpu.BufferRelease(g.inst.buf) }
-		g.inst.cap = max(len(f.insts), g.inst.cap * 2, INST_CAP_MIN)
-		g.inst.buf = wgpu.DeviceCreateBuffer(g.device, &{label = "instances", usage = {.Vertex, .CopyDst}, size = u64(g.inst.cap * size_of(Rect_Inst))})
-	}
-	if len(f.insts) > 0 { wgpu.QueueWriteBuffer(g.queue, g.inst.buf, 0, raw_data(f.insts), uint(len(f.insts) * size_of(Rect_Inst))) }
 
 	t_uploaded := time.tick_now()
-	// uniform arena: the constants of every target bound, replay and filter pass of this submit, at their own offsets
-	passes := 0
-	for op in f.ops { if op.kind == .Pass { passes += 1 } }
-	need := (len(f.batches) + len(f.replays) + ARENA_SPARE_ENTRIES) * ARENA_ALIGN + passes * PASS_CONSTANTS_SIZE
 	if g.arena == nil || need > g.arena_cap {
 		if g.arena != nil { wgpu.BufferRelease(g.arena) }
-		g.arena_cap = max(need, g.arena_cap * 2, ARENA_MIN_BYTES)
+		g.arena_cap = min(max(need, g.arena_cap * 2, ARENA_MIN_BYTES), g.max_buffer)
 		g.arena = wgpu.DeviceCreateBuffer(g.device, &{label = "constants", usage = {.Uniform, .CopyDst}, size = u64(g.arena_cap)})
 	}
 	g.arena_used = 0
@@ -335,8 +407,20 @@ wgpu_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	wgpu.CommandBufferRelease(cb)
 	wgpu.CommandEncoderRelease(s.enc)
 	if s.timed && submitted { wprof_submitted(r) }
+	if !submitted { wgpu_frame_lost(r) }
 	for bg in s.groups { wgpu.BindGroupRelease(bg) }
 	for v in s.views { wgpu.TextureViewRelease(v) }
+}
+
+// A frame whose commands were not submitted (an error since the last submit, wgpu_submit): the kept target does not hold
+// it, though its blit said so, and the surface's texture holds nothing of it. The next frame is drawn whole; the window
+// keeps the picture it shows: nothing is cleared or presented (a clear would show an empty window until the next frame).
+@(private)
+wgpu_frame_lost :: proc(r: ^Renderer) {
+	g := &r.wg
+	g.damage_ready = false
+	g.clear_pending = false
+	r.damage.skip_present = true
 }
 
 when USE_WGPU {
@@ -367,8 +451,8 @@ walk_bind :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, b: Batch, rc: [4]i32)
 	g := &r.wg
 	if (b.replay > 0) != s.vb_retained || !s.vb_set {
 		s.vb_retained, s.vb_set = b.replay > 0, true
-		buf := s.vb_retained ? r.heaps[.Insts].wbuf : g.inst.buf
-		wgpu.RenderPassEncoderSetVertexBuffer(s.pass, 0, buf, 0, wgpu.WHOLE_SIZE)
+		s.vb_page = -1   // (the frame's own: walk_draw binds the page each run is in)
+		if s.vb_retained { wgpu.RenderPassEncoderSetVertexBuffer(s.pass, 0, r.heaps[.Insts].wbuf, 0, wgpu.WHOLE_SIZE) }
 	}
 	if b.replay != s.bound_replay {
 		s.bound_replay = b.replay
@@ -407,8 +491,19 @@ walk_draw :: proc(r: ^Renderer, s: ^Submit, slug: bool, first, count: int) {
 	pipe := slug ? wgpu_slug_pipeline(r, s.cur_format, s.replace, s.dual) : wgpu_pipeline(r, s.cur_format, s.replace)
 	if pipe == nil { return }
 	if pipe != s.bound_pipe { s.bound_pipe = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
-	wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(count), 0, u32(first))
+	if s.vb_retained {
+		wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(count), 0, u32(first))
+		return
+	}
+	first, count := first, count
+	for count > 0 {
+		at, n, ok := wgpu_bind_page(r, s, first, count)
+		if !ok { return }
+		wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, u32(n), 0, u32(at))
+		first, count = first + n, count - n
+	}
 }
+
 
 @(private)
 walk_drawn :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, b: Batch, bi: int, rc: [4]i32) {}

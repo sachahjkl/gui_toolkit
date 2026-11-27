@@ -511,7 +511,7 @@ POLICY_MAGIC :: "wbpolicy 1"
 write_user_file :: proc(path: string, text: string, loc := #caller_location) -> bool {
 	base.blocking("config.write_user_file", loc)
 	if dir := filepath.dir(path); dir != "" && dir != "." { fsx.make_dirs(dir) }
-	return fsx.write_atomic(path, transmute([]byte)text, flush = true)
+	return fsx.write_atomic(path, transmute([]byte)text, {flush = true})
 }
 
 // Both at once, on the calling thread: for a program whose preferences change rarely enough that a write on its loop

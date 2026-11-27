@@ -59,7 +59,7 @@ Damage_State :: struct {
 	verify:      bool,            // set_damage_verify / render.damage.verify: render full too and compare
 	clear:       [4]f32,          // the frame's clear colour, in the target's values (frame_begin kept it)
 	have_clear:  bool,            // frame_begin deferred the clear to frame_submit (a possible partial frame)
-	skip_present: bool,           // a region of nothing, on top of a good target: frame_end does not present
+	skip_present: bool,           // a region of nothing, on top of a good target, or a frame lost (wgpu_frame_lost): frame_end does not present
 	side:         bool,           // this submit draws on the side (verify): the window does not get it
 	// counters (damage_stats): reset by damage_begin
 	rects_in:    int,             // rectangles the app added this frame (before fusion)

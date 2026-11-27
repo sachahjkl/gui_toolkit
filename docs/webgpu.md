@@ -17,7 +17,7 @@ implementation (`when`, resolved at compile time: only the chosen backend is in 
 
 | file | |
 |---|---|
-| `src/render/wgpu_core.odin` | device (on a thread of its own), surface, pipelines (made on a pre-warming thread), textures, targets, retained heaps, device loss |
+| `src/render/wgpu_core.odin` | device (on a thread of its own, with the shaders and a window's first two pipelines when it is made early), surface, the other pipelines (made on a pre-warming thread), textures, targets, retained heaps, device loss |
 | `src/render/wgpu_frame.odin` | `frame_submit`: one render pass per run of draw calls into a target, copies for snapshots, filter passes, readback |
 | `src/render/wgpu_present.odin` | present modes, the frame latency object and the frame statistics (rebuilt from the compositor's timing) |
 | `src/render/wgpu_profile.odin` | `gpu_ms` and `gpu_profile`, from timestamp queries between passes |

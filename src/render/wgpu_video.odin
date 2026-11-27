@@ -1,7 +1,6 @@
 package render
 
 import "core:fmt"
-import "core:sync"
 import "vendor:wgpu"
 
 // Video pictures on the WebGPU backend: the planes come from memory (I420 / NV12, and P010 / I420_10 when the device has
@@ -67,7 +66,7 @@ wgpu_video_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Re
 	if v.pipes[i] != nil { return v.pipes[i] }
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = v.module, entryPoint = "ps_video", targetCount = 1, targets = &target}
-	sync.mutex_lock(&g_compile_lock)
+	compile_own_begin()
 	v.pipes[i] = wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "video", layout = v.layout,
 		vertex = {module = v.module, entryPoint = "vs_video"},
@@ -75,7 +74,7 @@ wgpu_video_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Re
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
-	sync.mutex_unlock(&g_compile_lock)
+	compile_own_end()
 	return v.pipes[i]
 }
 

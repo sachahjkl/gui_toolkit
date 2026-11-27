@@ -150,7 +150,7 @@ licence_keygen :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 	fsx.make_dirs(filepath.dir(path))
 	text := fmt.tprintf("# %s licence signing key (Ed25519). SECRET: whoever has it can issue licences.\n# Never commit it, never send it. Keep a backup outside this computer.\n%s\n",
 		licence_title(tool.product), signing.key_encode(seed[:], context.temp_allocator))
-	if !fsx.write_atomic(path, transmute([]byte)text, flush = true, private = true) { return fmt.tprintf("cannot write %s", path) }
+	if !fsx.write_atomic(path, transmute([]byte)text, {flush = true, private = true}) { return fmt.tprintf("cannot write %s", path) }
 	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	fmt.printfln("Private key written to %s", path)
 	fmt.printfln("Public key: %s\n\nPut it in the program's licence.Product (public_key), and in the worker's LICENSE_PUBLIC_KEY.", pub)
@@ -256,7 +256,7 @@ sops_dotenv :: proc(secrets, out: string, keys: []string) -> (why: string) {
 	if code != 0 { return fmt.tprintf("sops could not decrypt %s (is SOPS_AGE_KEY_FILE set?)", secrets) }
 	kept, names := dotenv_keep(text, keys)
 	if len(names) == 0 { return fmt.tprintf("%s holds none of %s", secrets, strings.join(keys, ", ", context.temp_allocator)) }
-	if !fsx.write_atomic(out, transmute([]byte)kept, flush = true, private = true) { return fmt.tprintf("cannot write %s", out) }
+	if !fsx.write_atomic(out, transmute([]byte)kept, {flush = true, private = true}) { return fmt.tprintf("cannot write %s", out) }
 	fmt.printfln("%s: %s", out, strings.join(names, ", ", context.temp_allocator))
 	return ""
 }

@@ -426,6 +426,13 @@ Window_Target :: struct {
 	swap_space:  u64,                     // the space_epoch they were made in
 }
 
+// Direct3D 11: one page of a frame's instances, a dynamic vertex buffer.
+D3d_Page :: struct {
+	buf: ^d3d11.IBuffer,
+	cap: int,   // instances
+	low: int,   // shrink_due
+}
+
 Renderer :: struct {
 	using target: Window_Target,          // the window drawn to
 	id:          u64,                     // renderer_id
@@ -435,9 +442,8 @@ Renderer :: struct {
 	ps:          ^d3d11.IPixelShader,
 	layout:      ^d3d11.IInputLayout,
 	slug:        Slug_Pipeline,           // slug.odin
-	inst_buf:    ^d3d11.IBuffer,
-	inst_cap:    int,
-	inst_low:    int,   // shrink_due
+	inst_pages:  [dynamic]D3d_Page,       // the frame's instances in pages of inst_page each (page_run)
+	inst_page:   int,                     // instances one page holds (0: not set yet, D3D11_BUFFER_BYTES_MAX)
 	globals:     ^d3d11.IBuffer,
 	blend:       ^d3d11.IBlendState,
 	raster:      ^d3d11.IRasterizerState,
@@ -956,6 +962,29 @@ gpu_result :: proc(r: ^Renderer) -> (ms: f32, frame: int, ok: bool) {
 
 // Smallest instance buffer (instances) and frame table (elements) made: both grow by doubling from there.
 @(private) INST_CAP_MIN :: 4096
+
+// The bytes one buffer holds on every Direct3D 11 device (D3D11_REQ_RESOURCE_SIZE_IN_MEGABYTES_EXPRESSION_A_TERM): a
+// larger one is refused where the video memory is small, and its size no longer fits ByteWidth past 4 GB.
+@(private) D3D11_BUFFER_BYTES_MAX :: 128 << 20
+
+// A frame's instances go to the GPU in pages: one buffer holds at most what the device allows (wgpu-native ends the process
+// at the submit of a frame whose instance buffer passed it). The elements of `stride` bytes a buffer of `limit` bytes holds.
+@(private)
+elements_within :: proc(limit, stride: int) -> int { return max(limit / stride, 1) }
+
+// The instances [first, first + count) of a draw cut at the pages of `page` instances: the page `first` is in, its place
+// in that page, and how many of them that page holds. The caller draws those, then goes on from first + n.
+@(private)
+page_run :: proc(first, count, page: int) -> (p, at, n: int) {
+	p = first / page
+	at = first - p * page
+	n = min(count, page - at)
+	return
+}
+
+// The pages `n` instances fill.
+@(private)
+pages_for :: proc(n, page: int) -> int { return (n + page - 1) / page }
 
 // A buffer grown for a peak (a frame that drew a hundred times what frames draw) is not kept at it: after SHRINK_FRAMES frames
 // in a row that used less than 1/SHRINK_RATIO of it, it goes back to what they use. (A find's strips of text left 300 MB

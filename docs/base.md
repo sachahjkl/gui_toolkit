@@ -1,8 +1,29 @@
 # base: what every package stands on
 
 `import base "gt:base"` (the package is named `gt_base`, so a program keeps its own `base`). Pure Odin, any target. It
-holds the interface thread's check (`base.blocking`, [tasks.md](tasks.md)), the opt-in performance checks
+holds the interface thread's check (`base.blocking`, [tasks.md](tasks.md)), the start clock (below), the opt-in performance checks
 (`base.perf_enabled`, `base.perf_skip`, [testing.md](testing.md)) and the readers of binary formats below.
+
+## The start of a program
+
+A start is measured from the process's own start, as the system knows it (Windows' creation time; Linux's start time in
+`/proc/self/stat`, in steps of 10 ms), not from `main`: the system has loaded the program before `main` runs, and a probe
+that starts its clock there measures another start. The toolkit marks its own steps: the device made early and its first
+pipelines, the window, the font, the renderer, the first frame shown. A program marks its own, from any thread.
+
+```odin
+base.start_mark("session read")                   // a step done (a constant string): its time since the process started
+ms := base.start_ms()                             // milliseconds since the process started
+buf: [base.START_STEPS_MAX]base.Start_Step
+for s in base.start_steps(buf[:]) { fmt.printfln("%s %.1f", s.what, s.ms) }   // every step, in the order marked
+base.start_print()                                // the same on standard error
+```
+
+A program's probe of its start opens its window as a person's start does (`host.host_open` asks for the device early
+itself), waits for its first frame shown (`render: first frame shown`), then reads the steps. With
+`TOOLKIT_RENDER_TRACE=1` the renderer prints them at the process's first present. A step is kept the first time it is
+marked only (`start_mark` returns true then): the start is the first window's, and a program of many windows does not
+fill the list. At most `START_STEPS_MAX` (48) steps are kept; later ones are dropped.
 
 ## Big-endian integers
 

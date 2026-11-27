@@ -265,7 +265,8 @@ STEPS := []Step{
 	{name = "appshaders", wgpu = .Ci11},
 	{name = "video", wgpu = .Ci4, sample = true},
 	{name = "textures", wgpu = .Ci2},
-	{name = "render_pkg", path = "src/render"},
+	// (one test at a time: the device made early is the process's, and another test's init_offscreen would take it)
+	{name = "render_pkg", path = "src/render", one = true},
 	// (wgpu's GL backend, forced: EGL surfaceless, llvmpipe where there is no GPU; no EGL: the log says the tests drew nothing)
 	{name = "gl_fallback", oses = LINUX_ONLY, text = true},
 	// text

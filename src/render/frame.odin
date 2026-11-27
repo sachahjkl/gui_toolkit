@@ -1,6 +1,7 @@
 #+build windows
 package render
 
+@(require) import "base:runtime"
 @(require) import "core:fmt"
 @(require) import "core:mem"
 @(require) import "vendor:directx/d3d11"
@@ -56,26 +57,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	upload_structured(r, &r.points_buf, &r.points_view, &r.points_cap, raw_data(f.points), len(f.points), size_of([2]f32))
 	upload_structured(r, &r.grads_buf, &r.grads_view, &r.grads_cap, raw_data(f.grads), len(f.grads), size_of([4]f32))
 	if len(f.apps) > 0 { upload_structured(r, &r.app_params_buf, &r.app_params_view, &r.app_params_cap, raw_data(f.app_params), len(f.app_params), size_of([4]f32)) }
-	if shrink_due(r.inst_cap, len(f.insts), &r.inst_low) {
-		r.inst_buf->Release()
-		r.inst_buf, r.inst_cap = nil, 0   // (made again just below, at what is drawn now)
-	}
-	if len(f.insts) > r.inst_cap {
-		if r.inst_buf != nil { r.inst_buf->Release() }
-		r.inst_cap = max(len(f.insts), max(r.inst_cap * 2, INST_CAP_MIN))
-		r.inst_buf = nil
-		if fault_hit(.Create_Buffer) || hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(r.inst_cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &r.inst_buf)) {
-			r.inst_buf, r.inst_cap = nil, 0
-			kept = false
-			return
-		}
-	}
-	if len(f.insts) > 0 {
-		mapped: d3d11.MAPPED_SUBRESOURCE
-		if fault_hit(.Map) || hr_failed(r.ctx->Map(r.inst_buf, 0, .WRITE_DISCARD, {}, &mapped)) { kept = false; return }   // (a device gone: frame_end finds out)
-		mem.copy(mapped.pData, raw_data(f.insts), len(f.insts) * size_of(Rect_Inst))
-		r.ctx->Unmap(r.inst_buf, 0)
-	}
+	if !d3d_upload_instances(r, f.insts) { kept = false; return }
 	profile_step(r, .Upload, 0, 0, 0, len(f.insts) * size_of(Rect_Inst))
 
 	bind_main(r)
@@ -92,7 +74,7 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	}
 	// a partial frame clears only its region
 	if partial && r.damage.have_clear { r.damage.have_clear = false; kept = d3d_clear_region(r) }
-	s := D3d_Submit{cur = -1, has_slug = has_slug, bound = -1, bound_image = -1, bound_backdrop = -1, dual_frame = f.subpixel && d3d_dual_ensure(r)}
+	s := D3d_Submit{cur = -1, page = -1, has_slug = has_slug, bound = -1, bound_image = -1, bound_backdrop = -1, dual_frame = f.subpixel && d3d_dual_ensure(r)}
 	frame_walk(r, &s, f, partial, slug_frame)
 	walk_flush(r, &s)
 	unbind_inputs(r)
@@ -101,6 +83,50 @@ d3d_frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 		slug_unbind_inputs(r)
 	}
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
+}
+
+// The frame's instances, page by page (D3D11_BUFFER_BYTES_MAX each: what every device can make, and a size that fits
+// ByteWidth). A page no frame used for a while is released (shrink_due). False: a buffer could not be made or mapped.
+@(private)
+d3d_upload_instances :: proc(r: ^Renderer, insts: []Rect_Inst) -> bool {
+	if r.inst_page <= 0 { r.inst_page = elements_within(D3D11_BUFFER_BYTES_MAX, size_of(Rect_Inst)) }
+	page := r.inst_page
+	pages := pages_for(len(insts), page)
+	if len(r.inst_pages) < pages { runtime.resize(&r.inst_pages, pages) }
+	for &p, k in r.inst_pages {
+		part := k < pages ? insts[k * page:min(len(insts), (k + 1) * page)] : nil
+		if p.buf != nil && shrink_due(p.cap, len(part), &p.low) { p.buf->Release(); p.buf, p.cap = nil, 0 }
+		if len(part) == 0 { continue }
+		if p.buf == nil || len(part) > p.cap {
+			if p.buf != nil { p.buf->Release(); p.buf = nil }
+			p.cap = min(max(len(part), p.cap * 2, INST_CAP_MIN), page)
+			if fault_hit(.Create_Buffer) || hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(p.cap * size_of(Rect_Inst)), Usage = .DYNAMIC, BindFlags = {.VERTEX_BUFFER}, CPUAccessFlags = {.WRITE}}, nil, &p.buf)) {
+				p.buf, p.cap = nil, 0
+				return false
+			}
+		}
+		mapped: d3d11.MAPPED_SUBRESOURCE
+		if fault_hit(.Map) || hr_failed(r.ctx->Map(p.buf, 0, .WRITE_DISCARD, {}, &mapped)) { return false }   // (a device gone: frame_end finds out)
+		mem.copy(mapped.pData, raw_data(part), len(part) * size_of(Rect_Inst))
+		r.ctx->Unmap(p.buf, 0)
+	}
+	for len(r.inst_pages) > pages && r.inst_pages[len(r.inst_pages) - 1].buf == nil { pop(&r.inst_pages) }
+	return true
+}
+
+// Binds the page of the frame's instances that holds `first`: its place in that page, and how many of the `count`
+// instances from it the page holds.
+@(private)
+d3d_bind_page :: proc(r: ^Renderer, s: ^D3d_Submit, first, count: int) -> (at, n: int, ok: bool) {
+	p: int
+	p, at, n = page_run(first, count, max(r.inst_page, 1))
+	if p >= len(r.inst_pages) || r.inst_pages[p].buf == nil { return }
+	if p != s.page {
+		s.page = p
+		stride, offset := u32(size_of(Rect_Inst)), u32(0)
+		r.ctx->IASetVertexBuffers(0, 1, &r.inst_pages[p].buf, &stride, &offset)
+	}
+	return at, n, true
 }
 
 // What is bound while a frame is drawn (frame_walk).
@@ -113,6 +139,7 @@ D3d_Submit :: struct {
 	replacing:   bool,    // the blend state of FLAG_BLEND composites is bound
 	bound_replay: int,    // the Replay in b2 (0: immediate instances, identity)
 	retained_vb: bool,    // the retained instance heap is the bound vertex buffer
+	page:        int,     // else the page of the frame's instances bound (-1: none)
 	dual_frame:  bool,    // text is blended per channel in the frame's own target
 	dual:        bool,    // ... and that is the target of the draw calls
 	dual_bound:  bool,    // its shader and blend state are bound
@@ -171,6 +198,7 @@ walk_op :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, op: ^Op) -> (reboun
 	bind_main(r)
 	if s.has_slug { slug_bind_inputs(r, f) }
 	s.retained_vb = false
+	s.page = -1   // (bind_main bound no page)
 	s.replacing = false
 	s.dual_bound = false
 	return true
@@ -191,10 +219,11 @@ walk_target :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, target: int) ->
 walk_bind :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch, rc: [4]i32) {
 	if (b.replay > 0) != s.retained_vb {
 		s.retained_vb = b.replay > 0
-		stride := u32(size_of(Rect_Inst))
-		offset := u32(0)
-		vb := s.retained_vb ? r.heaps[.Insts].buf : r.inst_buf
-		r.ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset)
+		s.page = -1   // (the frame's own: walk_draw binds the page each run is in)
+		if s.retained_vb {
+			stride, offset := u32(size_of(Rect_Inst)), u32(0)
+			r.ctx->IASetVertexBuffers(0, 1, &r.heaps[.Insts].buf, &stride, &offset)
+		}
 	}
 	if b.replay != s.bound_replay {
 		s.bound_replay = b.replay
@@ -217,7 +246,7 @@ walk_bind :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch, rc: [4]
 }
 
 @(private)
-walk_draw_app :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch) { d3d_draw_app(r, f, b); s.dual_bound = false }
+walk_draw_app :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch) { d3d_draw_app(r, s, f, b); s.dual_bound = false }
 
 // `slug`: with the Slug shaders (their runs are skipped when there are none).
 @(private)
@@ -225,7 +254,17 @@ walk_draw :: proc(r: ^Renderer, s: ^D3d_Submit, slug: bool, first, count: int) {
 	if count <= 0 || (slug && !r.slug.ready) { return }
 	slug_select(r, slug)
 	d3d_dual_select(r, s, s.dual && !s.replacing && !slug)
-	r.ctx->DrawInstanced(QUAD_VERTICES, u32(count), 0, u32(first))
+	if s.retained_vb {
+		r.ctx->DrawInstanced(QUAD_VERTICES, u32(count), 0, u32(first))
+		return
+	}
+	first, count := first, count
+	for count > 0 {
+		at, n, ok := d3d_bind_page(r, s, first, count)
+		if !ok { return }
+		r.ctx->DrawInstanced(QUAD_VERTICES, u32(n), 0, u32(at))
+		first, count = first + n, count - n
+	}
 }
 
 @(private)
@@ -249,9 +288,6 @@ bind_main :: proc(r: ^Renderer) {
 	r.ctx->OMSetBlendState(r.blend, nil, ~u32(0))
 	r.ctx->IASetPrimitiveTopology(.TRIANGLESTRIP)
 	r.ctx->IASetInputLayout(r.layout)
-	stride := u32(size_of(Rect_Inst))
-	offset := u32(0)
-	r.ctx->IASetVertexBuffers(0, 1, &r.inst_buf, &stride, &offset)
 	r.ctx->VSSetShader(r.vs, nil, 0)
 	r.ctx->VSSetConstantBuffers(0, 1, &r.globals)
 	r.ctx->VSSetConstantBuffers(2, 1, &r.replay_cb)

@@ -83,9 +83,10 @@ with a loop of its own keeps a `host.Frame_Ring` per window and calls `host.fram
 `build :: proc(h: ^host.Host, size: host.Vec2)` holds the widgets (`h.user` is the `app` given to `host_open`). What it does
 for you, in order:
 
-1. `host_open`: `font.init`, `platform.open_window(..., transparent = true)`, `render.init_window(&r, win, win.size, transparent = true)`,
-   `render.set_fixed_surface(&r, platform.monitor_size(win))` (below: a resize never stretches a frame), a UI font
-   (`font.load_system_or_embedded(..., platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)`),
+1. `host_open`: `render.preload_device` (the device and its first pipelines on a thread, unless the program asked for it
+   already), `font.init`, `platform.open_window(..., transparent = true)`, the UI font, `render.init_window(&r, win, win.size, transparent = true)`,
+   `render.set_fixed_surface(&r, platform.monitor_size(win))` (below: a resize never stretches a frame); the UI font is
+   `font.load_system_or_embedded(..., platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)`;
    `draw.init`, `ui.apply_palette` + `ui.init`, and `win.on_frame`: a frame with `inner = true`, called from inside the
    system's loops (live resize, menus) by `WM_PAINT`;
 2. `host_frame`: `render.pace_frame` -> `platform.poll_events` -> `render.resize` -> `ui.begin_build` ->

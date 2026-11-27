@@ -14,11 +14,13 @@ wgpu_app_shader_make :: proc(r: ^Renderer, d: ^App_Shader_Data) -> bool {
 	g := &r.wg
 	if g.device == nil { return false }
 	src := app_module_source(d.wgsl, context.temp_allocator)
-	sync.mutex_lock(&g_compile_lock)   // (no other thread compiles on the device meanwhile: an error that comes is this module's)
+	sync.rw_mutex_lock(&g_compile_lock)   // (no other thread compiles on the device meanwhile: an error that comes is this module's)
 	errors := sync.atomic_load(&g.shared.errors)
 	d.module = wgpu_module(g, d.name, src)
-	failed := d.module == nil || sync.atomic_load(&g.shared.errors) != errors
-	sync.mutex_unlock(&g_compile_lock)
+	counted := sync.atomic_load(&g.shared.errors) - errors
+	failed := d.module == nil || counted != 0
+	sync.rw_mutex_unlock(&g_compile_lock)
+	g.errors_seen += counted   // (an error said and handled here: no command holds the module, the next submit goes)
 	if failed {
 		fmt.eprintfln("render: app shader %s: the WGSL was refused", d.name)
 		if d.module != nil { wgpu.ShaderModuleRelease(d.module); d.module = nil }
@@ -78,7 +80,7 @@ wgpu_app_pipeline :: proc(r: ^Renderer, d: ^App_Shader_Data, format: wgpu.Textur
 	blend := wgpu_app_blend(mode)
 	target := wgpu.ColorTargetState{format = format, blend = &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = d.module, entryPoint = APP_PS_ENTRY, targetCount = 1, targets = &target}
-	sync.mutex_lock(&g_compile_lock)
+	sync.rw_mutex_lock(&g_compile_lock)
 	errors := sync.atomic_load(&g.shared.errors)
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "app", layout = g.pl_app,
@@ -87,8 +89,10 @@ wgpu_app_pipeline :: proc(r: ^Renderer, d: ^App_Shader_Data, format: wgpu.Textur
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
-	failed := pipe == nil || sync.atomic_load(&g.shared.errors) != errors
-	sync.mutex_unlock(&g_compile_lock)
+	counted := sync.atomic_load(&g.shared.errors) - errors
+	failed := pipe == nil || counted != 0
+	sync.rw_mutex_unlock(&g_compile_lock)
+	g.errors_seen += counted   // (handled below: the shader is given up, no command uses the pipeline)
 	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
 	if failed {
 		// the module passed (naga), the pipeline did not (the layout, the target, the device's compiler): a pipeline in error would make
@@ -123,5 +127,10 @@ wgpu_draw_app :: proc(r: ^Renderer, s: ^Submit, b: Batch, format: wgpu.TextureFo
 	append(&s.groups, bg)
 	if pipe != bound^ { bound^ = pipe; wgpu.RenderPassEncoderSetPipeline(s.pass, pipe) }
 	wgpu.RenderPassEncoderSetBindGroup(s.pass, 2, bg)
-	wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, 1, 0, u32(b.first))
+	at := b.first
+	if !s.vb_retained {
+		ok: bool
+		if at, _, ok = wgpu_bind_page(r, s, b.first, 1); !ok { return }
+	}
+	wgpu.RenderPassEncoderDraw(s.pass, QUAD_VERTICES, 1, 0, u32(at))
 }

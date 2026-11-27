@@ -145,39 +145,80 @@ x11_atom :: proc(name: string, create := true) -> Xcb_Atom {
 
 @(private)
 x11_intern_atoms :: proc() {
-	x11c.wm_protocols = x11_atom("WM_PROTOCOLS")
-	x11c.wm_delete_window = x11_atom("WM_DELETE_WINDOW")
-	x11c.net_wm_name = x11_atom("_NET_WM_NAME")
-	x11c.utf8_string = x11_atom("UTF8_STRING")
-	x11c.net_wm_state = x11_atom("_NET_WM_STATE")
-	x11c.net_wm_state_fullscreen = x11_atom("_NET_WM_STATE_FULLSCREEN")
-	x11c.net_wm_state_maximized_horz = x11_atom("_NET_WM_STATE_MAXIMIZED_HORZ")
-	x11c.net_wm_state_maximized_vert = x11_atom("_NET_WM_STATE_MAXIMIZED_VERT")
-	x11c.net_wm_state_hidden = x11_atom("_NET_WM_STATE_HIDDEN")
-	x11c.net_wm_state_demands_attention = x11_atom("_NET_WM_STATE_DEMANDS_ATTENTION")
-	x11c.net_wm_moveresize = x11_atom("_NET_WM_MOVERESIZE")
-	x11c.motif_wm_hints = x11_atom("_MOTIF_WM_HINTS")
-	x11c.clipboard = x11_atom("CLIPBOARD")
-	x11c.primary = x11_atom("PRIMARY")
-	x11c.targets = x11_atom("TARGETS")
-	x11c.wren_selection = x11_atom("GUI_TOOLKIT_SELECTION")
-	x11c.request_selection = x11_atom("GUI_TOOLKIT_REQUEST")
-	x11c.net_wm_window_type = x11_atom("_NET_WM_WINDOW_TYPE")
-	x11c.net_wm_window_type_normal = x11_atom("_NET_WM_WINDOW_TYPE_NORMAL")
-	x11c.net_active_window = x11_atom("_NET_ACTIVE_WINDOW")
-	x11c.resource_manager = x11_atom("RESOURCE_MANAGER")
-	x11c.net_frame_extents = x11_atom("_NET_FRAME_EXTENTS")
-	x11c.mime_text_html = x11_atom("text/html")
-	x11c.mime_image_png = x11_atom("image/png")
-	x11c.mime_uri_list = x11_atom("text/uri-list")
-	x11c.mime_gnome_files = x11_atom(CLIPBOARD_GNOME_FILES_MIME)
-	x11c.mime_kde_cut = x11_atom(CLIPBOARD_KDE_CUT_MIME)
-	x11c.atom_incr = x11_atom("INCR")
-	x11c.atom_multiple = x11_atom("MULTIPLE")
-	x11c.atom_timestamp = x11_atom("TIMESTAMP")
-	x11c.atom_text = x11_atom("TEXT")
-	x11c.atom_pair = x11_atom("ATOM_PAIR")
-	x11_dnd_intern_atoms()
+	asks := [?]X11_Atom_Ask{
+		{"WM_PROTOCOLS", &x11c.wm_protocols},
+		{"WM_DELETE_WINDOW", &x11c.wm_delete_window},
+		{"_NET_WM_NAME", &x11c.net_wm_name},
+		{"UTF8_STRING", &x11c.utf8_string},
+		{"_NET_WM_STATE", &x11c.net_wm_state},
+		{"_NET_WM_STATE_FULLSCREEN", &x11c.net_wm_state_fullscreen},
+		{"_NET_WM_STATE_MAXIMIZED_HORZ", &x11c.net_wm_state_maximized_horz},
+		{"_NET_WM_STATE_MAXIMIZED_VERT", &x11c.net_wm_state_maximized_vert},
+		{"_NET_WM_STATE_HIDDEN", &x11c.net_wm_state_hidden},
+		{"_NET_WM_STATE_DEMANDS_ATTENTION", &x11c.net_wm_state_demands_attention},
+		{"_NET_WM_MOVERESIZE", &x11c.net_wm_moveresize},
+		{"_MOTIF_WM_HINTS", &x11c.motif_wm_hints},
+		{"CLIPBOARD", &x11c.clipboard},
+		{"PRIMARY", &x11c.primary},
+		{"TARGETS", &x11c.targets},
+		{"GUI_TOOLKIT_SELECTION", &x11c.wren_selection},
+		{"GUI_TOOLKIT_REQUEST", &x11c.request_selection},
+		{"_NET_WM_WINDOW_TYPE", &x11c.net_wm_window_type},
+		{"_NET_WM_WINDOW_TYPE_NORMAL", &x11c.net_wm_window_type_normal},
+		{"_NET_ACTIVE_WINDOW", &x11c.net_active_window},
+		{"RESOURCE_MANAGER", &x11c.resource_manager},
+		{"_NET_FRAME_EXTENTS", &x11c.net_frame_extents},
+		{"text/html", &x11c.mime_text_html},
+		{"image/png", &x11c.mime_image_png},
+		{"text/uri-list", &x11c.mime_uri_list},
+		{CLIPBOARD_GNOME_FILES_MIME, &x11c.mime_gnome_files},
+		{CLIPBOARD_KDE_CUT_MIME, &x11c.mime_kde_cut},
+		{"INCR", &x11c.atom_incr},
+		{"MULTIPLE", &x11c.atom_multiple},
+		{"TIMESTAMP", &x11c.atom_timestamp},
+		{"TEXT", &x11c.atom_text},
+		{"ATOM_PAIR", &x11c.atom_pair},
+		// (drag and drop: dragdrop_x11_linux.odin)
+		{"XdndAware", &x11c.xdnd_aware},
+		{"XdndEnter", &x11c.xdnd_enter},
+		{"XdndPosition", &x11c.xdnd_position},
+		{"XdndStatus", &x11c.xdnd_status},
+		{"XdndLeave", &x11c.xdnd_leave},
+		{"XdndDrop", &x11c.xdnd_drop},
+		{"XdndFinished", &x11c.xdnd_finished},
+		{"XdndTypeList", &x11c.xdnd_type_list},
+		{"XdndSelection", &x11c.xdnd_selection},
+		{"XdndActionCopy", &x11c.xdnd_action_copy},
+		{"XdndActionMove", &x11c.xdnd_action_move},
+		{"XdndActionLink", &x11c.xdnd_action_link},
+		{"XdndProxy", &x11c.xdnd_proxy},
+		{"XdndActionList", &x11c.xdnd_action_list},
+	}
+	x11_atoms(asks[:])
+}
+
+// An atom to intern and where it goes.
+@(private)
+X11_Atom_Ask :: struct {
+	name: string,
+	to:   ^Xcb_Atom,
+}
+
+// Several atoms in one round trip: every request is sent, then every answer read (one at a time, each atom of a connection
+// was a round trip). An atom without an answer is 0.
+@(private)
+x11_atoms :: proc(asks: []X11_Atom_Ask) {
+	x := &xcb
+	cookies := make([]Xcb_Intern_Atom_Cookie, len(asks), context.temp_allocator)
+	for a, i in asks { cookies[i] = x.intern_atom(x11c.c, 0, u16(len(a.name)), strings.clone_to_cstring(a.name, context.temp_allocator)) }
+	for a, i in asks {
+		a.to^ = 0
+		reply := x.intern_atom_reply(x11c.c, cookies[i], nil)
+		if reply == nil { continue }
+		// xcb_intern_atom_reply_t: response_type(1) pad(1) sequence(2) length(4) atom(4)
+		a.to^ = (^Xcb_Atom)(uintptr(reply) + 8)^
+		posix.free(reply)
+	}
 }
 
 @(private)

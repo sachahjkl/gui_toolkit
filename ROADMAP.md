@@ -13,6 +13,13 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+
+- **The programs' own saves on `fsx.DOCUMENT`.** plume drops `write_keeping` and `keep_owner`, galerie `write_beside`,
+  feuille its writes in place of a PDF (a cut file after a crash or a full disk): a document keeps its mode, owner, access
+  list and link, and a hard link is said. Intent: [src/md/features/document-writes.md](src/md/features/document-writes.md).
+- **The programs' probes of their start on `base.start_steps`.** plume's probe of its start opens through `host_open` and
+  reads the toolkit's steps, so it measures the start a person waits for, the device made early included. Intent:
+  [src/md/infrastructure/fast-start.md](src/md/infrastructure/fast-start.md).
 - **A session test's leak count without the D-Bus connection.** `testkit/session` counts the process's D-Bus session
   connection (`dbus` `conn_linux.odin` hello, `call_linux.odin` `call_wait`) as 4 blocks not freed in the first session of
   a process. The bus connection is then opened and closed outside the test's count, or left out of it: a program's
@@ -135,6 +142,10 @@
   scroll area's autoscroll.
 
 ## Later
+
+- **The first pipelines from the disk.** A pipeline cache (Vulkan's) kept between starts, once wgpu-native's C API can make
+  one: the first frame then compiles nothing at a second start (110 ms on lavapipe). Intent:
+  [src/md/infrastructure/fast-start.md](src/md/infrastructure/fast-start.md).
 
 - **An install for everyone under an earlier name.** The setup offers to replace it, in the one prompt of an install
   for everyone: the new machine half, then the earlier one goes. Until then the adoption says that an administrator

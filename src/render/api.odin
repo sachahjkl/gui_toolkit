@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:sync"
 import "core:time"
+import base "../base"
 import "../platform"
 
 // The renderer has two backends behind one interface, chosen when the program is compiled:
@@ -277,10 +278,10 @@ frame_end :: proc(r: ^Renderer, vsync := true) {
 	r.damage.building, r.damage.skip_present = false, false
 	if !r.first_present_noted && r.present.presents > 0 {
 		r.first_present_noted = true
+		first := base.start_mark("render: first frame shown")   // (the process's first: a later window prints no steps)
 		if render_trace() {
-			if ms := process_uptime_ms(); ms >= 0 {
-				fmt.eprintfln("render: first present %.0f ms after the process started (backend %s)", ms, RENDER_BACKEND)
-			}
+			fmt.eprintfln("render: first present %.0f ms after the process started (backend %s)", base.start_ms(), RENDER_BACKEND)
+			if first { base.start_print() }
 		}
 	}
 }
@@ -305,7 +306,19 @@ recover :: proc(r: ^Renderer) -> bool {
 	when USE_WGPU { return wgpu_recover(r) } else { return d3d_recover(r) }
 }
 
+// The instances one page of a frame holds (a test's: the device's largest buffer else), so that a frame of a few
+// hundred instances is drawn from several pages. The pages made are released; the next frame makes them again.
 @(private)
+set_instance_page :: proc(r: ^Renderer, n: int) {
+	when USE_WGPU {
+		wgpu_set_limits(&r.wg, n * size_of(Rect_Inst), r.wg.max_binding)
+	} else {
+		for &p in r.inst_pages { if p.buf != nil { p.buf->Release() } }
+		clear(&r.inst_pages)
+		r.inst_page = n
+	}
+}
+
 heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 	when USE_WGPU { return wgpu_heap_grow(r, kind, need) } else { return d3d_heap_grow(r, kind, need) }
 }

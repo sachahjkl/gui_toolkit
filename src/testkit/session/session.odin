@@ -217,7 +217,8 @@ session_new :: proc(t: ^testing.T, loc: runtime.Source_Code_Location) -> ^Sessio
 	s.t = t
 	s.test = context
 	s.name = strings.clone(test_name(loc.procedure))
-	s.out = strings.clone(fmt.tprintf("%s/build/%s/%s", repo_root(), OUT_DIR, s.name))
+	// (joined by the system's separator: the folder a failure names is one a person can paste)
+	s.out, _ = filepath.join({repo_root(), "build", OUT_DIR, s.name})
 	s.thread = me
 	s.clock = CLOCK_START_MS
 	runtime.default_temp_allocator_init(&s.temp, 0, context.allocator)
@@ -285,7 +286,8 @@ repo_root :: proc(allocator := context.temp_allocator) -> string {
 // A file of this test's folder (what is there stays only as long as the next run of the test).
 out_path :: proc(s: ^Session, name: string) -> string {
 	_ = os.make_directory_all(s.out)
-	return fmt.aprintf("%s/%s", s.out, name, allocator = s.test.temp_allocator)
+	p, _ := filepath.join({s.out, name}, s.test.temp_allocator)
+	return p
 }
 
 // An action failed: the test ends here, and says what to read.

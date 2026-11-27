@@ -37,18 +37,74 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool, private := false
 	fd := open_retry(path, {.WRONLY, .CREAT, .TRUNC}, mode)
 	if fd < 0 { return false }
 	ok := true
-	for p in parts {
-		at := 0
-		for at < len(p) && ok {
-			n := posix.write(fd, raw_data(p[at:]), uint(min(len(p) - at, IO_CHUNK_MAX_BYTES)))
-			if n < 0 && posix.errno() == .EINTR { continue }
-			if n <= 0 { ok = false; break }
-			at += int(n)
-		}
-	}
+	for p in parts { if ok { ok = write_fd(fd, p) } }
 	if ok && flush { ok = posix.fsync(fd) == .OK }
-	posix.close(fd)
+	if posix.close(fd) != .OK { ok = false }
 	return ok
+}
+
+// write_atomic's work: `tmp` made, written, given what `target` had, renamed over it.
+@(private)
+write_over :: proc(tmp, target: string, data: []byte, o: Write_Options, rep: ^Write_Report) -> bool {
+	old: posix.stat_t
+	rep.existed = posix.stat(cpath(target), &old) == .OK && posix.S_ISREG(old.st_mode)
+	if rep.existed { rep.hard_links = max(int(old.st_nlink) - 1, 0) }
+	keep := o.keep && rep.existed
+	// (the user's alone while it is written: its final mode is given once it is whole, never wider meanwhile)
+	mode := o.private || keep ? posix.mode_t{.IRUSR, .IWUSR} : posix.mode_t{.IRUSR, .IWUSR, .IRGRP, .IROTH}
+	// (a new file: one left by a crash keeps its mode through O_TRUNC, and a link planted at the name would be written
+	// through. Its name is this process's and thread's: no live writer holds it)
+	posix.unlink(cpath(tmp))
+	fd := open_retry(tmp, {.WRONLY, .CREAT, .EXCL, .NOFOLLOW}, mode)
+	if fd < 0 { return false }
+	ok := write_fd(fd, data)
+	if ok && keep {
+		// the owner first: a change of owner clears the set-user-ID bits that the mode then gives back. An owner this user
+		// may not give (another user's file in a shared folder): the group alone, and the file is this user's.
+		rep.kept = fchown(fd, old.st_uid, old.st_gid) == .OK
+		if !rep.kept { _ = fchown(fd, ~posix.uid_t(0), old.st_gid) }
+		// (private: 0600 whatever the file had; a mode refused leaves 0600, narrower, never the content lost)
+		if !o.private && posix.fchmod(fd, transmute(posix.mode_t)(transmute(u32)old.st_mode & MODE_BITS)) != .OK { rep.kept = false }
+	}
+	if ok && o.flush { ok = posix.fsync(fd) == .OK }
+	if posix.close(fd) != .OK { ok = false }
+	ok = ok && replace(tmp, target, o.flush)
+	rep.flushed = o.flush && ok
+	return ok
+}
+
+// The permission bits of a mode (with set-user-ID, set-group-ID and sticky), not its type.
+@(private = "file") MODE_BITS :: 0o7777
+
+@(private = "file")
+write_fd :: proc(fd: posix.FD, data: []byte) -> bool {
+	at := 0
+	for at < len(data) {
+		n := posix.write(fd, raw_data(data[at:]), uint(min(len(data) - at, IO_CHUNK_MAX_BYTES)))
+		if n < 0 && posix.errno() == .EINTR { continue }
+		if n <= 0 { return false }
+		at += int(n)
+	}
+	return true
+}
+
+foreign import libc_fchown "system:c"
+@(private = "file", default_calling_convention = "c")
+foreign libc_fchown {
+	fchown :: proc(fd: posix.FD, owner: posix.uid_t, group: posix.gid_t) -> posix.result ---
+}
+
+// The temporary folder in the system's form (temp_dir): no disk read here.
+@(private)
+temp_form :: proc(named: string, allocator: runtime.Allocator, loc: runtime.Source_Code_Location) -> string {
+	return system_form(named, allocator)
+}
+
+// A path as the system gives one: no "/" at its end (a root keeps its own).
+@(private)
+system_form :: proc(path: string, allocator: runtime.Allocator) -> string {
+	p := strings.trim_right(path, "/")
+	return strings.clone(p == "" ? path[:min(len(path), 1)] : p, allocator)
 }
 
 replace :: proc(from, to: string, durable: bool) -> bool {

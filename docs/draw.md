@@ -84,6 +84,9 @@ Sharpness: the caller picks `raster_scale`: the most screen pixels per plane uni
 
 - `push_clip(dc, r)`: as before, a scissor rect (free). Under rotation or skew it becomes the screen bounds of `r`
   plus an exact per-pixel clip of `r`.
+- What lies wholly outside the clip costs nothing: a `rect`, an `image` or a glyph under no rotation, outside the clip by
+  more than a pixel, makes no instance (not while a picture is recorded: it is replayed elsewhere). A program can draw a
+  row for every line of a long text and the frame holds only the rows in view.
 - `push_clip_rounded(dc, r, radii: [4]f32)`: clips to a rounded rect in the **current local space** (any
   transform), antialiased, with the same corner shape as `rect` (so a clip matches a box drawn with the same radii).
   Use it for `overflow: hidden` + `border-radius`, or to clip the content of a rotated element. Nested shapes multiply

@@ -30,7 +30,7 @@ environment; a test harness in another language writes the default ports and let
 
 ## Waiting for another thread, a folder for a test
 
-`testkit.await(data, ready)` waits until `ready(data)` says that the state another thread is reaching is there: a barrier, for code with no signal of its own. It gives its time slice away between looks, sleeps for no fixed time, and its limit only ends a failing run. `testkit.temp_folder(t, "what")` makes a folder that is gone at the end of the test.
+`testkit.await(data, ready)` waits until `ready(data)` says that the state another thread is reaching is there: a barrier, for code with no signal of its own. It gives its time slice away between looks, sleeps for no fixed time, and its limit only ends a failing run. `testkit.temp_folder(t, "what")` makes a folder that is gone at the end of the test. Its path is in the system's form, as a program has a path from the system: on Windows backslashes alone and long names (`C:\Users\runneradmin\...`, never `RUNNER~1`), so a test compares it with what a file dialog or a drop gives.
 
 ## The process's state
 

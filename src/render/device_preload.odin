@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:sync"
 import "core:thread"
 import "core:time"
+import base "../base"
 
 // The graphics device made early, on a thread of its own. The first device of a process is the longest step of a
 // renderer's start: it loads the graphics driver (Direct3D 11, measured: 416 to 480 ms the first time in a process, 25 ms
@@ -31,6 +32,8 @@ Device_Preload :: struct {
 	lock:   sync.Mutex,             // preload_device, take and release: one at a time (renderers may start on several threads)
 	state:  Device_Preload_State,   // atomic: the thread writes Ready or Failed, readers need no lock
 	warp:   bool,                   // the software rasterizer was asked for
+	transparent: bool,              // the window it is for (the format of its first pipelines, early_pipeline_format)
+	space:  Blend_Space,
 	worker: ^thread.Thread,
 	began:  time.Tick,
 	held:   Renderer,               // where the thread makes the device: device and ctx (Direct3D 11), wg (wgpu)
@@ -44,11 +47,14 @@ preload: Device_Preload
 // Starts making the device on a thread of its own: `warp`, the software rasterizer (as init_offscreen's). False: one is
 // already being made or waits to be taken, or no thread could be started (init then makes the device as usual).
 // `done`, when given, is called on that thread once the state is Ready or Failed: a program's loop that sleeps until
-// an event wakes itself with it (platform.wake), then opens its windows while the device waits.
-preload_device :: proc(warp := false, done: proc(user: rawptr) = nil, user: rawptr = nil) -> bool {
+// an event wakes itself with it (platform.wake), then opens its windows while the device waits. `transparent` and
+// `space`: the window's (init_window's), so that WebGPU makes the first frame's pipelines in its format; a host's window
+// is transparent, in linear light.
+preload_device :: proc(warp := false, done: proc(user: rawptr) = nil, user: rawptr = nil, transparent := true, space := Blend_Space.Linear) -> bool {
 	sync.guard(&preload.lock)
 	if sync.atomic_load(&preload.state) != .Not_Started { return false }
 	preload.warp = warp
+	preload.transparent, preload.space = transparent, space
 	preload.done, preload.user = done, user
 	preload.began = time.tick_now()
 	when USE_WGPU { preload.held.wg.shared = new(Wgpu_Shared) }   // (the caller's allocator, as wgpu_create_device's)
@@ -98,7 +104,7 @@ take_preloaded_device :: proc(r: ^Renderer, warp: bool) -> bool {
 	sync.atomic_store(&preload.state, .Not_Started)
 	if render_trace() {
 		fmt.eprintfln("render: device made early (%v, %s): waited %.1f ms for it, %.1f ms after it was asked for, %.0f ms after the process started",
-			state, took ? "taken" : "not taken", time.duration_milliseconds(time.tick_since(waited)), time.duration_milliseconds(time.tick_since(preload.began)), process_uptime_ms())
+			state, took ? "taken" : "not taken", time.duration_milliseconds(time.tick_since(waited)), time.duration_milliseconds(time.tick_since(preload.began)), base.start_ms())
 	}
 	return took
 }
@@ -110,9 +116,15 @@ make_preloaded_device :: proc() {
 		// (no surface: the window's is made by init. No display either: a GL device made here is surfaceless, and a
 		// window does not take it, wgpu_make_surface)
 		ok = wgpu_create_device_here(&preload.held, {}, preload.warp, {})
+		base.start_mark("render: device made early")
+		if ok {
+			format, make := early_pipeline_format(preload.transparent, preload.space, .Unknown, COMPILES_SERIAL)
+			wgpu_preload_shaders(&preload.held, format, make)
+		}
 	} else {
 		ok = create_device(&preload.held, preload.warp ? .WARP : .HARDWARE)
 	}
+	when !USE_WGPU { base.start_mark("render: device made early") }
 	sync.atomic_store(&preload.state, ok ? .Ready : .Failed)
 	if preload.done != nil { preload.done(preload.user) }
 }
@@ -129,8 +141,11 @@ join_worker :: proc() {
 @(private = "file")
 discard_held :: proc() {
 	when USE_WGPU {
+		g := &preload.held.wg
+		wgpu_release_shaders(g)
+		delete(g.pipes); delete(g.fx_pipes); delete(g.mip_pipes); delete(g.slug_pipes)
 		wgpu_release_device(&preload.held)
-		if preload.held.wg.shared != nil { free(preload.held.wg.shared) }
+		if g.shared != nil { free(g.shared) }
 	} else {
 		if preload.held.ctx != nil { preload.held.ctx->Release() }
 		if preload.held.device != nil { preload.held.device->Release() }

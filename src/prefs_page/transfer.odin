@@ -70,7 +70,7 @@ export_to :: proc(p: ^Page, path: string, format: config.Export_Format) {
 	j^ = {page = p, path = strings.clone(path, a), text = config.export(p.prefs, format, allocator = a)}
 	work :: proc(d: rawptr) {
 		j := (^Write_Job)(d)
-		j.ok = fsx.write_atomic(j.path, transmute([]u8)j.text)
+		j.ok = fsx.write_atomic(j.path, transmute([]u8)j.text, fsx.DOCUMENT)   // (a file the person chose)
 	}
 	done :: proc(d: rawptr, _: u64) {
 		j := (^Write_Job)(d)

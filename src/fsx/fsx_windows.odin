@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:io"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import win "core:sys/windows"
 import base "../base"
 
@@ -53,6 +54,129 @@ replace :: proc(from, to: string, durable: bool) -> bool {
 		win.Sleep(win.DWORD(REPLACE_WAIT_MS * (try + 1)))
 	}
 	return false
+}
+
+// write_atomic's work: `tmp` written, then renamed over `target`. With `keep`, ReplaceFileW: the file written over gives
+// the new one its access list, attributes, creation time and short name (MoveFileExW leaves the new file the temporary
+// file's: its folder's access list, its attributes).
+@(private)
+write_over :: proc(tmp, target: string, data: []byte, o: Write_Options, rep: ^Write_Report) -> bool {
+	wtarget := wide(target)
+	// (no access asked: its attributes and its links only, whatever another program holds it with)
+	if h := win.CreateFileW(wtarget, 0, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_ATTRIBUTE_NORMAL, nil); h != win.INVALID_HANDLE_VALUE {
+		info: win.BY_HANDLE_FILE_INFORMATION
+		if win.GetFileInformationByHandle(h, &info) && info.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY == 0 {
+			rep.existed = true
+			rep.hard_links = max(int(info.nNumberOfLinks) - 1, 0)
+		}
+		win.CloseHandle(h)
+	}
+	parts := [1][]byte{data}
+	if !write_parts(tmp, parts[:], o.flush, o.private) { return false }
+	if !(o.keep && rep.existed) {
+		ok := replace(tmp, target, o.flush)
+		rep.flushed = o.flush && ok
+		return ok
+	}
+	wtmp := wide(tmp)
+	for try in 0 ..< REPLACE_TRIES {
+		if ReplaceFileW(wtarget, wtmp, nil, REPLACEFILE_IGNORE_MERGE_ERRORS, nil, nil) {
+			rep.kept = true
+			// (ReplaceFileW has no write-through: the file's handle flushed puts its entry on the disk; its data was
+			// flushed in the temporary file. A file this user may not write cannot be opened for it: the replace is done
+			// all the same, and the report says the flush was not)
+			rep.flushed = o.flush && flush_file(wtarget)
+			return true
+		}
+		switch win.GetLastError() {
+		case ERROR_UNABLE_TO_MOVE_REPLACEMENT, ERROR_UNABLE_TO_MOVE_REPLACEMENT_2:
+			// (the new file kept its name and the target's is free or still the old file: the plain rename, what it had lost)
+			ok := replace(tmp, target, o.flush)
+			rep.flushed = o.flush && ok
+			return ok
+		case win.ERROR_SHARING_VIOLATION, win.ERROR_ACCESS_DENIED, ERROR_UNABLE_TO_REMOVE_REPLACED:
+			if try < REPLACE_TRIES - 1 { win.Sleep(win.DWORD(REPLACE_WAIT_MS * (try + 1))) }
+		case:
+			return false
+		}
+	}
+	return false
+}
+
+@(private = "file")
+flush_file :: proc(path: win.LPCWSTR) -> bool {
+	h := win.CreateFileW(path, win.GENERIC_WRITE, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_ATTRIBUTE_NORMAL, nil)
+	if h == win.INVALID_HANDLE_VALUE { return false }
+	defer win.CloseHandle(h)
+	return bool(win.FlushFileBuffers(h))
+}
+
+@(private = "file") REPLACEFILE_IGNORE_MERGE_ERRORS :: 0x00000002
+@(private = "file") ERROR_UNABLE_TO_REMOVE_REPLACED :: 1175
+@(private = "file") ERROR_UNABLE_TO_MOVE_REPLACEMENT :: 1176
+@(private = "file") ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 :: 1177
+
+foreign import kernel32_replace "system:Kernel32.lib"
+@(private = "file", default_calling_convention = "system")
+foreign kernel32_replace {
+	ReplaceFileW :: proc(lpReplacedFileName, lpReplacementFileName, lpBackupFileName: win.LPCWSTR, dwReplaceFlags: win.DWORD, lpExclude, lpReserved: rawptr) -> win.BOOL ---
+}
+
+// The system's form of the temporary folder, kept for the process: GetLongPathNameW reads the disk, so it is computed
+// before main (temp_form_init) and again only when the folder's name changes (a test harness's TEMP). Heap memory: the
+// process's, never freed.
+@(private = "file") temp_lock: sync.Mutex
+@(private = "file") temp_kept_named: string
+@(private = "file") temp_kept_form: string
+
+@(init, private = "file")
+temp_form_init :: proc "contextless" () {
+	context = runtime.default_context()
+	if t := temp_named(); t != "" { _ = temp_form(t, context.temp_allocator, #location()) }
+	free_all(context.temp_allocator)
+}
+
+// The temporary folder in the system's form (temp_dir): the one kept when its name has not changed, else read on the
+// disk (a blocking call) and kept.
+@(private)
+temp_form :: proc(named: string, allocator: runtime.Allocator, loc: runtime.Source_Code_Location) -> string {
+	{
+		sync.guard(&temp_lock)
+		if temp_kept_form != "" && named == temp_kept_named { return strings.clone(temp_kept_form, allocator) }
+	}
+	base.blocking("fsx.temp_dir", loc)   // (the long names are read on the disk)
+	form := system_form(named, runtime.heap_allocator())
+	sync.guard(&temp_lock)
+	if temp_kept_form != "" {
+		delete(temp_kept_named, runtime.heap_allocator())
+		delete(temp_kept_form, runtime.heap_allocator())
+	}
+	temp_kept_named, temp_kept_form = strings.clone(named, runtime.heap_allocator()), form
+	return strings.clone(form, allocator)
+}
+
+// A path as the system gives one: backslashes, the long name of each folder that exists (GetLongPathNameW: `RUNNER~1`
+// becomes `runneradmin`), no separator at its end (a root such as `C:\` keeps its own).
+@(private)
+system_form :: proc(path: string, allocator: runtime.Allocator) -> string {
+	p, _ := strings.replace_all(path, "/", "\\", context.temp_allocator)
+	if long := long_name(p); long != "" { p = long }
+	trimmed := strings.trim_right(p, "\\")
+	if trimmed == "" || strings.has_suffix(trimmed, ":") { return strings.clone(p, allocator) }
+	return strings.clone(trimmed, allocator)
+}
+
+// The long form of a path that exists (temp memory); "" when the system gives none (a path that does not exist).
+@(private = "file")
+long_name :: proc(path: string) -> string {
+	w := wide(path)
+	n := win.GetLongPathNameW(w, nil, 0)
+	if n == 0 { return "" }
+	buf := make([]u16, n, context.temp_allocator)
+	got := win.GetLongPathNameW(w, cast(win.LPCWSTR)raw_data(buf), n)   // (declared const; the system writes it)
+	if got == 0 || got >= n { return "" }
+	s, err := win.utf16_to_utf8(buf[:got], context.temp_allocator)
+	return err == nil ? s : ""
 }
 
 // How many times replace tries a file another holds, and the first wait between two tries (each wait longer).

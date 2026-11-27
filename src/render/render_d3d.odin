@@ -212,7 +212,9 @@ d3d_destroy :: proc(r: ^Renderer) {
 	video_pipeline_destroy(r)
 	d3d_app_objects_release(r)
 	app_shaders_destroy(r)
-	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.inst_buf); rel(&r.globals)
+	rel(&r.xform_view); rel(&r.xform_buf); rel(&r.clip_view); rel(&r.clip_buf); rel(&r.globals)
+	for &p in r.inst_pages { rel(&p.buf) }
+	delete(r.inst_pages)
 	rel(&r.ps_dual); rel(&r.blend_dual)
 	rel(&r.points_view); rel(&r.points_buf); rel(&r.blend_replace); rel(&r.fx_vs); rel(&r.fx_ps); rel(&r.fx_constants)
 	rel(&r.sampler_border); rel(&r.frame_tex); rel(&r.grads_view); rel(&r.grads_buf); rel(&r.replay_cb)
@@ -869,10 +871,14 @@ raw_buffer_view :: proc(r: ^Renderer, buf: ^d3d11.IBuffer, bytes: int) -> ^d3d11
 // A buffer refused or not mapped uploads nothing: its table reads as zeros, and frame_end finds a device gone.
 @(private)
 upload_structured :: proc(r: ^Renderer, buf: ^^d3d11.IBuffer, view: ^^d3d11.IShaderResourceView, cap: ^int, data: rawptr, n, stride: int) {
+	// (one buffer: past what every device makes, the elements are not uploaded and the shader reads zeros for them)
+	room := elements_within(D3D11_BUFFER_BYTES_MAX, stride)
+	n := n
+	n = min(n, room)
 	if buf^ == nil || n > cap^ {
 		if view^ != nil { view^->Release(); view^ = nil }
 		if buf^ != nil { buf^->Release(); buf^ = nil }
-		cap^ = max(n, cap^ * 2, TABLE_CAP_MIN)
+		cap^ = min(max(n, cap^ * 2, TABLE_CAP_MIN), room)
 		if fault_hit(.Create_Buffer) || hr_failed(r.device->CreateBuffer(&{ByteWidth = u32(cap^ * stride), Usage = .DYNAMIC, BindFlags = {.SHADER_RESOURCE},
 			CPUAccessFlags = {.WRITE}, MiscFlags = {.BUFFER_ALLOW_RAW_VIEWS}}, nil, buf)) {
 			buf^, cap^ = nil, 0

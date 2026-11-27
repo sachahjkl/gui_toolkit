@@ -14,6 +14,7 @@ _ :: win       // (used on Windows only)
 _ :: strings
 import "vendor:directx/dxgi"
 import "vendor:wgpu"
+import base "../base"
 import "../platform"
 
 // WebGPU backend (TOOLKIT_RENDER=wgpu): wgpu-native over Direct3D 12 (or Vulkan). The same frame description as the
@@ -44,9 +45,24 @@ WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3
 @(private) SAMPLER_LOD_MAX_CLAMP :: 32
 @(private) WGPU_MAX_TEXTURE_SIZE_DEFAULT :: 8192   // until the device has said its limit
 
-// DXC (dxcompiler.dll) crashes the process when several devices compile at the same moment (the pixel tests run in parallel, one device each):
-// shaders are compiled one at a time in the process.
-@(private) g_compile_lock: sync.Mutex
+// Compiles in the process. DXC (dxcompiler.dll) crashes the process when several devices compile at the same moment (the
+// pixel tests run in parallel, one device each): on Direct3D 12 shaders are compiled one at a time. Elsewhere the
+// toolkit's own pipelines compile side by side (shared: a window's first two on two threads, compile_own); an
+// application's shader compiles alone (exclusive: an error that comes during it is its own, wgpu_app.odin).
+@(private) g_compile_lock: sync.RW_Mutex
+
+// Every compile alone in the process: Windows (DXC on Direct3D 12; FXC and Vulkan there kept with it).
+@(private) COMPILES_SERIAL :: ODIN_OS == .Windows
+
+@(private)
+compile_own_begin :: proc() {
+	when COMPILES_SERIAL { sync.rw_mutex_lock(&g_compile_lock) } else { sync.rw_mutex_shared_lock(&g_compile_lock) }
+}
+
+@(private)
+compile_own_end :: proc() {
+	when COMPILES_SERIAL { sync.rw_mutex_unlock(&g_compile_lock) } else { sync.rw_mutex_shared_unlock(&g_compile_lock) }
+}
 
 @(private)
 Wgpu_Pipe :: struct {
@@ -54,6 +70,7 @@ Wgpu_Pipe :: struct {
 	replace: bool,
 	pipe:    wgpu.RenderPipeline,
 	dual:    bool,   // Slug text blended per channel (slug_dual.wgsl)
+	ready:   bool,   // made; else a thread is making it (wgpu_pipe_find), and the others that want it wait for it
 }
 
 @(private)
@@ -140,7 +157,7 @@ Wgpu_State :: struct {
 	gl_xlib:       rawptr,               // X11: the Xlib Display of its own its EGL display was made from (closed after the instance)
 	gl_vulkan_why: [INIT_DETAIL_BYTES]u8, // Vulkan's refusal before GL was tried (empty: GL forced): the first half of a GL refusal's detail
 	gl_vulkan_why_len: int,
-	gl_errors:     int,                  // the device's error count at the last submit (wgpu_submit, on GL)
+	errors_seen:   int,                  // the device's error count at the last submit (wgpu_submit)
 	surface_copy:  bool,                 // the surface's textures can be copied from (GL's cannot: a frame is composed into the kept target)
 	// shaders, layouts, pipelines
 	module_rect, module_fx, module_mip, module_slug, module_slug_dual: wgpu.ShaderModule,
@@ -153,13 +170,20 @@ Wgpu_State :: struct {
 	dummy_r8, dummy_rgba, dummy_curves, dummy_bands: wgpu.Texture,
 	dummy_r8_view, dummy_rgba_view, dummy_curves_view, dummy_bands_view: wgpu.TextureView,
 	// tables of the frame
-	inst, xforms, clips, points, grads, app_params: Wgpu_Table,
+	inst:          [dynamic]Wgpu_Table,  // the frame's instances in pages of inst_page each (page_run)
+	inst_page:     int,                  // instances one page holds: the device's largest buffer
+	xforms, clips, points, grads, app_params: Wgpu_Table,
+	max_buffer:    int,                  // bytes: the device's largest buffer (maxBufferSize)
+	max_binding:   int,                  // bytes: the largest storage buffer a bind group binds (maxStorageBufferBindingSize)
+	over_limit:    bool,                 // a frame passed a limit no page can split: said once
 	arena:         wgpu.Buffer,
 	arena_cap:     int,
 	arena_used:    int,
 	pf:            Wgpu_Prof,            // GPU time (wgpu_profile.odin)
-	pipe_lock:     sync.Mutex,           // pipelines are made by the render thread and by the pre-warming thread
+	pipe_lock:     sync.Mutex,           // pipelines are made by the render thread and by the pre-warming thread: guards the lists
+	pipe_made:     sync.Cond,            // a pipeline was made (with pipe_lock)
 	prewarm:       ^thread.Thread,
+	early:         ^Wgpu_Early,          // the first frame's pipelines made with the device made early (wgpu_preload_shaders)
 	prewarm_format: wgpu.TextureFormat,  // the view format it makes pipelines for (`view_format` changes with the window in use)
 	// start-up costs, milliseconds (wgpu_costs)
 	t_device, t_modules, t_pipelines: f64,
@@ -207,14 +231,14 @@ wgpu_lost_poll :: proc(r: ^Renderer) {
 wgpu_submit :: proc(r: ^Renderer, cb: wgpu.CommandBuffer) -> bool {
 	wgpu_lost_poll(r)
 	if r.lost { return false }
-	// GL: a pipeline made later than wgpu_gl_pipelines (an application shader, a filter of another format) that the
-	// driver refuses invalidates the commands that use it, and QueueSubmit ends the process on invalid commands. wgpu
-	// reports the error to uncaptured_error during the call that made it, so an error since the last submit skips this
-	// one: the frame is lost, the process is not. (Vulkan keeps its behaviour: its errors are the renderer's bugs.)
-	if r.wg.gl && r.wg.shared != nil {
+	// An error in the commands (a buffer past the device's limits, a pipeline GL's driver refused) invalidates them, and
+	// QueueSubmit ends the process on invalid commands. wgpu reports the error to uncaptured_error during the call that
+	// made it, so an error since the last submit skips this one: the frame is lost, the process is not. (The error was
+	// printed: on Vulkan it is the renderer's bug all the same.)
+	if r.wg.shared != nil {
 		errors := sync.atomic_load(&r.wg.shared.errors)
-		if errors != r.wg.gl_errors {
-			r.wg.gl_errors = errors
+		if errors != r.wg.errors_seen {
+			r.wg.errors_seen = errors
 			return false
 		}
 	}
@@ -463,6 +487,9 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	g.device = req.device
 	g.queue = wgpu.DeviceGetQueue(g.device)
 	if g.queue == nil { return init_fail(r, .Failed, "the device has no queue") }
+	// (what the device was given, not the adapter: the defaults unless WGPU_ADAPTER_LIMITS or GL asked for the adapter's)
+	dl, _ := wgpu.DeviceGetLimits(g.device)
+	wgpu_set_limits(g, int(dl.maxBufferSize), int(dl.maxStorageBufferBindingSize))
 	when WGPU_GL_FALLBACK {
 		if g.gl {
 			buf: [INIT_DETAIL_BYTES]u8
@@ -500,6 +527,7 @@ wgpu_take_preloaded_device :: proc(r: ^Renderer, surface: platform.Surface_Handl
 	fits := wgpu_surface_fits(g)
 	if !fits {
 		fmt.eprintln("render: wgpu: the adapter made early cannot present to this window: another is asked for")
+		wgpu_release_shaders(g)
 		wgpu_release_device(r)
 	}
 	return fits
@@ -562,6 +590,12 @@ wgpu_wants_fp16 :: proc(transparent: bool, space: Blend_Space, premultiplied, su
 	return transparent && space == .Linear && premultiplied && surface_has_fp16
 }
 
+// The format a frame is drawn in (its view): half floats, else BGRA8 read through an sRGB view in linear light.
+@(private)
+wgpu_view_format :: proc(fp16: bool, space: Blend_Space) -> wgpu.TextureFormat {
+	return fp16 ? .RGBA16Float : (space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
+}
+
 // Storage and view formats of the frame for the renderer's blend space (the Direct3D swap chain's choices).
 @(private)
 wgpu_frame_formats :: proc(r: ^Renderer) {
@@ -577,7 +611,7 @@ wgpu_frame_formats :: proc(r: ^Renderer) {
 	fp16 := wgpu_wants_fp16(r.transparent, r.space, wgpu_surface_alpha_translucent(r) == .Premultiplied, has_fp16)
 	if r.half_float_offscreen && g.surface == nil { fp16 = true }   // (init_offscreen's half_float: a translucent window's frame, for a test)
 	g.surface_format = fp16 ? .RGBA16Float : .BGRA8Unorm
-	g.view_format = fp16 ? .RGBA16Float : (r.space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
+	g.view_format = wgpu_view_format(fp16, r.space)
 	// (GL: no view of another format, wgpu's downlevel flags VIEW_FORMATS and SURFACE_VIEW_FORMATS. The frame is then
 	// stored in its view format: BGRA8UnormSrgb holds the same bytes, sRGB-encoded, that the Unorm frame read through an
 	// sRGB view does, so captures and read-backs read it the same)
@@ -593,9 +627,12 @@ wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int,
 	r.transparent, r.transparent_asked = transparent, transparent
 	r.space = space
 	if !wgpu_take_preloaded_device(r, surface) { wgpu_create_device(r, surface, false) or_return }
+	base.start_mark("render: device and surface")
 	wgpu_frame_formats(r)
 	if !wgpu_configure_surface(r) { return init_fail(r, .No_Window, "the surface cannot be configured") }
+	base.start_mark("render: surface configured")
 	if !wgpu_init_pipeline(r) { return r.failure.error != .None ? false : init_fail(r, .Failed, "the shaders cannot be made") }
+	base.start_mark("render: shaders")
 	return true
 }
 
@@ -799,10 +836,10 @@ bgl_sampler :: proc(binding: u32, vis: wgpu.ShaderStageFlags) -> wgpu.BindGroupL
 	return {binding = binding, visibility = vis, sampler = {type = .Filtering}}
 }
 
-// Shaders, bind group layouts, samplers and the placeholders for unbound slots: everything after the device.
+// Shaders, bind group layouts, samplers and the placeholders for unbound slots: what every pipeline and frame of the
+// device needs, made once per device (on the thread that makes the device, when it is made early).
 @(private)
-wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
-	g := &r.wg
+wgpu_make_shaders :: proc(g: ^Wgpu_State) {
 	t0 := time.tick_now()
 	g.module_rect = wgpu_module(g, "rect.wgsl", WGSL_RECT)
 	g.module_fx = wgpu_module(g, "filter.wgsl", WGSL_FILTER)
@@ -876,6 +913,15 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	g.dummy_rgba, g.dummy_rgba_view = dummy(g, .RGBA8Unorm)
 	g.dummy_curves, g.dummy_curves_view = dummy(g, .RGBA16Float)
 	g.dummy_bands, g.dummy_bands_view = dummy(g, .RG16Uint)
+}
+
+// What a renderer needs after its device: the shaders (wgpu_make_shaders) and its first texture slot; a window's
+// pipelines start being made on a thread of their own.
+@(private)
+wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
+	g := &r.wg
+	// (made on the device's thread already when the device was made early: preload_device)
+	if g.bgl0 == nil { wgpu_make_shaders(g) }
 
 	if len(r.textures) == 0 {
 		append(&r.textures, Texture_Data{})   // dummy slot 0
@@ -926,32 +972,48 @@ wgpu_slug_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bo
 @(private)
 wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace: bool, slug: bool, want_dual: bool) -> wgpu.RenderPipeline {
 	g := &r.wg
-	sync.mutex_guard(&g.pipe_lock)
 	dual := want_dual
 	// r.slug.failed: the device refused the Slug module (or a test says it did): its runs are skipped, as on Direct3D 11
 	if slug && r.slug.failed { return nil }
 	list := slug ? &g.slug_pipes : &g.pipes
-	if dual && g.module_slug_dual == nil {
-		g.module_slug_dual = wgpu_module(g, "slug_dual.wgsl", WGPU_SLUG_DUAL_SOURCE)
-		if g.module_slug_dual == nil {
-			fmt.eprintln("render: wgpu: the shaders of text per colour stripe were refused by the device")
-			g.can_dual = false
-			dual = false
+	module: wgpu.ShaderModule
+	{
+		// (the modules under the lock: two threads never make one twice; a module takes milliseconds, a pipeline tens)
+		sync.mutex_guard(&g.pipe_lock)
+		if dual && g.module_slug_dual == nil {
+			g.module_slug_dual = wgpu_module(g, "slug_dual.wgsl", WGPU_SLUG_DUAL_SOURCE)
+			if g.module_slug_dual == nil {
+				fmt.eprintln("render: wgpu: the shaders of text per colour stripe were refused by the device")
+				g.can_dual = false
+				dual = false
+			}
 		}
-	}
-	for p in list { if p.format == format && p.replace == replace && p.dual == dual { return p.pipe } }
-	if slug && g.module_slug == nil {
-		sync.mutex_lock(&g_compile_lock)
-		g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE)
-		sync.mutex_unlock(&g_compile_lock)
-		if g.module_slug == nil {
-			fmt.eprintln("render: wgpu: the Slug text shaders were refused by the device")
-			r.slug.failed = true
-			return nil
+		if slug && g.module_slug == nil {
+			compile_own_begin()
+			g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE)
+			compile_own_end()
+			if g.module_slug == nil {
+				fmt.eprintln("render: wgpu: the Slug text shaders were refused by the device")
+				r.slug.failed = true
+				return nil
+			}
 		}
+		module = dual ? g.module_slug_dual : (slug ? g.module_slug : g.module_rect)
 	}
-	module := dual ? g.module_slug_dual : (slug ? g.module_slug : g.module_rect)
+	// (only the keys the early ones are: a thread that wants another never waits for them)
+	if !replace && !dual { wgpu_early_adopt(g, format) }
+	key := Wgpu_Pipe{format = format, replace = replace, dual = dual}
+	if made, mine := wgpu_pipe_find(g, list, key); !mine { return made }
 	t0 := time.tick_now()
+	pipe := wgpu_instance_pipeline_create(g.device, g.pl_main, module, format, replace, slug, dual)
+	wgpu_pipe_made(g, list, key, pipe, t0)
+	return pipe
+}
+
+// A pipeline of the instances (rect.wgsl, slug.wgsl), from the device's objects alone: the early pipelines' threads
+// make theirs without a Wgpu_State, which moves into the renderer while they compile.
+@(private)
+wgpu_instance_pipeline_create :: proc(device: wgpu.Device, layout: wgpu.PipelineLayout, module: wgpu.ShaderModule, format: wgpu.TextureFormat, replace, slug, dual: bool) -> wgpu.RenderPipeline {
 	attrs := [?]wgpu.VertexAttribute{
 		{format = .Float32x4, offset = 0, shaderLocation = 0},
 		{format = .Float32x4, offset = 16, shaderLocation = 1},
@@ -968,29 +1030,59 @@ wgpu_instance_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, replace
 	if dual { blend.color = {operation = .Add, srcFactor = .Src1, dstFactor = .OneMinusSrc1} }
 	target := wgpu.ColorTargetState{format = format, blend = replace ? nil : &blend, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = module, entryPoint = dual ? "ps_slug_dual" : (slug ? "ps_slug" : "ps_main"), targetCount = 1, targets = &target}
-	sync.mutex_lock(&g_compile_lock)
-	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
-		label = slug ? "slug" : "rect", layout = g.pl_main,
+	compile_own_begin()
+	pipe := wgpu.DeviceCreateRenderPipeline(device, &{
+		label = slug ? "slug" : "rect", layout = layout,
 		vertex = {module = module, entryPoint = slug ? "vs_slug" : "vs_main", bufferCount = 1, buffers = &vb},
 		primitive = {topology = .TriangleStrip, frontFace = .CCW, cullMode = .None},
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
-	sync.mutex_unlock(&g_compile_lock)
-	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	if pipe != nil { append(list, Wgpu_Pipe{format, replace, pipe, dual}) }
+	compile_own_end()
 	return pipe
+}
+
+// The pipeline of `key` in `list` once it is made (mine false), or the claim to make it (mine true: the caller makes it,
+// then calls wgpu_pipe_made). While another thread makes it, this one waits for it. pipe_lock is held only to look: a
+// frame that needs a pipeline made already never waits behind a compile of another one (the pre-warming thread's).
+@(private)
+wgpu_pipe_find :: proc(g: ^Wgpu_State, list: ^[dynamic]Wgpu_Pipe, key: Wgpu_Pipe) -> (pipe: wgpu.RenderPipeline, mine: bool) {
+	sync.mutex_guard(&g.pipe_lock)
+	for {
+		at := -1
+		for p, i in list { if p.format == key.format && p.replace == key.replace && p.dual == key.dual { at = i; break } }
+		if at < 0 {
+			append(list, key)   // (not ready: the others wait for this thread)
+			return nil, true
+		}
+		if list[at].ready { return list[at].pipe, false }
+		sync.cond_wait(&g.pipe_made, &g.pipe_lock)
+	}
+}
+
+// The pipeline of a claim (wgpu_pipe_find) made: it goes in its entry, and the threads that wait for it wake. A refused
+// one (nil) leaves no entry: it is asked again at its next use, as the device may take it then.
+@(private)
+wgpu_pipe_made :: proc(g: ^Wgpu_State, list: ^[dynamic]Wgpu_Pipe, key: Wgpu_Pipe, pipe: wgpu.RenderPipeline, began: time.Tick) {
+	sync.mutex_guard(&g.pipe_lock)
+	for &p, i in list {
+		if p.ready || p.format != key.format || p.replace != key.replace || p.dual != key.dual { continue }
+		if pipe == nil { ordered_remove(list, i) } else { p.pipe, p.ready = pipe, true }
+		break
+	}
+	g.t_pipelines += time.duration_milliseconds(time.tick_since(began)); g.n_pipelines += 1
+	sync.cond_broadcast(&g.pipe_made)
 }
 
 @(private)
 wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.RenderPipeline {
 	g := &r.wg
-	sync.mutex_guard(&g.pipe_lock)
-	for p in g.fx_pipes { if p.format == format { return p.pipe } }
+	key := Wgpu_Pipe{format = format}
+	if made, mine := wgpu_pipe_find(g, &g.fx_pipes, key); !mine { return made }
 	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_fx, entryPoint = "ps_fx", targetCount = 1, targets = &target}
-	sync.mutex_lock(&g_compile_lock)
+	compile_own_begin()
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "filter", layout = g.pl_fx,
 		vertex = {module = g.module_fx, entryPoint = "vs_fx"},
@@ -998,21 +1090,20 @@ wgpu_fx_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat) -> wgpu.Rende
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
-	sync.mutex_unlock(&g_compile_lock)
-	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	if pipe != nil { append(&g.fx_pipes, Wgpu_Pipe{format, false, pipe, false}) }
+	compile_own_end()
+	wgpu_pipe_made(g, &g.fx_pipes, key, pipe, t0)
 	return pipe
 }
 
 @(private)
 wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, copy := false) -> wgpu.RenderPipeline {
 	g := &r.wg
-	sync.mutex_guard(&g.pipe_lock)
-	for p in g.mip_pipes { if p.format == format && p.replace == copy { return p.pipe } }
+	key := Wgpu_Pipe{format = format, replace = copy}
+	if made, mine := wgpu_pipe_find(g, &g.mip_pipes, key); !mine { return made }
 	t0 := time.tick_now()
 	target := wgpu.ColorTargetState{format = format, writeMask = wgpu.ColorWriteMaskFlags_All}
 	fs := wgpu.FragmentState{module = g.module_mip, entryPoint = copy ? "ps_copy" : "ps_mip", targetCount = 1, targets = &target}
-	sync.mutex_lock(&g_compile_lock)
+	compile_own_begin()
 	pipe := wgpu.DeviceCreateRenderPipeline(g.device, &{
 		label = "mip", layout = g.pl_mip,
 		vertex = {module = g.module_mip, entryPoint = "vs_mip"},
@@ -1020,9 +1111,8 @@ wgpu_mip_pipeline :: proc(r: ^Renderer, format: wgpu.TextureFormat, copy := fals
 		multisample = {count = 1, mask = 0xFFFFFFFF},
 		fragment = &fs,
 	})
-	sync.mutex_unlock(&g_compile_lock)
-	g.t_pipelines += time.duration_milliseconds(time.tick_since(t0)); g.n_pipelines += 1
-	if pipe != nil { append(&g.mip_pipes, Wgpu_Pipe{format, copy, pipe, false}) }
+	compile_own_end()
+	wgpu_pipe_made(g, &g.mip_pipes, key, pipe, t0)
 	return pipe
 }
 
@@ -1212,7 +1302,13 @@ wgpu_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 	g := &r.wg
 	h := &r.heaps[kind]
 	stride := HEAP_STRIDE[kind]
-	ncap := max(h.cap * 2, h.cap + need, HEAP_MIN)
+	// (one buffer: the instances' a vertex buffer, the others storage bound whole. A heap at its limit refuses the picture)
+	room := elements_within(kind == .Insts ? g.max_buffer : g.max_binding, stride)
+	if h.cap + need > room {
+		fmt.eprintln("render: the retained heap", kind, "cannot hold", h.cap + need, "elements: the device binds", room)
+		return false
+	}
+	ncap := min(max(h.cap * 2, h.cap + need, HEAP_MIN), room)
 	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "retained heap", usage = wgpu_heap_usage(kind), size = u64(ncap * stride)})
 	if buf == nil {
 		fmt.eprintln("render: cannot grow the retained heap", kind, "to", ncap * stride, "bytes")
@@ -1222,9 +1318,15 @@ wgpu_heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
 		enc := wgpu.DeviceCreateCommandEncoder(g.device)
 		wgpu.CommandEncoderCopyBufferToBuffer(enc, h.wbuf, 0, buf, 0, u64(h.cap * stride))
 		cb := wgpu.CommandEncoderFinish(enc)
-		wgpu_submit(r, cb)   // (not submitted: a device gone, the heaps are emptied with it)
+		// (not submitted: a device gone, or an error since the last submit, wgpu_submit. The old heap stays, the new one
+		// would hold none of its pictures: the picture is refused this time, as for a buffer the device refuses)
+		copied := wgpu_submit(r, cb)
 		wgpu.CommandBufferRelease(cb)
 		wgpu.CommandEncoderRelease(enc)
+		if !copied {
+			wgpu.BufferRelease(buf)
+			return false
+		}
 		wgpu.BufferRelease(h.wbuf)
 	}
 	old := h.cap
@@ -1255,16 +1357,119 @@ wgpu_prewarm_start :: proc(r: ^Renderer) {
 	// (the thread holds `r`: a Renderer does not move between init and its first frame, what wgpu_prewarm_stop waits for at the latest)
 	r.wg.prewarm = thread.create_and_start_with_data(r, proc(data: rawptr) {
 		r := (^Renderer)(data)
-		g := &r.wg
-		wgpu_pipeline(r, g.prewarm_format, false)
-		wgpu_slug_pipeline(r, g.prewarm_format, false)
-		wgpu_pipeline(r, .RGBA16Float, false)
-		wgpu_fx_pipeline(r, .RGBA16Float)
-		wgpu_fx_pipeline(r, .RGBA8Unorm)
-		wgpu_pipeline(r, g.prewarm_format, true)
-		wgpu_pipeline(r, .RGBA16Float, true)
-		wgpu_mip_pipeline(r, r.space == .Srgb ? .RGBA8Unorm : .RGBA8UnormSrgb)
+		wgpu_make_pipelines(r, r.wg.prewarm_format)
+		base.start_mark("render: pipelines")
 	})
+}
+
+// The pipelines a window's frames use, the first frame's first (its rects, its text): what the pre-warming thread makes.
+// One made already, or made early (wgpu_early_adopt), is not made again.
+@(private)
+wgpu_make_pipelines :: proc(r: ^Renderer, frame: wgpu.TextureFormat) {
+	wgpu_pipeline(r, frame, false)
+	wgpu_slug_pipeline(r, frame, false)
+	wgpu_pipeline(r, .RGBA16Float, false)
+	wgpu_fx_pipeline(r, .RGBA16Float)
+	wgpu_fx_pipeline(r, .RGBA8Unorm)
+	wgpu_pipeline(r, frame, true)
+	wgpu_pipeline(r, .RGBA16Float, true)
+	wgpu_mip_pipeline(r, r.space == .Srgb ? .RGBA8Unorm : .RGBA8UnormSrgb)
+}
+
+// Whether a window's surface offers half floats with premultiplied alpha (wgpu_frame_formats). Before the surface
+// exists it is not known.
+@(private)
+Half_Float_Offer :: enum u8 { Unknown, No, Yes }
+
+// The frame format of the pipelines made early, as the renderer will choose it (wgpu_frame_formats: a transparent
+// window in linear light whose surface offers half floats with premultiplied alpha draws in RGBA16Float, else BGRA8), and
+// whether they are made. An offer not known yet is guessed absent (Mesa's surfaces offer none); a wrong guess costs a
+// compile on another core, never a wait (wgpu_early_adopt). `serial`: compiles one at a time (COMPILES_SERIAL): an early
+// pipeline would queue in front of the window's own, so none is made.
+@(private)
+early_pipeline_format :: proc(transparent: bool, space: Blend_Space, half_float: Half_Float_Offer, serial: bool) -> (format: wgpu.TextureFormat, make: bool) {
+	if serial { return .Undefined, false }
+	return wgpu_view_format(wgpu_wants_fp16(transparent, space, true, half_float == .Yes), space), true
+}
+
+// The two pipelines of a window's first frame (its rects, its text), made with the device made early on threads of their
+// own. Heap memory of its own: the Wgpu_State that holds it moves into the renderer while they compile.
+@(private)
+Wgpu_Early :: struct {
+	format:      wgpu.TextureFormat,
+	device:      wgpu.Device,
+	layout:      wgpu.PipelineLayout,
+	module_rect: wgpu.ShaderModule,
+	module_slug: wgpu.ShaderModule,
+	rect, slug:  wgpu.RenderPipeline,   // made (nil: refused, or not made)
+	threads:     [2]^thread.Thread,
+	finished:    int,                    // atomic: the threads done
+	lock:        sync.Mutex,             // wgpu_early_adopt: one thread joins them and gives the pipelines to the lists
+	adopted:     bool,
+}
+
+// On the device's thread, once the device is made early: its shaders, and the pipelines of a window's first frame of
+// `format` started on two threads (`make`). The device is ready without waiting for them. Not on GL: its pipelines are
+// checked in error scopes on the init's thread (wgpu_gl_pipelines), and a window does not take a GL device made early.
+@(private)
+wgpu_preload_shaders :: proc(r: ^Renderer, format: wgpu.TextureFormat, make: bool) {
+	g := &r.wg
+	if g.gl { return }
+	wgpu_make_shaders(g)
+	if g.module_rect == nil || !make { return }
+	compile_own_begin()
+	g.module_slug = wgpu_module(g, "slug.wgsl", WGPU_SLUG_SOURCE)
+	compile_own_end()
+	e := new(Wgpu_Early, runtime.heap_allocator())   // (freed on another thread: wgpu_release_pipelines)
+	e^ = {format = format, device = g.device, layout = g.pl_main, module_rect = g.module_rect, module_slug = g.module_slug}
+	g.early = e
+	e.threads[0] = thread.create_and_start_with_data(e, proc(data: rawptr) {
+		e := (^Wgpu_Early)(data)
+		e.rect = wgpu_instance_pipeline_create(e.device, e.layout, e.module_rect, e.format, false, false, false)
+		if sync.atomic_add(&e.finished, 1) == 1 { base.start_mark("render: first pipelines made early") }
+	})
+	if e.module_slug == nil { sync.atomic_add(&e.finished, 1); return }   // (the renderer says it at its first text)
+	e.threads[1] = thread.create_and_start_with_data(e, proc(data: rawptr) {
+		e := (^Wgpu_Early)(data)
+		e.slug = wgpu_instance_pipeline_create(e.device, e.layout, e.module_slug, e.format, false, true, false)
+		if sync.atomic_add(&e.finished, 1) == 1 { base.start_mark("render: first pipelines made early") }
+	})
+}
+
+// The pipelines made early, given to the lists when a thread wants one of their key (`format`, blended, not per stripe):
+// it waits for them then, as it would for its own compile. A thread that wants another format never waits for them.
+@(private)
+wgpu_early_adopt :: proc(g: ^Wgpu_State, format: wgpu.TextureFormat) {
+	e := g.early
+	if e == nil || e.format != format { return }
+	sync.mutex_guard(&e.lock)
+	if e.adopted { return }
+	for &th in e.threads { if th != nil { thread.join(th); thread.destroy(th); th = nil } }
+	e.adopted = true
+	sync.mutex_guard(&g.pipe_lock)
+	give :: proc(g: ^Wgpu_State, list: ^[dynamic]Wgpu_Pipe, format: wgpu.TextureFormat, pipe: wgpu.RenderPipeline) {
+		if pipe == nil { return }
+		for p in list { if p.format == format && !p.replace && !p.dual { wgpu.RenderPipelineRelease(pipe); return } }
+		append(list, Wgpu_Pipe{format = format, pipe = pipe, ready = true})
+		g.n_pipelines += 1
+	}
+	give(g, &g.pipes, format, e.rect)
+	give(g, &g.slug_pipes, format, e.slug)
+	sync.cond_broadcast(&g.pipe_made)
+}
+
+// The threads of the early pipelines joined, the ones no frame took released.
+@(private)
+wgpu_early_release :: proc(g: ^Wgpu_State) {
+	e := g.early
+	if e == nil { return }
+	for th in e.threads { if th != nil { thread.join(th); thread.destroy(th) } }
+	if !e.adopted {
+		if e.rect != nil { wgpu.RenderPipelineRelease(e.rect) }
+		if e.slug != nil { wgpu.RenderPipelineRelease(e.slug) }
+	}
+	free(e, runtime.heap_allocator())
+	g.early = nil
 }
 
 @(private)
@@ -1278,10 +1483,11 @@ wgpu_prewarm_stop :: proc(g: ^Wgpu_State) {
 @(private)
 wgpu_release_pipelines :: proc(g: ^Wgpu_State) {
 	wgpu_prewarm_stop(g)
-	for p in g.pipes { wgpu.RenderPipelineRelease(p.pipe) }
-	for p in g.fx_pipes { wgpu.RenderPipelineRelease(p.pipe) }
-	for p in g.mip_pipes { wgpu.RenderPipelineRelease(p.pipe) }
-	for p in g.slug_pipes { wgpu.RenderPipelineRelease(p.pipe) }
+	wgpu_early_release(g)
+	// (every claim was given its pipeline: the threads that make them have ended)
+	for list in ([?]^[dynamic]Wgpu_Pipe{&g.pipes, &g.fx_pipes, &g.mip_pipes, &g.slug_pipes}) {
+		for p in list { if p.pipe != nil { wgpu.RenderPipelineRelease(p.pipe) } }
+	}
 	clear(&g.pipes); clear(&g.fx_pipes); clear(&g.mip_pipes); clear(&g.slug_pipes)
 }
 
@@ -1295,16 +1501,26 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	wgpu_profile_release(r)
 	wgpu_release_frame(g)
 	wgpu_damage_release_target(r)
-	wgpu_release_pipelines(g)
 	wgpu_video_release(g)
-	rel :: proc(p: ^$T, $f: proc "c" (T)) { if p^ != nil { f(p^); p^ = nil } }
 	for &d in r.apps { if d.live { wgpu_app_shader_release(r, &d) } }
-	for t in ([?]^Wgpu_Table{&g.inst, &g.xforms, &g.clips, &g.points, &g.grads, &g.app_params}) {
+	for &t in g.inst { if t.buf != nil { wgpu.BufferRelease(t.buf) } }
+	clear(&g.inst)
+	for t in ([?]^Wgpu_Table{&g.xforms, &g.clips, &g.points, &g.grads, &g.app_params}) {
 		if t.buf != nil { wgpu.BufferRelease(t.buf) }
 		t^ = {}
 	}
 	if g.arena != nil { wgpu.BufferRelease(g.arena); g.arena = nil }
 	g.arena_cap = 0
+	wgpu_release_shaders(g)
+	r.slug.failed = false   // a new device is asked again
+}
+
+// What wgpu_make_shaders made, and the pipelines: objects of the device, released with it (a device made early that the
+// window could not take goes with its shaders, or the next device would be given them).
+@(private)
+wgpu_release_shaders :: proc(g: ^Wgpu_State) {
+	rel :: proc(p: ^$T, $f: proc "c" (T)) { if p^ != nil { f(p^); p^ = nil } }
+	wgpu_release_pipelines(g)
 	rel(&g.dummy_r8_view, wgpu.TextureViewRelease); rel(&g.dummy_rgba_view, wgpu.TextureViewRelease)
 	rel(&g.dummy_curves_view, wgpu.TextureViewRelease); rel(&g.dummy_bands_view, wgpu.TextureViewRelease)
 	rel(&g.dummy_r8, wgpu.TextureRelease); rel(&g.dummy_rgba, wgpu.TextureRelease)
@@ -1316,7 +1532,6 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 	rel(&g.bgl0, wgpu.BindGroupLayoutRelease); rel(&g.bgl1, wgpu.BindGroupLayoutRelease)
 	rel(&g.bgl_fx, wgpu.BindGroupLayoutRelease); rel(&g.bgl_mip, wgpu.BindGroupLayoutRelease)
 	rel(&g.module_rect, wgpu.ShaderModuleRelease); rel(&g.module_fx, wgpu.ShaderModuleRelease); rel(&g.module_mip, wgpu.ShaderModuleRelease); rel(&g.module_slug, wgpu.ShaderModuleRelease); rel(&g.module_slug_dual, wgpu.ShaderModuleRelease)
-	r.slug.failed = false   // a new device is asked again
 }
 
 // Takes what the renderer's device is made of out of it.
@@ -1364,6 +1579,7 @@ wgpu_destroy :: proc(r: ^Renderer) {
 	wgpu_release_device(r)
 	present_destroy(r)
 	delete(r.textures); delete(r.free_textures); delete(r.targets); delete(r.scratch)
+	delete(r.wg.inst)
 	delete(r.wg.pipes); delete(r.wg.fx_pipes); delete(r.wg.mip_pipes); delete(r.wg.slug_pipes)
 	if r.wg.shared != nil { free(r.wg.shared) }
 	r^ = {}

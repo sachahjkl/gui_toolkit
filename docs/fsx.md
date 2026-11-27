@@ -14,9 +14,34 @@ touching the callers.
 ```odin
 data, ok := fsx.read_all(path)                   // the whole file, false when larger than max_size (default 1 TiB)
 ok = fsx.write_atomic(path, data)                // through a temporary file renamed over path: a reader sees old or new, never half
-ok = fsx.write_atomic(path, data, flush = true)  // flush: on the disk when it returns
-ok = fsx.write_atomic(path, data, private = true) // readable by its user only (POSIX: 0600, from its creation)
+ok = fsx.write_atomic(path, data, {flush = true})  // flush: the file and its folder on the disk when it returns
+ok = fsx.write_atomic(path, data, {private = true}) // readable by its user only (POSIX: 0600, from its creation)
+rep: fsx.Write_Report
+ok = fsx.write_atomic(path, data, fsx.DOCUMENT, &rep) // a person's document: flush, keep and follow
 ```
+
+`Write_Options`: the zero value is for a program's own file (its settings, its state).
+
+| option | |
+|---|---|
+| `flush` | the file, then its folder, on the disk before it returns (`fsync` of both on POSIX; Windows: `FlushFileBuffers` and `MOVEFILE_WRITE_THROUGH`) |
+| `private` | readable by its user only (POSIX: `0600`, from its creation and after) |
+| `keep` | a file written over keeps what it had. POSIX: its mode, its owner and its group (the owner only where the system lets this user give it). Windows: its access list, attributes, creation time and short name (`ReplaceFileW`; `MoveFileExW` gave the new file its folder's access list) |
+| `follow` | a symbolic link is written through: the file at the end of its chain is replaced, the link stays a link. A broken link makes the file it names; a chain of more than 40 links (a loop) is refused, as the system refuses to open it |
+
+`fsx.DOCUMENT` is `{flush = true, keep = true, follow = true}`: what an editor's save is. With `keep` (or `private`) the
+temporary file is its user's alone (`0600`) until it is whole and given the file's mode: no moment where it is readable
+wider than the file was. `private` with `keep` keeps the owner and group and leaves the mode `0600`.
+
+`Write_Report` says what was written over: `target` (the end of the chain of links, temp memory), `existed`, `flushed`
+(flush asked and done; on Windows with `keep`, false for a file this user may replace but not write: the save is done,
+its data was on the disk before the replace, its name may not be yet), `kept`
+(false: a part the system refused, such as another user's owner: the file is then this user's, its mode no wider than
+it was) and `hard_links`, the file's other names. A rename makes a new file: the other names of a hard-linked file keep
+its old content. The write is done all the same; the program says it to the person when it matters to them.
+
+Not kept on POSIX: extended attributes and POSIX ACLs (`setfacl`), and the file's identity (its inode: a program that
+holds it open, or a hard link, sees the old file).
 
 `private` is for a file that holds a secret (a password, even sealed): on POSIX the temporary file is created with mode
 `0600`, so no other user can open it at any moment. On Windows a file takes its folder's access list, and a program's
@@ -115,7 +140,10 @@ does not survive being called from a process under AddressSanitizer. A junction 
 `.Link`, so `remove_tree` removes the link and leaves its target alone.
 
 `temp_dir` reads `TEMP` first: a test harness points it at a throwaway folder (on every system) so that tests do not
-leave files in the real temporary directory.
+leave files in the real temporary directory. It gives the folder in the system's form, with no separator at its end: on
+Windows backslashes alone and long names (`GetLongPathNameW`: TEMP is often `C:\Users\RUNNER~1\...`), so a path made in
+it compares equal to one the system gives. On Windows the long form is read on the disk once, before `main`, and again
+only when `TEMP` changes: a call from the interface's thread waits on nothing.
 
 ## A lock between processes
 

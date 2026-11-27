@@ -361,5 +361,5 @@ saver_run :: proc(data: rawptr) {
 @(private)
 saver_write :: proc(v: ^Saver, data: []byte) -> bool {
 	if dir := filepath.dir(v.path); dir != "" && dir != "." { fsx.make_dirs(dir) }
-	return fsx.write_atomic(v.path, data, flush = true, private = v.private)
+	return fsx.write_atomic(v.path, data, {flush = true, private = v.private})
 }

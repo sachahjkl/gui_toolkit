@@ -62,3 +62,45 @@ stat_follow_follows_a_junction :: proc(t: ^testing.T) {
 	kind, _ = fsx.stat_follow(fmt.tprintf("%s\\missing", root))
 	testing.expect_value(t, kind, fsx.Path_Kind.Absent)
 }
+
+// A person's document (fsx.DOCUMENT) written over a file keeps what MoveFileExW lost: its attributes (hidden here) and
+// its creation time (ReplaceFileW). A second name of the file is reported: it keeps the old content.
+@(test)
+a_document_keeps_its_attributes_and_creation_time :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_document_windows")
+	defer fsx.remove_tree(root)
+	file := fmt.tprintf("%s\\notes.txt", root)
+	other := fmt.tprintf("%s\\other.txt", root)
+	wfile := win.utf8_to_wstring(file, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(file, transmute([]byte)string("old")) == nil)
+	testing.expect(t, bool(win.CreateHardLinkW(win.utf8_to_wstring(other, context.temp_allocator), wfile, nil)), "a second name")
+	// (an old creation time: a new file would have now)
+	created := win.FILETIME{dwLowDateTime = 0, dwHighDateTime = OLD_FILETIME_HIGH}
+	if h := win.CreateFileW(wfile, win.FILE_WRITE_ATTRIBUTES, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_ATTRIBUTE_NORMAL, nil); testing.expect(t, h != win.INVALID_HANDLE_VALUE, "open") {
+		testing.expect(t, bool(SetFileTime(h, &created, nil, nil)), "SetFileTime")
+		win.CloseHandle(h)
+	}
+	testing.expect(t, bool(win.SetFileAttributesW(wfile, win.FILE_ATTRIBUTE_HIDDEN)), "hidden")
+	rep: fsx.Write_Report
+	testing.expect(t, fsx.write_atomic(file, transmute([]byte)string("new"), fsx.DOCUMENT, &rep))
+	testing.expect(t, rep.existed && rep.kept, "written over, all it had kept")
+	testing.expect(t, rep.flushed, "on the disk")
+	testing.expect_value(t, rep.hard_links, 1)
+	data, _ := os.read_entire_file(file, context.temp_allocator)
+	testing.expect_value(t, string(data), "new")
+	attrs := win.GetFileAttributesW(wfile)
+	testing.expect(t, attrs != win.INVALID_FILE_ATTRIBUTES && attrs & win.FILE_ATTRIBUTE_HIDDEN != 0, "still hidden")
+	info: win.WIN32_FILE_ATTRIBUTE_DATA
+	testing.expect(t, bool(win.GetFileAttributesExW(wfile, win.GetFileExInfoStandard, &info)), "its times")
+	testing.expect_value(t, info.ftCreationTime.dwHighDateTime, OLD_FILETIME_HIGH)
+	data, _ = os.read_entire_file(other, context.temp_allocator)
+	testing.expect_value(t, string(data), "old")
+}
+// (about 1985)
+@(private = "file") OLD_FILETIME_HIGH :: 0x01A0_0000
+
+foreign import kernel32_times "system:Kernel32.lib"
+@(private = "file", default_calling_convention = "system")
+foreign kernel32_times {
+	SetFileTime :: proc(hFile: win.HANDLE, lpCreationTime, lpLastAccessTime, lpLastWriteTime: ^win.FILETIME) -> win.BOOL ---
+}

@@ -86,8 +86,13 @@ d3d_app_blend_states :: proc(r: ^Renderer) {
 
 // Draws the instance of an application batch with its shader, textures and parameters; the main pipeline's state is put back.
 @(private)
-d3d_draw_app :: proc(r: ^Renderer, f: Frame_Data, b: Batch) {
+d3d_draw_app :: proc(r: ^Renderer, s: ^D3d_Submit, f: Frame_Data, b: Batch) {
 	if b.app <= 0 || b.app > len(f.apps) { return }
+	at := b.first
+	if !s.retained_vb {
+		ok: bool
+		if at, _, ok = d3d_bind_page(r, s, b.first, 1); !ok { return }
+	}
 	a := f.apps[b.app - 1]
 	d := app_shader_get(r, a.shader)
 	if d == nil || d.ps == nil || r.app_params_view == nil || r.app_blend[a.blend] == nil { return }
@@ -98,7 +103,7 @@ d3d_draw_app :: proc(r: ^Renderer, f: Frame_Data, b: Batch) {
 	r.ctx->PSSetShaderResources(APP_PARAMS_REGISTER, u32(len(views)), &views[0])
 	r.ctx->PSSetShader(d.ps, nil, 0)
 	r.ctx->OMSetBlendState(r.app_blend[a.blend], nil, ~u32(0))
-	r.ctx->DrawInstanced(QUAD_VERTICES, 1, 0, u32(b.first))
+	r.ctx->DrawInstanced(QUAD_VERTICES, 1, 0, u32(at))
 	none: [1 + MAX_APP_TEXTURES]^d3d11.IShaderResourceView
 	r.ctx->PSSetShaderResources(APP_PARAMS_REGISTER, u32(len(none)), &none[0])
 	r.ctx->PSSetShader(r.ps, nil, 0)

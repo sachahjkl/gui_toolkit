@@ -93,6 +93,15 @@ A program whose loop sleeps until an event (one living in the notification area,
 `done`: `render.preload_device(done = wake, user = app)` calls it on the thread once the device is Ready or Failed, and
 the loop opens its window then, hidden, so that showing it later costs no driver load.
 
+On WebGPU the thread also makes the shaders, then starts the two pipelines of a window's first frame (its rectangles and
+its text) on two threads of their own, in the frame format that window will have: `preload_device(transparent, space)`
+says which window (by default a host's: transparent, linear light). The device is ready without waiting for them; the
+first frame waits for them only if it is of their format, and a frame of another format never does. Where compiles run
+one at a time (Windows) they are not made: they would queue in front of the window's own. `host.host_open` asks for the device itself before it opens its first window (the device, the
+window and the font are then made side by side); a program that asked earlier keeps its device. Measured on lavapipe (a
+small window, `-o:speed`, Xvfb): the first frame shown 592 ms after the process started before, 205 ms after
+([src/md/infrastructure/fast-start.md](../src/md/infrastructure/fast-start.md)).
+
 A device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device`
 lets an unused one go. On wgpu the adapter is chosen without a surface; init makes the window's surface on its instance and
 makes its own device when that adapter cannot present to it.
@@ -143,6 +152,16 @@ The texture must not be drawn before `upload_step` says done: rows past `u.row` 
 (WebGPU). A device recovered during the upload (`device_generation` changed: the texture came back empty) starts its
 bands again from the top at the next step. What each backend allows off the interface's thread, and why the toolkit spreads instead:
 [src/md/features/staged-upload.md](../src/md/features/staged-upload.md).
+
+## A frame of any size
+
+A frame holds as many instances as the program draws. The renderer uploads them in pages, each under the device's
+largest buffer (WebGPU's `maxBufferSize`, 256 MiB by default; 128 MiB on Direct3D 11), and cuts a draw where a page ends.
+The tables an instance indexes (transforms, clips, points, gradients) are bound whole: past the device's limit for a
+binding (`maxStorageBufferBindingSize`, 128 MiB by default) what is past it is not drawn, and the renderer says so once on
+standard error. A retained heap that would pass its limit refuses the picture. An error in a frame's commands loses that
+frame, never the process. `gt:draw` makes no instance of a rectangle or an image wholly outside the clip ([draw.md](draw.md),
+"Clips"). Why: [src/md/infrastructure/frame-limits.md](../src/md/infrastructure/frame-limits.md).
 
 ## What differs between the backends
 
