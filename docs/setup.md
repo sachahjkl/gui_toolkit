@@ -280,3 +280,59 @@ Windows). For a program that is not the installed copy (a build, an unzipped fol
 Restart), in its folder. Call it once the window is closed and the single instance released, as the process ends. On Windows
 it allows the new process the foreground (`AllowSetForegroundWindow`): the click on Restart was this process's input, but its
 window is gone, and without that grant the new window would open behind the others with its taskbar button flashing.
+
+## An earlier name
+
+A program that changes its name (opencode native becomes Tower) takes over what its earlier name left: its install, its
+menu entry and the other parts, and its folders. The reasons are in
+[src/md/features/identity-change.md](../src/md/features/identity-change.md).
+
+```odin
+// the identity the installs of the earlier name carry, as that program made it
+earlier_identity :: proc() -> desktop.Identity {
+	id := desktop.identity_of("Froment Software", "Opencode Native", "opencode-native")
+	id.manifest_name = "opencode-native-install.txt"
+	id.cleanup_name = "opencode-native-uninstall"
+	return id
+}
+
+cfg := setup.Setup_Options{
+	identity       = identity(),                      // Tower's
+	install_folder = "Tower",
+	program_folder = "FromentSoftware/Tower",         // platform.USER_DIR_SEPARATOR between them
+	earlier        = EARLIER[:],                      // {{identity = earlier_identity(), install_folder = "OpencodeNative",
+	                                                  //   program_folder = "FromentSoftware/OpencodeNative"}}
+	// ...
+}
+
+// at the start, before the log, the settings and any window
+a := setup.adopt_earlier(cfg)
+defer setup.adoption_destroy(&a)
+if a.relaunch != "" { setup.launch(a.relaunch, os.args[1:]); return }   // this copy was the earlier install's file
+if a.stop { words, _ := setup.adoption_words(a); say(words); return }   // the earlier folders are not moved yet: the next start adopts
+// ... the log, the settings, the window; then, once:
+if a.news { words, bad := setup.adoption_words(a); toast(words, bad) }
+```
+
+- `Earlier` is an identity, its install folder, its folder in its vendor's, and the kinds of folders that move (`{}`: every
+  kind but the runtime one). The parts are the program's own (`prepare`): the two identities differ by names and marks.
+- `adopt_earlier(o, exe = "", wait = ADOPT_WAIT)` does it once, one start at a time (a lock beside the record; a start
+  that finds it held ends: `Busy`). `exe` is the running program for every step (default: this process's file).
+- The folders move by one rename per kind, tried again until `wait` ends; a new folder there already stays, and the
+  earlier one stays too (`Kept_Both`). A folder that cannot move ends the start (`Failed`, `stop`): the program must
+  not make new folders beside the earlier ones. After `ADOPT_TRIES` such starts, the next one copies the folder and
+  leaves the earlier one (`Copied`).
+- The install moves only from the copy that the update placed in the earlier folder: the new install with the earlier
+  one's choices and desktop shortcut, then the earlier one goes by its own marks. Another copy installs nothing; the
+  setup offers the install, and the earlier install goes at the first start after it. An install for everyone is an
+  administrator's (`Administered`); a copy of the Nix store installs nothing (`Managed`).
+- `stop`: an earlier program still runs (`Running`), another start adopts (`Busy`), or a folder did not move
+  (`Failed`). The program says the words and ends.
+- `adopt_plan(earlier_facts, adopted_there)` is its pure part: what happens to an install.
+- A record beside the state folder (`<state>/<program_folder>.adoption`) keeps each step: an interrupted start resumes,
+  and each result is said once (`Adoption.news`).
+- An earlier program that runs from another place (a Nix package, a portable copy) is not waited for: what it saves
+  after the move stays in the earlier folder.
+- `adoption_words(a)` says it in the language in use: what moved, a folder left and where, the new console command, a
+  taskbar pin to make again (Windows, `desktop.taskbar_pinned`).
+- An install several versions late arrives by the earlier feed ([update.md](update.md#a-product-that-changes-its-name)).

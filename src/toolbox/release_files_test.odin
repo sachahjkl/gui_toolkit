@@ -92,6 +92,47 @@ an_update_manifest_is_signed :: proc(t: ^testing.T) {
 	testing.expect_value(t, err, update.Error.None)
 	testing.expect_value(t, m.version, "1.2.3")
 	testing.expect(t, update_manifest(product, program, "1.2.4", "", out) != "", "named for another version")
+	// (here, not in a test of its own: both read the key from the process's environment)
+	an_earlier_feed_brings_the_new_program(t, public, dir)
+}
+
+// A product that changed its name keeps its earlier feed: the new program under the earlier file name and the earlier
+// product's manifest of it, which an install of the earlier name checks as it always did (src/md/features/identity-change.md).
+@(private = "file")
+an_earlier_feed_brings_the_new_program :: proc(t: ^testing.T, public, dir: string) {
+	tower := update.Product{name = "tower", sign_context = "tower-update-v1\n", public_key = public}
+	earlier := update.Product{name = "opencode-native", sign_context = "opencode-native-update-v1\n", public_key = public}
+	program := fmt.tprintf("%s/%s", dir, update.expected_file_name(tower, "2.0.0", update.PLATFORM_LINUX_X64, context.temp_allocator))
+	data := make([]u8, update.MIN_BINARY, context.temp_allocator)
+	copy(data, "\x7fELF tower")
+	_ = os.write_entire_file(program, data)
+	feed := fmt.tprintf("%s/earlier", dir)
+	// a new name whose versions do not continue above the earlier ones: refused, nothing written
+	testing.expect(t, update_earlier(tower, earlier, program, "2.0.0", "2.0.0", "stable", feed) != "", "not above the last earlier version")
+	testing.expect(t, update_earlier(tower, earlier, program, "2.0.0", "", "stable", feed) != "", "no last earlier version")
+	testing.expect(t, !os.exists(feed), "nothing written")
+	testing.expect_value(t, update_earlier(tower, earlier, program, "2.0.0", "1.9.3", "stable", feed), "")
+
+	name := update.manifest_name(update.PLATFORM_LINUX_X64, "stable", context.temp_allocator)
+	manifest, _ := os.read_entire_file(fmt.tprintf("%s/%s", feed, name), context.temp_allocator)
+	sig, _ := os.read_entire_file(fmt.tprintf("%s/%s.sig", feed, name), context.temp_allocator)
+	// what an install of version 1.4.0 under the earlier name checks
+	target := update.Release_Target{platform = update.PLATFORM_LINUX_X64, channel = "stable", current = "1.4.0"}
+	m, err := update.check_release(earlier, manifest, string(sig), target, context.temp_allocator)
+	testing.expect_value(t, err, update.Error.None)
+	testing.expect_value(t, m.file, "opencode-native-2.0.0-linux-x64")
+	got, _ := os.read_entire_file(fmt.tprintf("%s/%s", feed, m.file), context.temp_allocator)
+	testing.expect_value(t, update.check_binary(m, got), update.Error.None)
+	testing.expect(t, string(got) == string(data), "the program named is the new product's")
+	// the earlier context signs it: no signature of one product is valid for the other
+	_, err = update.verify(tower, manifest, string(sig), target, context.temp_allocator)
+	testing.expect_value(t, err, update.Error.Bad_Signature)
+	// an install already at a version above it is offered nothing
+	late := target
+	late.current = "2.1.0"
+	_, err = update.check_release(earlier, manifest, string(sig), late, context.temp_allocator)
+	testing.expect_value(t, err, update.Error.Not_Newer)
+	testing.expect(t, update_earlier(tower, earlier, program, "2.0.1", "1.9.3", "stable", feed) != "", "named for another version")
 }
 
 // A key goes nowhere a commit could take it: the toolkit's work tree is one, the temporary folder is not.

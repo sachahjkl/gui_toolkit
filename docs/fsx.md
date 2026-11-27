@@ -117,6 +117,19 @@ does not survive being called from a process under AddressSanitizer. A junction 
 `temp_dir` reads `TEMP` first: a test harness points it at a throwaway folder (on every system) so that tests do not
 leave files in the real temporary directory.
 
+## A lock between processes
+
+```odin
+lock, got := fsx.file_lock(path, 10 * time.Second)   // Locked, Busy (another holds it at the end of the wait), Failed
+defer fsx.file_unlock(&lock)                         // a lock not held: nothing
+```
+
+One process at a time holds the lock of `path`; the file is made when it is not there, and it stays. Linux takes
+`flock` on the open file, so two opens in one process exclude each other too; Windows takes `LockFileEx` on its first
+byte. The system lets go when the process ends, crashed or not. The wait tries again every `LOCK_POLL` (50 ms); 0 is one
+try. Other systems take no lock: `Locked` at once. It waits on the system: call it from a task, or at a start before any
+window. `setup.adopt_earlier` holds one while it moves a program's folders.
+
 ## Folders followed
 
 ```odin

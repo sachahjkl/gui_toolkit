@@ -33,6 +33,9 @@ them are `prefs_page`'s already, and `update` stays a package with no interface.
   the interface's thread, which makes no system call, not even the `readlink` of `/proc/self/exe`. A copy in the Nix
   store is found there too and says `Managed`.
 
+- **A product that changes its name** keeps its earlier feed, so an install several versions late still arrives:
+  [identity-change.md](identity-change.md#the-updates-of-an-install-several-versions-late).
+
 ## Refused
 
 - `update.app_start` in `gt:update`: it would pull `setup`, `config` and `ui` into the release tools.

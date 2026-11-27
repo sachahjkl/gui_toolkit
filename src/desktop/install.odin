@@ -359,6 +359,8 @@ files_remove :: proc(o: ^Integration_Options, dir: string) -> Remove_Files_Resul
 
 	dirs := make(map[string]bool, 8, context.temp_allocator)
 	for f in names {
+		// (a folder of the entry that is a link leads out of the install: what is behind it is not the install's)
+		if through_link(dir, f) { continue }
 		path := fsx.path_join(dir, f)
 		for cand in ([]string{path, strings.concatenate({path, OLD_SUFFIX}, context.temp_allocator)}) {
 			if _, lerr := os.lstat(cand, context.temp_allocator); lerr != nil { continue }   // (lstat: a link whose target is gone goes too)
@@ -401,6 +403,23 @@ files_remove :: proc(o: ^Integration_Options, dir: string) -> Remove_Files_Resul
 		if os.remove(dir) == nil { r.folder = true }
 	}   // else the manifest stays: the leftovers are still the install's, and the next start (clean_old) or the helper finishes
 	return r
+}
+
+// Whether a folder on the way from `dir` to its entry `rel` is a link (or cannot be read): the entry may then be
+// outside `dir`. The entry itself may be a link: removing it removes the link, never its target.
+@(private)
+through_link :: proc(dir, rel: string) -> bool {
+	at := 0
+	for i in 0 ..< len(rel) {
+		if rel[i] != '/' && rel[i] != '\\' { continue }
+		if i > at {
+			fi, err := os.lstat(fsx.path_join(dir, rel[:i]), context.temp_allocator)
+			if err != nil { return os.exists(fsx.path_join(dir, rel[:i])) }   // (a folder that is not there: nothing behind it to reach)
+			if fi.type != .Directory { return true }
+		}
+		at = i + 1
+	}
+	return false
 }
 
 ////////////////////////////////

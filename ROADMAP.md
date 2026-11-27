@@ -17,6 +17,10 @@
   connection (`dbus` `conn_linux.odin` hello, `call_linux.odin` `call_wait`) as 4 blocks not freed in the first session of
   a process. The bus connection is then opened and closed outside the test's count, or left out of it: a program's
   first session test stops failing on a leak that is not its own.
+- **opencode native becomes Tower.** Tower gives its earlier identity (`Setup_Options.earlier`) and calls
+  `setup.adopt_earlier` at its start; its release publishes the earlier feed (`toolbox.update_earlier`), with versions
+  above opencode native's. A person's install, settings and updates carry over. Intent:
+  [src/md/features/identity-change.md](src/md/features/identity-change.md).
 - **The update of an install for everyone.** The updater downloads and checks as now; "Restart to update" then starts
   the installed program elevated (`--system update <file>`), which checks the signature again with its own key and
   places the file, in one prompt per update. Until then such an install says that an administrator updates it. Intent:
@@ -124,6 +128,9 @@
 
 ## Later
 
+- **An install for everyone under an earlier name.** The setup offers to replace it, in the one prompt of an install
+  for everyone: the new machine half, then the earlier one goes. Until then the adoption says that an administrator
+  replaces it. Intent: [src/md/features/identity-change.md](src/md/features/identity-change.md).
 - **A frame scrubber in the debug window.** The last seconds of a program's panel values kept per frame, and a timeline
   to step back and forth through them: a glitch is seen again frame by frame. Intent:
   [src/md/features/debug-panel.md](src/md/features/debug-panel.md).

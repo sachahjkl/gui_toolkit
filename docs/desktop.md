@@ -129,6 +129,10 @@ A running program's file cannot be deleted: `files_install` renames it to `.old`
 next start, and `cleanup_later` deletes the files a running copy holds after the process ends. `open_default_apps` opens
 `ms-settings:defaultapps`, where the user picks the default browser: a program that is not a browser does not call it.
 
+`taskbar_pinned(exe)` says whether a pin of the person's taskbar runs `exe` (the shortcuts of `User Pinned\TaskBar`).
+Windows lets no program pin, unpin or change a pin: a program that changes its name asks the person to pin it again
+(`setup.adopt_earlier`). Other systems: false.
+
 The console launcher exists because a program with a window gives the prompt back at once and has no console. The
 launcher must contain `launcher_mark`, which is how removal tells it from another file.
 

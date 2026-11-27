@@ -49,6 +49,12 @@ Setup_Options :: struct {
 	// must stay the person's gives {.User}
 	scopes:         desktop.Scopes,
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
+	// the program's folder in its vendor's, platform.user_dir's name ("FromentSoftware/Tower"): where the folders of an
+	// earlier identity move (adopt_earlier)
+	program_folder: string,
+	// the program's earlier identities: their installs and folders are taken over once at the start (adopt_earlier,
+	// src/md/features/identity-change.md)
+	earlier:        []Earlier,
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
 	// and its buttons. The header and its close cross are the toolkit's (the views' header). `v` says where it is: a
@@ -167,8 +173,9 @@ installed_scope :: proc(o: Setup_Options) -> desktop.Scope {
 }
 
 // The state of the install, as the disk and the system say it (strings in temp memory). `scope`: the scope asked when
-// no install is there (where it would go); an install that is there says its own.
-facts :: proc(o: Setup_Options, choices: []bool = nil, scope := desktop.Scope.User, loc := #caller_location) -> (f: Facts) {
+// no install is there (where it would go); an install that is there says its own. `exe`: the running program ("": this
+// process's).
+facts :: proc(o: Setup_Options, choices: []bool = nil, scope := desktop.Scope.User, exe := "", loc := #caller_location) -> (f: Facts) {
 	base.blocking("setup.facts", loc)
 	user, everyone := install_there(o, .User), install_there(o, .System)
 	switch {
@@ -183,7 +190,7 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, scope := desktop.Scope.Us
 		f.system_refusal = desktop.system_refusal(&machine)
 	}
 	integration, recorded := options(o, choices, f.scope)
-	f.running = process.executable_path()
+	f.running = exe != "" ? exe : process.executable_path()
 	f.dir = integration.install_dir
 	info := desktop.installed_info(&integration, f.dir, context.temp_allocator)
 	f.exe = info.exe != "" ? info.exe : join({f.dir, desktop.exe_name_of(integration.identity)})
@@ -229,7 +236,7 @@ install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil,
 	if scope == .System {
 		ok, exe_or_why = install_system(o, desktop_shortcut, choices)
 	} else {
-		ok, exe_or_why = install_user(o, desktop_shortcut, choices, folder)
+		ok, exe_or_why = install_user(o, desktop_shortcut, choices, folder, process.executable_path())
 	}
 	if !ok || !moving { return }
 	// (the move: the install of the other scope goes, now that this one is in place)
@@ -253,7 +260,7 @@ install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil,
 }
 
 // The person's half of an install of `scope` (all of it for the person's scope), against the installed program.
-@(private = "file")
+@(private)
 person_half_write :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool, scope: desktop.Scope) -> desktop.Result {
 	integration, _ := options(o, choices, scope)
 	integration.exe = join({integration.install_dir, desktop.exe_name_of(integration.identity)})
@@ -287,9 +294,9 @@ machine_run :: proc(integration: ^desktop.Integration_Options, o: Setup_Options,
 	return desktop.machine_elevate(integration, exe, desktop.system_arguments(verb, choices))
 }
 
-// For the person: the program in their profile, its parts, the record.
-@(private = "file")
-install_user :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool, folder: string) -> (ok: bool, exe_or_why: string) {
+// For the person: `exe` (the program that runs) copied into their profile, its parts, the record.
+@(private)
+install_user :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool, folder, exe: string) -> (ok: bool, exe_or_why: string) {
 	integration, _ := options(o, choices, .User)
 	if folder != "" {
 		if why := desktop.check_install_dir(folder, o.identity.name, probe = true); why != "" { return false, why }
@@ -298,7 +305,7 @@ install_user :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool, 
 	if integration.install_dir == "" { return false, i18n.tr("the install folder is unknown") }
 	exe_name := desktop.exe_name_of(integration.identity)
 	plan := desktop.Install_Plan{
-		identity = integration.identity, src_exe = process.executable_path(), dir = integration.install_dir, exe_name = exe_name,
+		identity = integration.identity, src_exe = exe, dir = integration.install_dir, exe_name = exe_name,
 		version = o.version, channel = "release", adapt = true,
 	}
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
@@ -367,11 +374,12 @@ system_removal_at_restart :: proc(o: Setup_Options) -> bool {
 
 // The install of one scope goes. For everyone: the machine half first, through the elevated verb started from the
 // installed program (its prompt names a file of Program Files or /opt); declined, nothing changed. Then this person's half.
+// `exe`: the running program ("": this process's).
 @(private)
-uninstall_scope :: proc(o: Setup_Options, choices: []bool, scope: desktop.Scope) -> (ok: bool, leftovers: [dynamic]string, why: string) {
+uninstall_scope :: proc(o: Setup_Options, choices: []bool, scope: desktop.Scope, exe := "") -> (ok: bool, leftovers: [dynamic]string, why: string) {
 	integration, _ := options(o, choices, scope)   // (the program's parts are taken away too)
 	integration.exe = join({integration.install_dir, desktop.exe_name_of(integration.identity)})
-	running := process.executable_path()
+	running := exe != "" ? exe : process.executable_path()
 	if scope == .System {
 		from := os.is_file(integration.exe) ? integration.exe : running
 		r := machine_run(&integration, o, .Uninstall, choices_or_first(o, choices), from)

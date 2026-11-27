@@ -176,6 +176,26 @@ install_manifest_cannot_reach_outside_its_folder :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(fmt.tprintf("%s/inside.txt", tr.dst)), "its good entry was removed")
 }
 
+// A folder of the install that is a link (a hand-made one, or one planted with a manifest that names a file through
+// it) never takes the removal outside the install.
+@(test)
+install_remove_follows_no_link_out :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux { return }   // (Windows makes a link only with a privilege)
+	tr := tree_make()
+	defer tree_destroy(&tr)
+	outside := fmt.tprintf("%s/outside", tr.root)
+	_ = os.make_directory_all(outside)
+	_ = os.write_entire_file(fmt.tprintf("%s/thesis.odt", outside), "the person's")
+	_ = os.make_directory_all(tr.dst)
+	testing.expect_value(t, os.symlink(outside, fmt.tprintf("%s/docs", tr.dst)), nil)
+	_ = os.write_entire_file(fmt.tprintf("%s/%s", tr.dst, tr.opts.identity.manifest_name), "version=1\nfile=docs/thesis.odt\nfile=docs\nfile=inside.txt\n")
+	_ = os.write_entire_file(fmt.tprintf("%s/inside.txt", tr.dst), "ours")
+	files_remove(&tr.opts, tr.dst)
+	testing.expect(t, os.is_file(fmt.tprintf("%s/thesis.odt", outside)), "a file behind a link stays")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/inside.txt", tr.dst)), "its good entry was removed")
+	testing.expect(t, os.is_dir(outside), "the link's target stays")
+}
+
 @(test)
 install_check_dir :: proc(t: ^testing.T) {
 	when ODIN_OS == .Windows {

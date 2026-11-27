@@ -240,6 +240,12 @@ only when it changes, and `odin_command` passes the script to the linker (`-reso
 
 `update_manifest(product, program, version, channel, out)` is the manifest step alone, for a tool's release step.
 
+`update_earlier(product, earlier, program, version, last_earlier, channel, out_dir)` is the release step of a product that
+changed its name: the program (named as a release of `product`) copied into `out_dir` under the `earlier` product's file
+name, with the earlier product's manifest of it and its `.sig`. An install of the earlier name updates from that folder
+([update.md](update.md#a-product-that-changes-its-name)). `version` must be above `last_earlier`, the last version
+released under the earlier name: an earlier updater takes only a newer one.
+
 ## A program's licences
 
 `licence_commands(tool)` gives the `licence` and `paddle` commands of a project's tool, for its `Licence_Tool` (its

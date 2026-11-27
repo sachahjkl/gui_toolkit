@@ -8,6 +8,7 @@ import cli "../cli"
 //   update pubkey                                         the public key of $UPDATE_SIGNING_KEY
 //   update manifest <program> <version> <channel> <out>   a manifest and its .sig, by $UPDATE_SIGNING_KEY ("-": no channel)
 //   update verify <manifest> <channel>                    a manifest and its .sig, checked with the product's key
+// update_earlier is the release step of a product that changed its name: its program and manifest in the earlier feed.
 
 import "core:crypto"
 import "core:fmt"
@@ -72,6 +73,29 @@ update_manifest :: proc(product: update.Product, program, version, channel, out:
 	if os.write_entire_file(fmt.tprintf("%s.sig", out), transmute([]u8)sig) != nil { return "cannot write the signature" }
 	fmt.printfln("%s: %s %s, %d bytes", out, platform, version, len(data))
 	return ""
+}
+
+// The earlier feed of a product that changed its name (src/md/features/identity-change.md): `program` (a release's
+// program of `product`, named as such) copied into `out_dir` under the file name of the `earlier` product, and the earlier
+// product's manifest of it with its .sig, by $UPDATE_SIGNING_KEY and the earlier product's context. An install made
+// under the earlier name checks that manifest as it always did, and places the new program. `last_earlier`: the last
+// version released under the earlier name; `version` must be above it, or no earlier install would ever take it (an
+// updater takes only a newer version). A parameter, not the manifest found in `out_dir`: a release often writes into an
+// empty folder, where nothing would be checked. why: "" when all is written.
+update_earlier :: proc(product, earlier: update.Product, program, version, last_earlier, channel, out_dir: string) -> (why: string) {
+	if product.name == earlier.name { return fmt.tprintf("the earlier product has the same name, %s", earlier.name) }
+	if order, ok := update.version_compare(version, last_earlier); !ok || order <= 0 {
+		return fmt.tprintf("%s is not above %s, the last version of %s: no install of it would take it", version, last_earlier, earlier.name)
+	}
+	platform := ""
+	for p in update.PLATFORMS {
+		if filepath.base(program) == update.expected_file_name(product, version, p, context.temp_allocator) { platform = p }
+	}
+	if platform == "" { return fmt.tprintf("%s is not named as the program of a release of %s", program, version) }
+	copy_path := fmt.tprintf("%s/%s", out_dir, update.expected_file_name(earlier, version, platform, context.temp_allocator))
+	_ = os.make_directory_all(out_dir)
+	if err := os.copy_file(copy_path, program); err != nil { return fmt.tprintf("cannot write %s", copy_path) }
+	return update_manifest(earlier, copy_path, version, channel, fmt.tprintf("%s/%s", out_dir, update.manifest_name(platform, channel, context.temp_allocator)))
 }
 
 @(private = "file")

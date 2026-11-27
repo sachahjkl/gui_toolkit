@@ -159,6 +159,27 @@ and a failure leaves the program as it was.
 
 `version_valid`, `version_compare`, `sha256_hex` and `hex_digest_ok` are the checks' own pieces, for a caller that needs them.
 
+## A product that changes its name
+
+An install made under the earlier name checks the earlier product's manifest at the earlier URL, with the earlier key
+and context. The release keeps that feed: the new program copied under the earlier file name, and the earlier product's
+manifest of it. Every version that ever shipped follows it, then the new program adopts the install at its start
+([setup.md](setup.md#an-earlier-name)). The reasons, and why no "moved" field, are in
+[src/md/features/identity-change.md](../src/md/features/identity-change.md).
+
+```odin
+EARLIER_PRODUCT :: update.Product{name = "opencode-native", sign_context = "opencode-native-update-v1\n", public_key = KEY}
+// the release step, per platform and channel, into the folder of the earlier feed
+// "1.9.3": the last version released under the earlier name; 2.0.0 must be above it
+why := toolbox.update_earlier(PRODUCT, EARLIER_PRODUCT, "tower-2.0.0-linux-x64", "2.0.0", "1.9.3", "stable", "out/earlier-feed")
+```
+
+- The same key signs both feeds; each product keeps its own context.
+- The new versions continue above the earlier ones: an earlier updater takes only a newer version. `update_earlier`
+  refuses a version that is not above `last_earlier`.
+- The earlier feed stays at the earlier URLs. A renamed GitHub repository redirects them to the new one, where the two
+  feeds have the same manifest names: keep a repository under the earlier name for the earlier feed.
+
 ## A program that should not update itself
 
 A program installed by a package manager is updated by it: the program does not call `place` then. A copy that runs from
