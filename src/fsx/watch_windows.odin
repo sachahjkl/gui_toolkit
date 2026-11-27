@@ -44,21 +44,38 @@ watch_close_native :: proc(w: ^Watch) {
 @(private)
 watch_wake_native :: proc(w: ^Watch) { win.SetEvent(w.native.wake) }
 
+// The notification of handle `i` closed and forgotten.
 @(private = "file")
-apply :: proc(w: ^Watch, wanted: []string) {
+drop :: proc(n: ^Watch_Native, i: int) {
+	win.FindCloseChangeNotification(n.handles[i])
+	delete(n.paths[i], runtime.heap_allocator())
+	unordered_remove(&n.handles, i)
+	unordered_remove(&n.paths, i)
+}
+
+// The notifications of the wanted folders, the others closed. A folder still wanted keeps its notification: closed and
+// opened again, a change in the gap was lost. added: the folders watched from now on (temp memory).
+@(private = "file")
+apply :: proc(w: ^Watch, wanted: []string) -> (added: []string) {
 	n := &w.native
 	a := runtime.heap_allocator()
-	for h in n.handles { win.FindCloseChangeNotification(h) }
-	clear(&n.handles)
-	for p in n.paths { delete(p, a) }
-	clear(&n.paths)
+	keep := make(map[string]bool, len(wanted), context.temp_allocator)
+	for p in wanted { keep[p] = true }
+	for i := len(n.handles) - 1; i >= 0; i -= 1 { if n.paths[i] not_in keep { drop(n, i) } }
+	have := make(map[string]bool, len(n.paths), context.temp_allocator)
+	for p in n.paths { have[p] = true }
+	out := make([dynamic]string, context.temp_allocator)
 	for p in wanted {
+		if p in have { continue }
 		if len(n.handles) == WATCH_MAX_FOLDERS { break }
 		h := win.FindFirstChangeNotificationW((^u16)(rawptr(win.utf8_to_wstring(p, context.temp_allocator))), false, NOTIFY_FILTER)
 		if h == win.INVALID_HANDLE_VALUE { continue }
 		append(&n.handles, h)
 		append(&n.paths, strings.clone(p, a))
+		have[p] = true
+		append(&out, p)
 	}
+	return out[:]
 }
 
 // Waits until a watched folder changes: their paths, as watch_set gave them (`allocator`). closed: watch_stop was
@@ -71,7 +88,10 @@ watch_wait :: proc(w: ^Watch, allocator := context.temp_allocator) -> (changed: 
 		if wanted, now, closing := watch_take_wanted(w); closing {
 			return nil, true
 		} else if now {
-			apply(w, wanted)
+			// (a folder newly watched is told: what changed between its caller's reading and this watch is read again)
+			had := len(found)
+			for p in apply(w, wanted) { if p not_in found { found[strings.clone(p, context.temp_allocator)] = true } }
+			if had == 0 && len(found) > 0 { first = time.tick_now() }
 		}
 		timeout: win.DWORD = win.INFINITE
 		if len(found) > 0 {
@@ -88,8 +108,16 @@ watch_wait :: proc(w: ^Watch, allocator := context.temp_allocator) -> (changed: 
 		if at < 0 || at >= len(all) { return nil, true }
 		if at == 0 { continue }   // (woken: the wanted folders or the end)
 		if len(found) == 0 { first = time.tick_now() }
-		found[n.paths[at - 1]] = true
-		win.FindNextChangeNotification(n.handles[at - 1])
+		i := at - 1
+		p := n.paths[i]
+		if p not_in found { found[strings.clone(p, context.temp_allocator)] = true }
+		// (the folder went, or waits to go while this notification holds it: forgotten, so the next watch_set of its
+		// path, a folder made again there, watches it again instead of keeping a dead notification, as inotify's IGNORED)
+		if win.GetFileAttributesW(win.utf8_to_wstring(p, context.temp_allocator)) == win.INVALID_FILE_ATTRIBUTES {
+			drop(&w.native, i)
+		} else {
+			win.FindNextChangeNotification(n.handles[i])
+		}
 	}
 	return watch_found_list(found, allocator), false
 }

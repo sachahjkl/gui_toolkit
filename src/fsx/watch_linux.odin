@@ -49,9 +49,9 @@ watch_wake_native :: proc(w: ^Watch) {
 	linux.write(w.native.wake, ([^]u8)(&one)[:size_of(one)])
 }
 
-// The watches of the wanted folders, the others removed.
+// The watches of the wanted folders, the others removed. added: the folders watched from now on (temp memory).
 @(private = "file")
-apply :: proc(w: ^Watch, wanted: []string) {
+apply :: proc(w: ^Watch, wanted: []string) -> (added: []string) {
 	n := &w.native
 	a := runtime.heap_allocator()
 	keep := make(map[string]bool, len(wanted), context.temp_allocator)
@@ -65,13 +65,17 @@ apply :: proc(w: ^Watch, wanted: []string) {
 	}
 	have := make(map[string]bool, len(n.paths), context.temp_allocator)
 	for _, p in n.paths { have[p] = true }
+	out := make([dynamic]string, context.temp_allocator)
 	for p in wanted {
 		if p in have { continue }
 		wd, err := linux.inotify_add_watch(n.inotify, strings.clone_to_cstring(p, context.temp_allocator), WATCH_MASK)
 		if err != .NONE { continue }
 		if old, found := n.paths[wd]; found { delete(old, a) }   // (the same folder by another path: one watch)
 		n.paths[wd] = strings.clone(p, a)
+		have[p] = true
+		append(&out, p)
 	}
+	return out[:]
 }
 
 // A folder told, its path copied: the watch's own copy goes when its watch is removed, before the wait ends.
@@ -121,7 +125,10 @@ watch_wait :: proc(w: ^Watch, allocator := context.temp_allocator) -> (changed: 
 		if wanted, now, closing := watch_take_wanted(w); closing {
 			return nil, true
 		} else if now {
-			apply(w, wanted)
+			// (a folder newly watched is told: what changed between its caller's reading and this watch is read again)
+			had := len(found)
+			for p in apply(w, wanted) { told(&found, p) }
+			if had == 0 && len(found) > 0 { first = time.tick_now() }
 		}
 		timeout: i32 = -1
 		if len(found) > 0 {

@@ -12,8 +12,7 @@ import "gt:fsx"
 
 // How long a change may take to be told before the test fails (it waits for the report, never for a fixed time).
 @(private = "file") WATCH_BOUND :: 10 * time.Second
-// How long one wait for a report lasts before the file is touched again: a change made before the watcher applied the
-// folder is not seen, the next one is.
+// How long one wait for a report lasts before the file is touched again.
 @(private = "file") WATCH_RETRY :: 250 * time.Millisecond
 
 // What the waiting thread got: each report's folders, joined.
@@ -62,6 +61,14 @@ seen_count :: proc(s: ^Seen) -> int {
 	return len(s.reports)
 }
 
+// Whether a report since `from` names `folder` within WATCH_BOUND.
+@(private = "file")
+told_within :: proc(s: ^Seen, from: int, folder: string) -> bool {
+	start := time.tick_now()
+	for !seen_folder(s, from, folder) && time.tick_since(start) < WATCH_BOUND { _ = sync.sema_wait_with_timeout(&s.sema, WATCH_RETRY) }
+	return seen_folder(s, from, folder)
+}
+
 // Writes a new file in `folder` until a report names it, within WATCH_BOUND. True when one did.
 @(private = "file")
 touch_until_told :: proc(s: ^Seen, folder: string) -> bool {
@@ -75,7 +82,8 @@ touch_until_told :: proc(s: ^Seen, folder: string) -> bool {
 	return false
 }
 
-// A file made in a watched folder is told, with the folder's path as it was set; a burst of files is told as a few
+// A folder is told once its watch begins (what changed between its caller's reading and the watch is read again); a
+// file made in a watched folder is told, with the folder's path as it was set; a burst of files is told as a few
 // changes, not one per file; another folder set is watched in its place.
 @(test)
 a_watched_folder_tells_its_changes :: proc(t: ^testing.T) {
@@ -106,6 +114,7 @@ a_watched_folder_tells_its_changes :: proc(t: ^testing.T) {
 		fsx.watch_close(&s.w)
 	}
 
+	testing.expect(t, told_within(s, 0, one), "the folder is told once its watch begins")
 	testing.expect(t, touch_until_told(s, one), "a file made in the folder is told")
 
 	// a burst: told as one change or a few (WATCH_QUIET_MS groups them)
@@ -118,8 +127,10 @@ a_watched_folder_tells_its_changes :: proc(t: ^testing.T) {
 
 	// another folder in its place
 	other := []string{two}
+	before = seen_count(s)
 	fsx.watch_set(&s.w, other)
-	testing.expect(t, touch_until_told(s, two), "the folder set since is told")
+	testing.expect(t, told_within(s, before, two), "the folder set since is told once its watch begins")
+	testing.expect(t, touch_until_told(s, two), "a file made in the folder set since is told")
 
 	// the folder removed (told), then made again at its path and set again: watched again, not kept as a dead watch
 	before = seen_count(s)
@@ -128,8 +139,11 @@ a_watched_folder_tells_its_changes :: proc(t: ^testing.T) {
 	for !seen_folder(s, before, two) && time.tick_since(start) < WATCH_BOUND { _ = sync.sema_wait_with_timeout(&s.sema, WATCH_RETRY) }
 	testing.expect(t, seen_folder(s, before, two), "the folder's removal is told")
 	fsx.make_dirs(two)
+	before = seen_count(s)
 	fsx.watch_set(&s.w, other)
-	testing.expect(t, touch_until_told(s, two), "the folder made again is watched again")
+	// (watched again: told as a folder newly watched, then its changes; a dead watch kept would tell neither)
+	testing.expect(t, told_within(s, before, two), "the folder made again is watched again")
+	testing.expect(t, touch_until_told(s, two), "a file made in the folder made again is told")
 }
 
 // A watch stopped before it was opened ends its first wait at once.

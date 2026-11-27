@@ -14,6 +14,15 @@ files (themes.txt, the preferences) need the same thing. One watcher in `gt:fsx`
 - **A thread waits; the caller says the folders.** `watch_wait` blocks until a change and returns the folders that
   changed. `watch_set` (any thread) replaces the set and wakes the wait, which applies it before it waits again. The
   system's calls (inotify, `FindFirstChangeNotificationW`) run on the waiting thread only.
+- **A folder is told once its watch begins.** A caller reads a folder, then asks to follow it (the file tree follows
+  the folders it shows), or asks first and reads on another thread (the picker): either way the system's watch is made
+  later, on the waiting thread, and a change in between was lost. Told at the start of its watch, the folder is read
+  again once, after the watch exists. The cost is one more reading per folder followed. Found on the Windows CI: a
+  file made at once in a folder just opened never came.
+- **A set keeps the watches of the folders still wanted.** Windows closed and opened every notification at each set: a
+  change in a folder already followed, in that gap, was lost. A notification of a folder that is gone (or waits to go
+  while the notification holds it) is closed and forgotten, as inotify's `IGNORED`: a folder made again at its path is
+  watched again at the next set.
 - **Close changes are one change.** After the first event, the wait goes on until none came for `WATCH_QUIET_MS`
   (120), at most `WATCH_MAX_MS` (600) after the first. A copy of a thousand files reads the folder a few times. 120 ms
   is under what a person notices; 600 ms bounds the delay under a steady stream.
