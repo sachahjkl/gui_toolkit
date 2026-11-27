@@ -42,6 +42,7 @@ cpu_show_open :: proc(r: ^Renderer, size: [2]int) -> bool {
 	}
 	if hr_failed(factory->CreateSwapChainForComposition(s.device, &desc, nil, &s.swapchain)) || s.swapchain == nil { return false }
 	s.size = size
+	s.under_children = r.under_children
 	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&s.dcomp)))
 	ok = ok && win.SUCCEEDED(s.dcomp->CreateTargetForHwnd(r.hwnd, !r.under_children, &s.target))
 	ok = ok && win.SUCCEEDED(s.dcomp->CreateVisual(&s.visual))
@@ -74,7 +75,7 @@ cpu_show_present :: proc(r: ^Renderer) -> bool {
 @(private)
 cpu_stage_end_d3d :: proc(r: ^Renderer) -> bool {
 	in_ := r.cpu.init
-	if !d3d_init(r, in_.surface, r.size, in_.transparent, in_.space) {
+	if !d3d_init(r, in_.surface, r.size, in_.transparent, in_.space, r.under_children) {
 		if r.failure.error == .None { r.failure.error = .Failed }
 		r.cpu.failed = true
 		fmt.eprintln("render: the graphics device did not come: the frames stay on the CPU")

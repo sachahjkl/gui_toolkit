@@ -103,6 +103,8 @@ Host :: struct {
 	win:        ^platform.Window,
 	state:      ui.State,
 	surface:    render.Surface,   // (not valid for the first window: surface_use then does nothing, the renderer's own is drawn on)
+	popup_surface: render.Surface, // above-children composition surface (Windows Direct3D 11, lazy when ui.native_child is overlapped)
+	popup_drawn: bool,             // true while popup_surface holds non-transparent pixels (cleared once when overlays close)
 	pacer:      render.Pacer,
 	paced:      bool,             // frames follow the pacer; else each is shown at once. The first window's by default
 	user:       rawptr,
@@ -210,7 +212,7 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 	if first { base.start_mark("host: window open") }
 	failure := Open_Failure.None
 	if first {
-		failure = shared_open(sh, h.win, o.headless, o.headless_gpu)
+		failure = shared_open(sh, h.win, o.headless, o.headless_gpu, o.under_children)
 	} else if !o.headless {
 		failure = surface_open(h, o)
 	}
@@ -241,7 +243,7 @@ debug_attach :: proc(h: ^Host) {
 }
 
 @(private = "file")
-shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless, gpu: bool) -> Open_Failure {
+shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless, gpu, under_children: bool) -> Open_Failure {
 	// the font first: the device is made on its thread meanwhile (host_open), and the renderer's init waits for it
 	ok: bool
 	sh.font, ok = load_ui_font(&sh.fonts, headless)
@@ -255,7 +257,7 @@ shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless, gpu: bool) -> Op
 		if !render.init_offscreen(&sh.r, w.size, warp = !gpu) { return .No_Renderer }
 	} else {
 		// (the first frame on the CPU while the device comes: src/md/infrastructure/cpu-first-frames.md)
-		if !render.init_window(&sh.r, w, w.size, transparent = true, cpu_first = true) { return .No_Renderer }
+		if !render.init_window(&sh.r, w, w.size, transparent = true, cpu_first = true, under_children = under_children) { return .No_Renderer }
 		render.set_fixed_surface(&sh.r, platform.monitor_size(w))
 	}
 	base.start_mark("host: renderer")
@@ -310,6 +312,11 @@ host_close :: proc(h: ^Host) {
 		if p^ == h { p^ = h.next; break }
 	}
 	h.next = nil
+	if h.popup_surface.valid {
+		render.surface_destroy(&sh.r, &h.popup_surface)
+		h.popup_drawn = false
+	}
+	platform.set_native_input_shield(h.win, nil)
 	if first {
 		if heir := surface_heir(sh); heir != nil && render.surface_adopt(&sh.r, &heir.surface) {
 			// (the renderer draws on the heir's window now, and released the closing one's swap chain)
@@ -373,6 +380,11 @@ host_frame :: proc(h: ^Host, inner := false) {
 		h.shown_again = h.win.shown_again
 		render.surface_scope(&sh.r, &h.surface)
 		render.surface_remake(&sh.r, platform.native_surface_handles(h.win))
+		if h.popup_surface.valid {
+			render.surface_scope(&sh.r, &h.popup_surface)
+			render.surface_remake(&sh.r, platform.native_surface_handles(h.win))
+			h.popup_drawn = false
+		}
 	}
 	// (the last picture not shown yet: the compositor does not show the window, covered or minimized. No picture in this
 	// frame: its swap chain's image is not even taken (a present in Fifo would wait for ever for that word, and an image
@@ -436,7 +448,13 @@ host_present_free :: proc(h: ^Host) -> bool {
 host_hide :: proc(h: ^Host) {
 	// (the windows of its views go with it: made after its frames, they would stay frozen on the screen)
 	ui.views_windows_follow(&h.state, false)
+	platform.set_native_input_shield(h.win, nil)
 	if !platform.is_window_visible(h.win) { return }
+	if h.popup_surface.valid {
+		render.surface_scope(&h.shared.r, &h.popup_surface)
+		render.surface_drop(&h.shared.r)
+		h.popup_drawn = false
+	}
 	render.surface_scope(&h.shared.r, &h.surface)
 	render.surface_drop(&h.shared.r)
 	platform.hide_window(h.win)
@@ -494,6 +512,10 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	if h.builds != nil { h.builds(h, size, events, dt) } else { host_build(h, size, events, dt) }
 	platform.set_cursor(h.win, ui.cursor(&h.state))
 	if h.after_build != nil { h.after_build(h) }
+	can_native := !h.win.offscreen && !platform.is_overlay(h.win)
+	has_native := can_native && ui.has_native_children(&h.state)
+	if has_native { render.set_under_children(r, true) }
+	host_update_native_shield(h)
 	if left := h.hold != nil ? h.hold(h, size) : 0; left > 0 {
 		ui.wake_within(&h.state, left)
 		return
@@ -508,12 +530,21 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	// (the swap chain at the window's size only for a picture drawn: a resize's sizes that no picture showed (held, or the
 	// last one not shown yet) cost a reconfigure each, three for every one presented)
 	render.resize(r, h.win.size)
+	overlay_active := has_native && ui.has_native_overlay(&h.state)
+	if overlay_active && !h.popup_surface.valid {
+		if render.surface_init(r, &h.popup_surface, platform.native_surface_handles(h.win), h.win.size, transparent = true,
+			fixed_size = platform.monitor_size(h.win), under_children = false, composition_only = true) {
+			render.surface_scope(r, &h.popup_surface)
+			render.set_present_wait(r, false)
+		}
+	}
+	split_overlay := overlay_active && h.popup_surface.valid
 	t_draw := time.tick_now()
 	draw.begin_frame(&sh.dc, size)
 	// (an overlay shows the windows below wherever the build draws nothing, whatever `background` says)
 	render.frame_begin(r, platform.is_overlay(h.win) ? draw.Color{} : h.background)
 	ui.set_partial_redraw(&h.state, h.partial_redraw)
-	ui.draw_tree(&h.state, &sh.dc)
+	if split_overlay { ui.draw_tree_base(&h.state, &sh.dc) } else { ui.draw_tree(&h.state, &sh.dc) }
 	draw.end_frame(&sh.dc)
 	t_present := time.tick_now()
 	presents, _, _ := render.present_totals(r)
@@ -521,6 +552,9 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	render.frame_end(r, h.paced && !at_once)
 	// (nothing presented: nothing changed on screen, or no image. The word would come with a later commit, or never)
 	if after, _, _ := render.present_totals(r); after == presents { platform.frame_shown_forget(h.win) }
+	if h.popup_surface.valid && (split_overlay || h.popup_drawn) {
+		host_draw_popup_overlay(h, size, split_overlay)
+	}
 	if h.paced { render.paced_present(&h.pacer) }
 	// (the device did not come after a first frame on the CPU: said as a failed host_open says it, and the window closes)
 	if _, failed := render.cpu_stage_next(r); failed && h.failure == .None {
@@ -530,6 +564,40 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	h.times = {draw = time.tick_diff(t_draw, t_present), present = time.tick_since(t_present)}
 	h.shown = h.win.size
 	frame_record(&h.frames, h)
+}
+
+@(private = "file")
+host_update_native_shield :: proc(h: ^Host) {
+	if h.win == nil || h.win.offscreen || platform.is_overlay(h.win) { return }
+	rects := ui.native_input_rects(&h.state)
+	if len(rects) == 0 {
+		platform.set_native_input_shield(h.win, nil)
+		return
+	}
+	out := make([dynamic][4]int, 0, len(rects), context.temp_allocator)
+	for r in rects {
+		x0 := int(r.min.x)
+		y0 := int(r.min.y)
+		x1 := int(r.max.x + 0.999)
+		y1 := int(r.max.y + 0.999)
+		if x1 > x0 && y1 > y0 { append(&out, [4]int{x0, y0, x1 - x0, y1 - y0}) }
+	}
+	platform.set_native_input_shield(h.win, out[:])
+}
+
+@(private = "file")
+host_draw_popup_overlay :: proc(h: ^Host, size: Vec2, active: bool) {
+	sh := h.shared
+	r := &sh.r
+	render.surface_scope(r, &h.popup_surface)
+	render.resize(r, h.win.size)
+	draw.begin_frame(&sh.dc, size)
+	render.frame_begin(r, draw.Color{})
+	draw.set_partial_redraw(&sh.dc, false)
+	if active { ui.draw_tree_overlay(&h.state, &sh.dc) }
+	draw.end_frame(&sh.dc)
+	render.frame_end(r, false)
+	h.popup_drawn = active
 }
 
 // How many pictures the ring keeps: a few seconds of a busy window, the last ones of a quiet one.

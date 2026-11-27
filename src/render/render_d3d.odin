@@ -25,10 +25,11 @@ when !USE_WGPU {
 // `transparent`: the window shows through wherever the frame has alpha < 1 (open the window with `transparent` too).
 // Clear to {0, 0, 0, 0} and draw translucent colours; the output is premultiplied, which is what blending onto a
 // transparent clear produces anyway. `space`: what the frame blends in (set_blend_space changes it later).
-d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear, under_children := false) -> bool {
 	r.hwnd = win.HWND(surface.hwnd)
 	r.size = size
 	r.transparent, r.transparent_asked = transparent, transparent
+	r.under_children = under_children
 	r.space = space
 	// (device_preload.odin) No hardware device (no driver, a remote session without one): WARP, the system's software
 	// rasterizer, draws the window, slowly but whole, as the offscreen renderer does (no-graphics.md).
@@ -75,6 +76,7 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 	present_reset(r)
 	// translucent: through DirectComposition; where that is missing (Wine, old systems) fall back to an opaque window
 	if transparent && (fault_hit(.Composition) || !init_composition(r, factory, dxgi_device, hwnd, desc, size)) {
+		if r.composition_only { return false }
 		fmt.eprintln("render: DirectComposition unavailable, the window is opaque")
 		r.transparent = false
 	}
@@ -521,6 +523,32 @@ set_composition_color_space :: proc(r: ^Renderer) {
 	sc3->Release()
 }
 
+// Switches the current window's DirectComposition target below (`on = true`, topmost = FALSE) or above (`on = false`,
+// topmost = TRUE) child HWNDs. Detaches the visual from the old target before attaching to the new target (a visual
+// can be the root of only one target at a time), restoring the old target if SetRoot fails, then commits once.
+@(private)
+d3d_set_under_children :: proc(r: ^Renderer, on: bool) {
+	if r.under_children == on { return }
+	if r.dcomp == nil || r.dcomp_target == nil || r.dcomp_visual == nil || r.hwnd == nil {
+		r.under_children = on
+		return
+	}
+	target: ^IDCompositionTarget
+	if win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(r.hwnd, !on, &target)) && target != nil {
+		old := r.dcomp_target
+		old->SetRoot(nil)
+		if win.SUCCEEDED(target->SetRoot(r.dcomp_visual)) {
+			r.dcomp_target = target
+			r.under_children = on
+			old->Release()
+			r.dcomp->Commit()
+		} else {
+			old->SetRoot(r.dcomp_visual)
+			target->Release()
+		}
+	}
+}
+
 @(private)
 init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^dxgi.IDevice, hwnd: win.HWND, base: dxgi.SWAP_CHAIN_DESC1, size: [2]int) -> bool {
 	desc := base
@@ -535,9 +563,16 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 	if s := &r.cpu.show; s.visual != nil {
 		// (the CPU stage's visual shows its picture: this chain goes there at its first present, composition_show, in one
 		// commit. The window has one target: a second one is refused, and one let go first showed nothing meanwhile)
+		stage_under := s.under_children
 		r.dcomp, r.dcomp_target, r.dcomp_visual = s.dcomp, s.target, s.visual
 		r.swap_retired = s.swapchain
 		s.dcomp, s.target, s.visual, s.swapchain = nil, nil, nil, nil
+		if stage_under != r.under_children {
+			// (set_under_children changed polarity while in the CPU stage: move the adopted target before any popup surface opens)
+			want := r.under_children
+			r.under_children = stage_under
+			d3d_set_under_children(r, want)
+		}
 		return true
 	}
 	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)))

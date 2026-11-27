@@ -134,9 +134,10 @@ makes its own device when that adapter cannot present to it.
 Second windows (the developer tools, a detached panel) use the same neutral handles:
 
 ```odin
-render.surface_init(&r, &surface, platform.native_surface_handles(second_window), size, transparent, fixed_size, under_children)
+render.surface_init(&r, &surface, platform.native_surface_handles(second_window), size, transparent, fixed_size, under_children, composition_only)
 render.surface_use(&r, &surface)   // the renderer now draws to the second window; call again to go back
 render.surface_adopt(&r, &surface) // for good: the renderer's own window is released, the first window may close
+render.set_under_children(&r, true) // place the current window's DirectComposition surface below native child HWNDs
 ```
 
 `host.host_close` of the first window calls `surface_adopt` with another open window's surface: that window becomes

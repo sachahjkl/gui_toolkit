@@ -40,10 +40,15 @@ image_wrap_splits_batches :: proc(r: ^Renderer) -> bool {
 // window has no handles (backend .None): use init_offscreen instead. `transparent`: the window shows through where the
 // frame has alpha < 1 (open the window translucent too). `space`: what the frame blends in.
 // False: no renderer, nothing of it left but why (init_failure, init_failure_text).
-init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear, under_children := false) -> bool {
 	r.failure = {}
 	ok: bool
-	when USE_WGPU { ok = wgpu_init(r, surface, size, transparent, space) } else { ok = d3d_init(r, surface, size, transparent, space) }
+	when USE_WGPU {
+		r.under_children = under_children
+		ok = wgpu_init(r, surface, size, transparent, space)
+	} else {
+		ok = d3d_init(r, surface, size, transparent, space, under_children)
+	}
 	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1; cpu_shadow_start(r) } else { init_release(r) }
 	return ok
 }
@@ -67,15 +72,25 @@ init_release :: proc(r: ^Renderer) {
 // `cpu_first`: while the device made early (preload_device) is still being made, the renderer starts in the CPU stage and
 // draws its first frame on the CPU (src/md/infrastructure/cpu-first-frames.md); its next frame_begin ends the stage
 // (cpu_stage_end), and a failure then is in init_failure.
-init_window :: proc(r: ^Renderer, w: ^platform.Window, size: [2]int, transparent := false, space := Blend_Space.Linear, cpu_first := false) -> bool {
+init_window :: proc(r: ^Renderer, w: ^platform.Window, size: [2]int, transparent := false, space := Blend_Space.Linear, cpu_first := false, under_children := false) -> bool {
 	handles := platform.native_surface_handles(w)
 	when CPU_FIRST {
 		if cpu_first {
 			r.failure = {}
-			if cpu_stage_begin(r, w, handles, size, transparent, space) { return true }
+			if cpu_stage_begin(r, w, handles, size, transparent, space, under_children) { return true }
 		}
 	}
-	return init(r, handles, size, transparent, space)
+	return init(r, handles, size, transparent, space, under_children)
+}
+
+// Places the current window's composition surface below (`on = true`) or above (`on = false`) native child windows.
+// Kept across device recovery and swap-chain remakes. No-op on backends without DirectComposition.
+set_under_children :: proc(r: ^Renderer, on: bool) {
+	when USE_WGPU {
+		r.under_children = on
+	} else {
+		d3d_set_under_children(r, on)
+	}
 }
 
 @(private) renderer_ids: u64

@@ -55,6 +55,10 @@ Native_Window :: struct {
 	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
 	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
 	a11y:           rawptr,         // the accessibility adapter (a11y_accesskit.odin), nil when not compiled in
+	input_shield:   win.HWND,       // invisible owned popup forwarding input over native child HWNDs (native_shield_windows.odin)
+	input_shield_shown: bool,
+	input_shield_tracking: bool,
+	input_shield_rects: [dynamic][4]int,
 	// Offscreen window (open_window_offscreen): no HWND at all, so it runs where there is no desktop session (a service,
 	// an SSH login, a CI runner). It renders to an offscreen target the app resizes; input comes only through
 	// inject_event; the window state (size, place, state) is emulated. `off_event` is an auto-reset event the loop waits
@@ -172,6 +176,7 @@ window_class_register :: proc() -> win.HINSTANCE {
 			lpszClassName = win.L(WINDOW_CLASS_NAME),
 		}
 		win.RegisterClassExW(&wc)
+		native_shield_class_register(instance)
 	})
 	return win.HINSTANCE(win.GetModuleHandleW(nil))
 }
@@ -590,6 +595,7 @@ destroy_window :: proc(w: ^Window) {
 	pointer_state_destroy(&w.pointers)
 	a11y_detach(w)
 	drop_pixels(w)
+	native_shield_destroy(w)
 	if w.hwnd != nil {
 		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
 		win.DestroyWindow(w.hwnd)
@@ -1205,10 +1211,17 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_ERASEBKGND:
 		return 1
 
+	case win.WM_MOVE:
+		native_shield_sync(w)
+
+	case win.WM_SHOWWINDOW:
+		native_shield_sync(w, wparam != 0)
+
 	case win.WM_SIZE:
 		// only record the size: CS_HREDRAW|CS_VREDRAW invalidate the window, and WM_PAINT (which follows at once,
 		// also inside the live-resize loop) renders. Rendering here too meant two presents per resize step.
 		update_client_size(w)
+		native_shield_sync(w)
 		return 0
 
 	case win.WM_PAINT:
@@ -1279,8 +1292,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		push(w, {kind = .Mouse_Move, pos = mouse_pos(lparam), mods = current_mods(), buttons = w.buttons_down, emulated = mouse_emulated(), pointer = mouse_emulated_by()})
 	case win.WM_MOUSELEAVE:
 		w.tracking_mouse = false
-		// into the app's own title bar or frame: WM_NCMOUSEMOVE goes on with the moves
-		if !(w.integrated && pointer_hit(w) >= 0) { push(w, {kind = .Mouse_Leave}) }
+		// into the app's own title bar or frame, or onto its native input shield: moves continue there
+		if !(w.integrated && pointer_hit(w) >= 0) && !pointer_on_native_shield(w) { push(w, {kind = .Mouse_Leave}) }
 
 	// the mouse is captured from the first button down to the last one up: releasing it at the first release would
 	// lose the release of the others when it happens outside the window

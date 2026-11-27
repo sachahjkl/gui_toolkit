@@ -73,3 +73,24 @@ first window or a later one.
 
 Tests: `tests/overlay` (the output an area names, the monitors' logical places, the input region in physical pixels).
 No window opens.
+
+## Popups over native child views
+
+When a program embeds a native child window inside its layout (for example, a Windows WebView2 child HWND), call
+`ui.native_child(box)` each frame on the box that holds it. `gt:host` automatically places the main DirectComposition
+surface below child windows (`render.set_under_children`), draws any overlapping tooltips, menus, toasts, text-reveal
+bubbles, floating views, and dialogs on a second `topmost = TRUE` DirectComposition surface of the same window (with
+full premultiplied alpha and unclipped drop shadows), and routes pointer input over interactive intersections through an
+invisible owned input shield (`platform.set_native_input_shield`, hidden when idle or when only tooltips are shown).
+
+| Procedure | |
+|---|---|
+| `ui.native_child(b)` | Registers `b` as hosting a native child window for the current build. |
+| `ui.has_native_children(s) -> bool` | True when the last build registered a visible native child box. |
+| `ui.has_native_overlay(s) -> bool` | True when an overlay element visually overlaps a native child (including drop-shadow reach). |
+| `ui.native_child_rects(s) -> []ui.Rect` | Visible native child rectangles from the last build. |
+| `ui.native_input_rects(s) -> []ui.Rect` | Window-pixel rectangles where interactive overlays need pointer input above native children. |
+| `ui.draw_tree_base(s, dc)` / `ui.draw_tree_overlay(s, dc)` | Draws the base layer (up to the last native child's root ancestor) and the overlay layer separately. |
+| `platform.set_native_input_shield(w, rects)` | Updates the Windows invisible input shield to `rects` (physical client pixels; empty hides it; no-op on Linux). |
+
+Why: [src/md/features/popup-over-native.md](../src/md/features/popup-over-native.md).

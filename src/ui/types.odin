@@ -650,4 +650,10 @@ State :: struct {
 	file_dialogs:    File_Dialogs,
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)
 	a11y:            A11y_Data,
+	// native child views (native_child.odin): OS child windows hosted inside layout boxes
+	native_children:    [dynamic]Key,
+	native_rects:       [dynamic]Rect,
+	native_split:       ^Box,
+	native_has_overlay: bool,
+	native_input_rects: [dynamic]Rect,
 }

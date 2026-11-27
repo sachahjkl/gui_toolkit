@@ -1,0 +1,3 @@
+type: Added
+
+**Popups above native child views (`ui.native_child`)**: tooltips, menus, toasts, text-reveal bubbles, floating views, and modal dialogs now draw above embedded native child windows (such as Windows WebView2) with full alpha and unclipped drop shadows. Register the host box with `ui.native_child(box)` each build; `gt:host` automatically puts the main DirectComposition surface below child windows (`render.set_under_children`), draws overlapping overlays on a second `topmost = TRUE` composition surface of the same window (`ui.draw_tree_base`, `ui.draw_tree_overlay`), and intercepts pointer input only over interactive overlays (`platform.set_native_input_shield`) so clicks pass through to the native child when idle or showing tooltips.

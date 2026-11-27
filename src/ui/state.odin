@@ -167,6 +167,9 @@ destroy :: proc(s: ^State) {
 	delete(s.acts)
 	delete(s.acts_next)
 	delete(s.last_events)
+	delete(s.native_children)
+	delete(s.native_rects)
+	delete(s.native_input_rects)
 	virtual.arena_destroy(&s.arena)
 	if current == s { current = nil }
 	if build_of == s { build_of = nil }   // (destroyed in the middle of a build: there is none to end)
@@ -288,6 +291,11 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.wake_ms = 0
 	clear(&s.strips)
 	clear(&s.form_labels)
+	clear(&s.native_children)
+	clear(&s.native_rects)
+	clear(&s.native_input_rects)
+	s.native_split = nil
+	s.native_has_overlay = false
 	s.radios, s.radios_last = s.radios_last, s.radios
 	clear(&s.radios)
 	s.menu_close_pending = false
@@ -407,6 +415,7 @@ end_build :: proc() {
 	layout(s)
 	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
 	strips_place(s)  // (each strip's arrows by this layout: on their edges or hidden, before anything reads the rects)
+	native_children_end_build(s)
 	acts_end_build(s)   // (go to: the rects are final, the focus moves before the Tab and the tree read it)
 	s.metrics.layout_ms = real_ms() - t_layout
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case

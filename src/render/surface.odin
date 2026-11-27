@@ -76,8 +76,11 @@ surface_refresh :: proc(r: ^Renderer) {
 // `under_children`: a composition surface goes above the window's child windows, and one moved into the window from elsewhere (a web
 // view) would be hidden behind it: this puts it below them. Direct3D (fixed_size neither has a meaning on WebGPU).
 // `surface_init` makes it in the Surface `s` points to, where the program keeps it. Prefer it to `surface_create`.
-surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}, under_children := false) -> (ok: bool) {
-	// (a second window needs the device: the CPU stage of the first one ends here)
+surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}, under_children := false, composition_only := false) -> (ok: bool) {
+	when USE_WGPU {
+		if composition_only { s^ = {}; return false }
+	}
+	// (a second window or an overlay surface needs the device: the CPU stage of the first one ends here)
 	if !cpu_stage_end(r) { s^ = {}; return false }
 	when USE_WGPU {
 		// a second window on WebGPU: its own wgpu surface (and the latency / present state that go with it), swapped with the
@@ -93,6 +96,7 @@ surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handle
 		exchange(r, s)   // the renderer is the other window's for a moment: create_swapchain makes the chain it has
 		r.transparent, r.transparent_asked = transparent, transparent
 		r.under_children = under_children
+		r.composition_only = composition_only
 		r.fixed_surface = false
 		ok = create_swapchain(r, sized_by_surface = true)
 		if ok && r.transparent && fixed_size.x > 0 && fixed_size.y > 0 { d3d_set_fixed_surface(r, fixed_size) }

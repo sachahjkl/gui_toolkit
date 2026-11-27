@@ -67,8 +67,9 @@ Cpu_Show :: struct {
 	dcomp:     ^IDCompositionDevice,
 	target:    ^IDCompositionTarget,
 	visual:    ^IDCompositionVisual,
-	size:      [2]int,       // the chain's buffers
-	committed: bool,         // the visual shows the chain (its first present was committed)
+	size:           [2]int,  // the chain's buffers
+	committed:      bool,    // the visual shows the chain (its first present was committed)
+	under_children: bool,    // polarity the stage's DirectComposition target was created with
 }
 
 @(private)
@@ -122,10 +123,11 @@ cpu_shadow_wanted :: proc() -> bool {
 // Enters the stage when it can show something sooner: the device made early is still being made, and the window can
 // show pixels. False: the caller makes the device now (init as before).
 @(private)
-cpu_stage_begin :: proc(r: ^Renderer, w: ^platform.Window, surface: platform.Surface_Handles, size: [2]int, transparent: bool, space: Blend_Space) -> bool {
+cpu_stage_begin :: proc(r: ^Renderer, w: ^platform.Window, surface: platform.Surface_Handles, size: [2]int, transparent: bool, space: Blend_Space, under_children := false) -> bool {
 	when !CPU_FIRST { return false } else {
 		if w == nil || !cpu_first_wanted() { return false }
 		if device_preload_state() != .Creating { return false }
+		r.under_children = under_children
 		when USE_WGPU {
 			if !platform.can_show_pixels(w) { return false }
 			// (a device is coming: its adapter is known in milliseconds. None: init fails now, with the no-graphics sentence

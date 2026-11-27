@@ -48,16 +48,19 @@ damage_stats :: proc(s: ^State) -> draw.Damage_Auto_Stats { return s.damage.stat
 @(private = "file") SPAN_AUTOSCROLL :: 0x6175_746f_7363_726c
 @(private = "file") SPAN_INSPECTED :: 0x696e_7370_6563_7464
 
-draw_tree :: proc(s: ^State, dc: ^draw.Context) {
+@(private = "file")
+draw_tree_setup :: proc(s: ^State, dc: ^draw.Context, use_partial: bool) -> draw.Interpolation {
 	use(s)
-	if s.partial_redraw {
-		draw.set_partial_redraw(dc, true)
-		s.partial_redraw_set = true
-		draw.damage_auto(dc, &s.damage)
-	} else if s.partial_redraw_set {
-		draw.set_partial_redraw(dc, false)
-		s.partial_redraw_set = false
-		draw.damage_memory_reset(&s.damage)
+	if use_partial {
+		if s.partial_redraw {
+			draw.set_partial_redraw(dc, true)
+			s.partial_redraw_set = true
+			draw.damage_auto(dc, &s.damage)
+		} else if s.partial_redraw_set {
+			draw.set_partial_redraw(dc, false)
+			s.partial_redraw_set = false
+			draw.damage_memory_reset(&s.damage)
+		}
 	}
 	bg := color_from_tags(s, 0, "background")
 	s.space = draw.blend_space(dc)
@@ -67,20 +70,11 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 	if s.space != .Linear {
 		s.disabled_keep = tuned(color_from_tags(s, 0, "text") * {1, 1, 1, 0} + {0, 0, 0, s.disabled_keep}).a
 	}
-	interp := draw.set_interpolation(dc, .Linear)
-	if exploded_shown(s) {
-		// (instead of the page: the author's view of its layers, exploded.odin)
-		exploded_draw(s, dc)
-		draw.set_interpolation(dc, interp)
-		return
-	}
-	draw_box(s, dc, s.root, s.scale)
-	if s.window != nil && s.root != nil && platform.needs_frame_outline(s.window) {
-		// (a frame of the system's would be there: Linux with an integrated title bar)
-		draw.damage_span_begin(dc, SPAN_FRAME_OUTLINE)
-		draw.rect(dc, s.root.rect, color_from_tags(s, 0, "border"), 0, max(1, math.round(s.scale)))
-		draw.damage_span_end(dc)
-	}
+	return draw.set_interpolation(dc, .Linear)
+}
+
+@(private = "file")
+draw_tree_decorations :: proc(s: ^State, dc: ^draw.Context) {
 	draw.damage_span_begin(dc, SPAN_AUTOSCROLL)
 	autoscroll_draw(s, dc)   // the autoscroll anchor marker, over everything (autoscroll_region.odin)
 	draw.damage_span_end(dc)
@@ -96,6 +90,57 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 		wireframe_draw(s, dc)
 		draw.damage_span_end(dc)
 	}
+}
+
+draw_tree :: proc(s: ^State, dc: ^draw.Context) {
+	interp := draw_tree_setup(s, dc, true)
+	if exploded_shown(s) {
+		// (instead of the page: the author's view of its layers, exploded.odin)
+		exploded_draw(s, dc)
+		draw.set_interpolation(dc, interp)
+		return
+	}
+	draw_box(s, dc, s.root, s.scale)
+	if s.window != nil && s.root != nil && platform.needs_frame_outline(s.window) {
+		// (a frame of the system's would be there: Linux with an integrated title bar)
+		draw.damage_span_begin(dc, SPAN_FRAME_OUTLINE)
+		draw.rect(dc, s.root.rect, color_from_tags(s, 0, "border"), 0, max(1, math.round(s.scale)))
+		draw.damage_span_end(dc)
+	}
+	draw_tree_decorations(s, dc)
+	draw.set_interpolation(dc, interp)
+}
+
+// Draws only the base layer (up to and including `s.native_split`) when `has_native_overlay(s)` is true;
+// otherwise draws the whole tree identically to `draw_tree`. Pair with `draw_tree_overlay` on an above-children surface.
+draw_tree_base :: proc(s: ^State, dc: ^draw.Context) {
+	if !s.native_has_overlay || s.native_split == nil || s.root == nil || exploded_shown(s) {
+		draw_tree(s, dc)
+		return
+	}
+	interp := draw_tree_setup(s, dc, true)
+	draw_box(s, dc, s.root, s.scale, children = false)
+	for c := s.root.first; c != nil; c = c.next {
+		draw_box(s, dc, c, s.scale)
+		if c == s.native_split { break }
+	}
+	if s.window != nil && platform.needs_frame_outline(s.window) {
+		draw.damage_span_begin(dc, SPAN_FRAME_OUTLINE)
+		draw.rect(dc, s.root.rect, color_from_tags(s, 0, "border"), 0, max(1, math.round(s.scale)))
+		draw.damage_span_end(dc)
+	}
+	draw.set_interpolation(dc, interp)
+}
+
+// Draws only the overlay layer (root children strictly after `s.native_split`, plus autoscroll/inspect/wireframe)
+// onto a transparent above-children surface. Does not touch partial-redraw damage memory.
+draw_tree_overlay :: proc(s: ^State, dc: ^draw.Context) {
+	if !s.native_has_overlay || s.native_split == nil || s.root == nil || exploded_shown(s) { return }
+	interp := draw_tree_setup(s, dc, false)
+	for c := s.native_split.next; c != nil; c = c.next {
+		draw_box(s, dc, c, s.scale)
+	}
+	draw_tree_decorations(s, dc)
 	draw.set_interpolation(dc, interp)
 }
 
@@ -116,9 +161,9 @@ box_clip :: proc(b: ^Box) -> Rect {
 @(private = "file") DISABLED_FADE_EPS :: 0.005
 @(private = "file") FOCUS_T_EPS :: 0.01
 @(private = "file") BORDER_ALPHA_EPS :: 0.002
-@(private = "file") DROP_SHADOW_SPREAD_PX :: 8
-@(private = "file") DROP_SHADOW_OFFSET_PX :: 4
-@(private = "file") DROP_SHADOW_SOFT_PX :: 8
+@(private) DROP_SHADOW_SPREAD_PX :: 8
+@(private) DROP_SHADOW_OFFSET_PX :: 4
+@(private) DROP_SHADOW_SOFT_PX :: 8
 @(private = "file") FOCUS_GLOW_PX :: 5
 @(private = "file") FOCUS_GLOW_ALPHA :: 0.55
 @(private = "file") FOCUS_RING_PX :: 1.5

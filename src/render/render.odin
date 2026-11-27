@@ -422,7 +422,8 @@ Window_Target :: struct {
 	// alpha ignored. Kept through a remade swap chain or surface, which takes the mode of the last frame
 	opaque_frames: bool,
 	swap_retired:  ^dxgi.ISwapChain1,     // Direct3D: the composition chain a change of alpha mode replaced, shown until the new one's first present
-	under_children: bool,                 // surface_init: the composition surface is below the window's child windows
+	under_children: bool,                 // surface_init / set_under_children: the composition surface is below the window's child windows
+	composition_only: bool,               // surface_init: refuse to fall back to an opaque HWND swap chain if DirectComposition is unavailable
 	dcomp:        ^IDCompositionDevice,
 	dcomp_target: ^IDCompositionTarget,
 	dcomp_visual: ^IDCompositionVisual,
