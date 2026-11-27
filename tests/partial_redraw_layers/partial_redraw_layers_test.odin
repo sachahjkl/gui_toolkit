@@ -405,7 +405,8 @@ quiet_build :: proc(s: ^session.Session) {
 	u := (^Quiet_Run)(s.user)
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	page := ui.build_box({.Draw_Background}, "###page")
-	if !ui.parent(page) { return }
+	inside := ui.parent(page)
+	if !inside { return }
 	ui.spacer(ui.px(12))
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(.Center, id = "###select") {

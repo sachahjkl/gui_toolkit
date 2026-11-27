@@ -332,6 +332,11 @@ known; a new one gets `?` until it is classified, or moved into its struct.
 - **Several windows**: give each window a `ui.State` of its own and pass `Build_Params.inactive = true` when building a
   window that is not the one the user is in: its focused text fields keep their focus but show no caret and ask for no
   wake to blink it (`ui.inactive()` tells a widget of your own), as every desktop does.
+- **A scope under a negation**: a procedure with a deferred end (`ui.row`, `ui.parent`, `ui.menu`, `debug.section`:
+  `@(deferred_out)`, `deferred_none`) ends where the scope of its call ends. `if !ui.parent(page) { return }` ends the
+  parent at the end of the `if`: what follows is built outside it. Build inside `if ui.parent(page) { ... }`, or call it
+  as a statement: `inside := ui.parent(page)`, then `if !inside { return }`. `toolbox.check_scopes` finds the wrong
+  form (a step of `program_check`, [toolbox.md](toolbox.md)).
 - **Keys**: widgets are found again from frame to frame by their id. `"Label"` alone uses the text as the id: two
   buttons labelled "OK" collide and a label whose text changes loses its state. Use `"Text###stable_id"` (the part after
   `###` is the key) for anything whose text changes, as hello does for the counter.

@@ -575,11 +575,23 @@ writes nothing when the file holds the text already, so what is built from it ke
 
 ## A check of the scopes
 
-The scopes of the ui package (`ui.row`, `ui.parent`, `ui.menu`...) end with the statement that opens them:
-`if !ui.row(...) { return }` closes the row at once, and what follows goes to the parent's parent. The compiler accepts it.
-`check_scopes(src_dir, ui_dir = UI_DIR_DEFAULT)` says each such line of the `.odin` files under `src_dir`, and is true when
-there is none. The scopes are read from the ui package's sources (`ui_scopes(sources)`: the procedures with a deferred
-end), so a new scope is checked at once. `scope_misuses(text, scopes)` is the check of one file's text.
+A scope is a procedure with a deferred end (`@(deferred_out = section_end)`, `deferred_none`, `deferred_in`...):
+`ui.row`, `ui.parent`, `ui.menu`, `debug.section`, a program's own. It ends with the statement that opens it:
+`if !debug.section("x") { continue }` closes the section at the end of the `if`, and the values after it are outside
+it. `if ui.menu("m") == false { return }` is the same trap. The compiler accepts both. The right forms:
+
+```odin
+if debug.section("Transform") { ... }   // the scope's content in the block
+open := ui.menu("m")                    // or the call as a statement: the scope ends with the block that holds it
+if !open { return }
+```
+
+`check_scopes(src_dir, toolkit_dir = TOOLKIT_SRC_DEFAULT)` says each misuse in the `.odin` files under `src_dir`, with its
+file, its line and the right form, and is true when there is none. It is the `Scopes` step of `program_check`. The
+scopes are read from the sources of the toolkit's packages and of the program (`scope_names(sources)`), so a new
+scope is checked at once. A call `pkg.name(...)` is checked against every scope's name; a call `name(...)` only
+against its own package's. `scope_misuses(text, local, qualified)` is the check of one file's text. The toolkit runs
+it on its own sources in the toolbox's tests.
 
 ## Third-party notices
 

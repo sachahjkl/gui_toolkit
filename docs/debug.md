@@ -60,6 +60,27 @@ Each call that edits returns true when the value changed, by a person or by a to
 then. An act takes no arguments: show the arguments as values before it. Acts one after another share a row, as many
 as it holds.
 
+`section` ends where the scope of its call ends (Odin's `@(deferred_out)`), as `ui.menu` ([menus.md](menus.md)). Under a
+negation the section closes at the end of the `if`, and the values after it are outside it: a tool does not find
+`Papier/state`, only `state`.
+
+```odin
+// wrong: the section ends with the `if`
+if !debug.section(p.name) { continue }
+debug.value("state", &p.state)
+
+// right: the section's values in its block
+if debug.section(p.name) { debug.value("state", &p.state) }
+
+// right too: the call as a statement; the section ends with the block that holds it
+open := debug.section(p.name)
+if !open { continue }
+debug.value("state", &p.state)
+```
+
+`toolbox.check_scopes` finds the wrong form in a program's sources, for every procedure with a deferred end: it is a
+step of the program's check ([toolbox.md](toolbox.md)).
+
 ### Reflection
 
 `debug.value("world", &app.world)` shows any value. A struct is a section of its fields. A number, a bool, an enum, a

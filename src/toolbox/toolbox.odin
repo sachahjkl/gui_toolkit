@@ -29,7 +29,8 @@
 //	version_of       the version of the sources after its line's start; version_set writes it
 //	build_c_lib      a static C library, built again when the stamp of its sources and flags changes (stamp_holds)
 //	write_if_changed a generated file written only when its text changes, its folder made (write_stamp over it)
-//	check_scopes     the ui package's scopes opened under a negation, which end them at once
+//	check_scopes     a scope (a procedure with a deferred end: ui.menu, debug.section, ...) opened under a negation,
+//	                 which ends it at the end of the `if`
 //	third_party_notices  THIRD-PARTY-NOTICES: the licences of the toolkit, Odin, wgpu-native, the program's works and the linked crates
 //	sway_start       (Linux) a desktop nobody sees, for live tests and pictures; sway_program, sway_stop
 //	program_session_start  (Linux) a program on that desktop, its DevTools on a free port (free_port); connect, restart, stop

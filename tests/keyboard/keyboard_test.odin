@@ -1369,7 +1369,7 @@ lazy_items_left_empty_are_warned_of :: proc(t: ^testing.T) {
 				lz := ui.lazy_begin()
 				for i in 0 ..< 10 {
 					if wrong {
-						if !ui.lazy_item(lz, fmt.tprintf("###it%d", i)) { continue }
+						if !ui.lazy_item(lz, fmt.tprintf("###it%d", i)) { continue }   // check_scopes: on purpose
 						ui.next({width = ui.fill(), height = ui.px(40)})
 						ui.label(fmt.tprintf("item %d###l", i))
 					} else if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {

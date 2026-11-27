@@ -160,21 +160,55 @@ the_stamp_of_a_c_library :: proc(t: ^testing.T) {
 	testing.expect(t, !stamp_holds(lib, stamp, first))
 }
 
-// The scopes are read from the ui package's own sources; a scope opened under a negation is found, a plain one, another
-// procedure of a longer name and a comment's are not.
+// The scopes are read from the sources (any deferred_* attribute, alone or among others); a scope opened under a
+// negation is found, in each form and package; a plain one, one assigned first, another procedure, a longer name and a
+// comment's are not.
 @(test)
 a_scope_opened_under_a_negation_is_found :: proc(t: ^testing.T) {
-	ui := "@(deferred_none = pop_parent)\nrow :: proc(id := \"\") -> bool {\n\treturn true\n}\n\n// `@(deferred_none = x)` in a comment\n@(deferred_none = menu_end)\n// a comment between\nmenu :: proc() -> bool { return true }\nbutton :: proc() -> bool { return true }\n"
-	scopes := ui_scopes({ui})
-	testing.expect(t, slice.equal(scopes, []string{"row", "menu"}), fmt.tprint(scopes))
-	text := "if ui.row() {\n}\nif !ui.row(id = \"x\") { return }\nif !ui.row_end() {}\nif !ui.button() {}\n\tif !ui.menu() { return }\n"
-	found := scope_misuses(text, scopes)
-	testing.expect_value(t, len(found), 2)
-	if len(found) == 2 {
-		testing.expect(t, found[0] == Scope_Misuse{3, "row"} && found[1] == Scope_Misuse{6, "menu"}, fmt.tprint(found))
+	defs := "@(deferred_none = pop_parent)\nrow :: proc(id := \"\") -> bool {\n\treturn true\n}\n\n// `@(deferred_none = x)` in a comment\n@(deferred_out = menu_end)\n// a comment between\nmenu :: proc() -> bool { return true }\nbutton :: proc() -> bool { return true }\n@(private, require_results, deferred_out = row_end)\nsub_row :: proc() -> bool { return true }\n"
+	scopes := scope_names({defs})
+	testing.expect(t, slice.equal(scopes, []string{"row", "menu", "sub_row"}), fmt.tprint(scopes))
+	text := `if ui.row() {
+}
+if !ui.row(id = "x") { return }
+if !ui.row_end() {}
+if !ui.button() {}
+	if !debug.menu() { continue }
+open := ui.menu()
+if !open { return }
+if ui.menu() == false { return }
+if ui.row(f(1), "a") != true do return
+if x && !sub_row() { }
+if !other.sub_row_long() {}
+// if !ui.menu() { return }
+s := "if !ui.menu() {}"
+if ui.menu() == true { }
+if !ui.menu {}
+if !ui.menu() { return }   // check_scopes: on purpose
+`
+	found := scope_misuses(text, {"sub_row"}, scopes)
+	want := []Scope_Misuse{{3, "ui.row"}, {6, "debug.menu"}, {9, "ui.menu"}, {10, "ui.row"}, {11, "sub_row"}}
+	testing.expect(t, slice.equal(found, want), fmt.tprint(found))
+	// (a package's own scope called without its name is that package's only: another package's `row` is its own)
+	testing.expect_value(t, len(scope_misuses("if !row() {}\n", nil, scopes)), 0)
+
+	// end to end: a package of scopes and a program under one folder, the program's misuse said
+	root := testkit.temp_folder(t, "scopes")
+	kit, program := fmt.tprintf("%s/kit", root), fmt.tprintf("%s/program", root)
+	main_file := fmt.tprintf("%s/main.odin", program)
+	testing.expect(t, os.make_directory_all(kit) == nil && os.make_directory_all(program) == nil)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/kit.odin", kit), fmt.tprintf("package kit\n%s", defs)) == nil)
+	bad := "package program\nmain :: proc() {\n\tif !kit.menu() { return }\n}\n"
+	testing.expect(t, os.write_entire_file(main_file, bad) == nil)
+	testing.expect(t, !check_scopes(program, kit), "the program's negated scope is found")
+	good := "package program\nmain :: proc() {\n\tif kit.menu() { item() }\n\topen := kit.menu()\n\tif !open { return }\n}\n"
+	testing.expect(t, os.write_entire_file(main_file, good) == nil)
+	testing.expect(t, check_scopes(program, kit))
+
+	// (the toolkit's own sources: its packages, examples, tests and tools)
+	for dir in ([]string{"src", "examples", "tests", "tools", "apps"}) {
+		testing.expectf(t, check_scopes(fmt.tprintf("%s/../../%s", #directory, dir)), "the toolkit's %s opens no scope under a negation", dir)
 	}
-	// (the toolkit's own scopes, read from src/ui)
-	testing.expect(t, check_scopes(fmt.tprintf("%s/../ui", #directory)), "the toolkit's ui package opens no scope under a negation")
 }
 
 // The notices of the crates a library links, from cargo metadata: the normal dependencies from the root, crate after

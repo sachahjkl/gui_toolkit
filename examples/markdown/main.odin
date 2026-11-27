@@ -85,7 +85,9 @@ build_ui :: proc(app: ^App) {
 	em := ui.font_size()
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	page := ui.build_box({.Draw_Background}, "###page")
-	if !ui.parent(page) { return }
+	// (the call as a statement: its scope is the procedure's; under `if !` it ended with the `if`)
+	inside := ui.parent(page)
+	if !inside { return }
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.scroll_y("###doc") {
 		ui.spacer(ui.px(em))
