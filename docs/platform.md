@@ -347,9 +347,11 @@ Before its device, the renderer shows its first frame drawn on the CPU (render's
 `platform.show_pixels(w, bgra, size, opaque)` puts premultiplied B, G, R, A pixels on the window until the renderer
 presents its own (Wayland: a `wl_shm` buffer attached to the surface and committed, which maps the window; X11:
 `PutImage` in strips under the largest request, on a mapped window). It returns false when nothing could be shown: a
-surface whose role was not configured yet, a window not mapped, an offscreen window, Windows. `platform.can_show_pixels(w)`
+surface whose role was not configured yet, a window not mapped, an offscreen window. `platform.can_show_pixels(w)`
 says whether the window's system can, and `platform.drop_pixels(w)` releases what was kept once the renderer has
-presented (on Wayland the buffer stays attached until then).
+presented (on Wayland the buffer stays attached until then). On Windows a window with a GDI surface (not made
+`transparent`) takes the picture through `StretchDIBits`, now and on each `WM_PAINT` until `drop_pixels`; a translucent
+one has none (the renderer shows its CPU frames through DirectComposition itself).
 
 The platform package exposes these handles for the renderer through `native_surface_handles(w)`; `render.init` takes a neutral handle instead of a `win.HWND` so the same call opens the renderer on
 every system. The present mode (`Vsync`: wgpu's Fifo; `Tearing`: its Immediate, where the surface offers it), resize, DPI and capture (`src/render/capture.odin`) are the

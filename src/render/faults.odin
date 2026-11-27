@@ -47,6 +47,12 @@ fault_arms_set :: proc(a: Fault_Arms) {
 	when RENDER_FAULTS { fault_skip, fault_count = a.skip, a.count }
 }
 
+// Whether calls of this kind are set to fail on this thread (a test of a machine without them).
+@(private)
+fault_armed :: proc(f: Fault) -> bool {
+	when RENDER_FAULTS { return fault_count[f] > 0 } else { return false }
+}
+
 // How many calls failed since fault_arm.
 fault_fired :: proc(f: Fault) -> int { return fault_fired_count[f] }
 

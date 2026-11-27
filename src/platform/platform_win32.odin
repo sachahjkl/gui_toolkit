@@ -43,6 +43,9 @@ Native_Window :: struct {
 	sizemove:       int,            // move / size loops of the system open (size_move_step)
 	want_maximized: bool,           // set_placement asked for it: show_window shows the window maximized
 	dnd:            ^Dnd_State,     // drag and drop (dragdrop_win32.odin), made on first use
+	no_redirection: bool,           // made with WS_EX_NOREDIRECTIONBITMAP (open_window's transparent): GDI shows nothing in it
+	pixels:         [dynamic]u8,    // show_pixels' picture, painted again on WM_PAINT until drop_pixels
+	pixels_size:    [2]int,
 	pointers:       Pointer_State,  // fingers and pens (pointer_win32.odin)
 	trays:          [dynamic]^Tray, // icons of the notification area this window receives (tray_win32.odin)
 	notify:         Notify_State,   // the toasts it showed (notify_windows.odin)
@@ -139,6 +142,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 	at_x, at_y := i32(win.CW_USEDEFAULT), i32(win.CW_USEDEFAULT)
 	if start := start_monitor_work_area(); start.right > start.left { at_x, at_y = start.left + WINDOW_START_OFFSET_PX, start.top + WINDOW_START_OFFSET_PX }
 	wtitle := win.utf8_to_wstring(title_shown(title), context.temp_allocator)
+	w.no_redirection = transparent
 	w.hwnd = win.CreateWindowExW(transparent ? win.WS_EX_NOREDIRECTIONBITMAP : 0, win.L(WINDOW_CLASS_NAME), wtitle, win.WS_OVERLAPPEDWINDOW,
 		at_x, at_y, WINDOW_FIRST_WIDTH_PX, WINDOW_FIRST_HEIGHT_PX, nil, nil, instance, w)
 	if w.hwnd == nil {   // out of resources (USER handles, memory): no window
@@ -585,6 +589,7 @@ destroy_window :: proc(w: ^Window) {
 	if w.clip_watch { clipboard_watch(w, false) }
 	pointer_state_destroy(&w.pointers)
 	a11y_detach(w)
+	drop_pixels(w)
 	if w.hwnd != nil {
 		win.SetWindowLongPtrW(w.hwnd, win.GWLP_USERDATA, 0)   // the window procedure no longer reaches w
 		win.DestroyWindow(w.hwnd)
@@ -689,10 +694,45 @@ frame_shown_held :: proc(w: ^Window) {}
 vblank_ask :: proc(h: Surface_Handles) {}
 vblank_timing :: proc(h: Surface_Handles) -> (v: Vblank_Timing, ok: bool) { return }
 
-// No picture drawn on the CPU is shown on Windows yet (render's CPU stage is Linux's: ROADMAP.md).
-show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bool { return false }
-can_show_pixels :: proc(w: ^Window) -> bool { return false }
-drop_pixels :: proc(w: ^Window) {}
+// A picture drawn on the CPU (render's CPU stage) on a window with a GDI surface: drawn into it now, and again on each
+// WM_PAINT until drop_pixels, after the renderer's flip-model swap chain presented (DWM shows the GDI surface until
+// then). `bgra`: premultiplied B, G, R, A rows of `size` pixels; the window is opaque there (its alpha is not read). A
+// translucent window (WS_EX_NOREDIRECTIONBITMAP) has no GDI surface: the renderer shows its CPU frames through
+// DirectComposition itself (render's cpu_stage_d3d.odin). False: nothing shown.
+show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bool {
+	if !can_show_pixels(w) || size.x <= 0 || size.y <= 0 || len(bgra) < size.x * size.y * 4 { return false }
+	resize(&w.pixels, size.x * size.y * 4)
+	copy(w.pixels[:], bgra[:size.x * size.y * 4])
+	w.pixels_size = size
+	dc := win.GetDC(w.hwnd)
+	if dc == nil { return false }
+	pixels_paint(w, dc)
+	win.ReleaseDC(w.hwnd, dc)
+	return true
+}
+
+can_show_pixels :: proc(w: ^Window) -> bool { return w != nil && !w.offscreen && !w.no_redirection && w.hwnd != nil }
+
+drop_pixels :: proc(w: ^Window) {
+	if w == nil { return }
+	delete(w.pixels)
+	w.pixels = nil
+	w.pixels_size = {}
+}
+
+// show_pixels' picture into the window's device context, from its top-left corner.
+@(private = "file")
+pixels_paint :: proc(w: ^Window, dc: win.HDC) {
+	if len(w.pixels) == 0 { return }
+	bi := win.BITMAPINFO{}
+	bi.bmiHeader = {
+		biSize = size_of(win.BITMAPINFOHEADER), biWidth = i32(w.pixels_size.x), biHeight = -i32(w.pixels_size.y),   // (negative: rows top-down)
+		biPlanes = 1, biBitCount = 32, biCompression = win.BI_RGB,
+	}
+	DIB_RGB_COLORS :: 0
+	win.StretchDIBits(dc, 0, 0, i32(w.pixels_size.x), i32(w.pixels_size.y), 0, 0, i32(w.pixels_size.x), i32(w.pixels_size.y),
+		raw_data(w.pixels), &bi, DIB_RGB_COLORS, win.SRCCOPY)
+}
 
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) {
@@ -1173,7 +1213,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_PAINT:
 		ps: win.PAINTSTRUCT
-		win.BeginPaint(hwnd, &ps)
+		dc := win.BeginPaint(hwnd, &ps)
+		if dc != nil && len(w.pixels) > 0 { pixels_paint(w, dc) }   // (render's CPU frame, until its swap chain presents)
 		win.EndPaint(hwnd, &ps)
 		// from the app's own poll the frame being built repaints anyway: a nested one would present twice in one turn
 		// and wait twice for the swap chain. Only a loop of the system (live resize, menu) needs the frame from here.

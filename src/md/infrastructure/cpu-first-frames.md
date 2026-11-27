@@ -105,9 +105,20 @@ given on the CPU, rasterises each frame on the CPU and gives the pixels to the w
   first picture on the screen is the GPU's, as before. Xvfb without a manager and Wayland show the CPU picture.
 - `TOOLKIT_CPU_FIRST=0` in the environment turns the stage off: for a measure before and after, and for a machine where
   it is wrong.
-- Windows is not done. A GDI picture (a DIB section copied on `WM_PAINT`) followed by a flip-model swap chain on the same
-  window must be checked on a real machine for a blank frame between the two. DWM is expected to show the redirection
-  surface until the first present of the swap chain, but this is not verified. See ROADMAP.md.
+- **Windows (Direct3D 11).** A host's window is translucent: it is made with `WS_EX_NOREDIRECTIONBITMAP`, has no GDI
+  surface, and only DirectComposition shows anything in it. So the CPU frames go to a composition swap chain of a WARP
+  device (no driver to load: milliseconds), set as the content of the window's own DirectComposition visual
+  (`cpu_stage_d3d.odin`). At the end of the stage, `init_composition` takes that device's target and visual over
+  instead of making its own (a window has one target: a second is refused, and one released first would show nothing
+  meanwhile), and keeps the stage's chain as the one retired. The renderer's chain is set as the visual's content at
+  its first present, in the same commit (`composition_show`, the path a change of alpha mode already takes). Neither
+  chain is ever shown without content: no blank frame, by construction. A window without composition (opaque, or
+  DirectComposition missing: Wine) shows the CPU frame through GDI (`platform.show_pixels`: `StretchDIBits` now and on
+  each `WM_PAINT`), and DWM shows that redirection surface until the flip-model chain's first present. No adapter wait
+  on Direct3D: it falls back to WARP, and the stage's own WARP device proves WARP works, so a machine where it fails gets
+  no stage and the usual failure. The tests that refuse `CreateDevice` count its calls: no stage while a device fault is
+  armed. The atlas text with colour stripes is blended per channel as Direct3D blends it (`rect_dual.wgsl`).
+  Compiled for Windows from Linux, not run: no Windows machine was reachable (ROADMAP.md).
 
 - On X11, the loop's wait drained what XCB had read before it polled the socket, and an event handled there (the
   window's `MapNotify`) ended no wait: a window with nothing else to say slept before its first frame. The CPU stage

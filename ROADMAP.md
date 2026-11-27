@@ -152,10 +152,10 @@
 
 ## Later
 
-- **The first frame on the CPU on Windows.** A window shows its first picture from a DIB section on `WM_PAINT` while
-  Direct3D 11 and its shaders come, as Linux does: first checked on a real machine for a blank frame between the GDI
-  picture and the flip-model swap chain's first present. Intent:
-  [src/md/infrastructure/cpu-first-frames.md](src/md/infrastructure/cpu-first-frames.md).
+- **The first frame on the CPU, checked on Windows.** The Direct3D 11 stage (a WARP chain on the window's composition
+  visual, GDI for a window without composition) is compiled but has never run: run hello and fidget on a Windows machine,
+  read the start marks, and record the screen across the switch (no blank frame), on Direct3D 11 hardware and on WARP.
+  Intent: [src/md/infrastructure/cpu-first-frames.md](src/md/infrastructure/cpu-first-frames.md).
 - **CPU frames until the device is ready.** The renderer stays in its CPU stage until the device and the pipelines are
   made, without a wait: input is answered during the 100 to 200 ms the GPU still takes on lavapipe. It needs a wake from
   the device's thread. Intent: [src/md/infrastructure/cpu-first-frames.md](src/md/infrastructure/cpu-first-frames.md).

@@ -96,7 +96,7 @@ create_app_shader :: proc(r: ^Renderer, desc: App_Shader_Desc) -> App_Shader {
 	d := App_Shader_Data{name = strings.clone(desc.name), wgsl = desc.wgsl, dxbc = desc.dxbc}
 	ok: bool
 	// (the CPU stage has no device: its end makes it, wgpu_app_shaders_recreate)
-	when USE_WGPU { ok = cpu_stage_active(r) || wgpu_app_shader_make(r, &d) } else { ok = d3d_app_shader_make(r, &d, desc.hash) }
+	when USE_WGPU { ok = cpu_stage_active(r) || wgpu_app_shader_make(r, &d) } else { ok = cpu_stage_active(r) || d3d_app_shader_make(r, &d, desc.hash) }
 	if !ok {
 		delete(d.name)
 		return 0

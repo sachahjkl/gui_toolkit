@@ -212,7 +212,15 @@ set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 
 // One surface size while the window resizes (see d3d set_fixed_surface): never scaled, clipped by the window.
 set_fixed_surface :: proc(r: ^Renderer, max_size: [2]int) -> bool {
-	when USE_WGPU { return false } else { return d3d_set_fixed_surface(r, max_size) }
+	when USE_WGPU { return false } else {
+		// (the CPU stage has no chain yet: the one made at its end takes the size, create_swapchain)
+		if cpu_stage_active(r) {
+			if !r.transparent || max_size.x <= 0 || max_size.y <= 0 { return false }
+			r.fixed_surface, r.surface_max = true, max_size
+			return true
+		}
+		return d3d_set_fixed_surface(r, max_size)
+	}
 }
 
 create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {

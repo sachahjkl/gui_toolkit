@@ -7,6 +7,9 @@ import "core:os"
 import "core:sync"
 @(require) import "core:time"
 @(require) import "vendor:wgpu"
+import "vendor:directx/d3d11"
+import "vendor:directx/dxgi"
+@(require) import win "core:sys/windows"
 @(require) import base "../base"
 import "../platform"
 
@@ -28,9 +31,10 @@ import "../platform"
 // The most frames of a stage: the first, and those at a size the window was given since (a tiling compositor's tile).
 CPU_STAGE_FRAMES_MAX :: 3
 
-// Off (-define:TOOLKIT_CPU_FIRST=false): no stage, no copies, no rasteriser in the program. Linux only: the platform shows
-// pixels on Wayland and X11 (Windows: ROADMAP.md).
-CPU_FIRST :: #config(TOOLKIT_CPU_FIRST, true) && USE_WGPU && ODIN_OS == .Linux
+// Off (-define:TOOLKIT_CPU_FIRST=false): no stage, no copies, no rasteriser in the program. Linux on wgpu (the platform shows
+// the pixels on Wayland and X11), Windows on Direct3D 11 (a WARP device shows them through the window's composition
+// visual, cpu_stage_d3d.odin; a window without composition, through GDI).
+CPU_FIRST :: #config(TOOLKIT_CPU_FIRST, true) && ((USE_WGPU && ODIN_OS == .Linux) || (!USE_WGPU && ODIN_OS == .Windows))
 
 // What the renderer keeps on the CPU while a CPU rasteriser can read it.
 Cpu_Stage :: struct {
@@ -51,6 +55,20 @@ Cpu_Stage :: struct {
 	bgra:    [dynamic]u8,       // the frame encoded for the window (B, G, R, A, premultiplied)
 	clear:   [4]f32,            // frame_begin's
 	init:    Cpu_Stage_Init,    // what init_window was asked, for the end of the stage
+	show:    Cpu_Show,          // Windows: what shows the CPU frames on a composition window (cpu_stage_d3d.odin)
+}
+
+// Windows: a WARP device and a composition swap chain on the window's own DirectComposition visual. The renderer takes
+// the visual over at the end of the stage, and shows its own chain there after that chain's first present.
+Cpu_Show :: struct {
+	device:    ^d3d11.IDevice,
+	ctx:       ^d3d11.IDeviceContext,
+	swapchain: ^dxgi.ISwapChain1,
+	dcomp:     ^IDCompositionDevice,
+	target:    ^IDCompositionTarget,
+	visual:    ^IDCompositionVisual,
+	size:      [2]int,       // the chain's buffers
+	committed: bool,         // the visual shows the chain (its first present was committed)
 }
 
 @(private)
@@ -106,16 +124,27 @@ cpu_shadow_wanted :: proc() -> bool {
 @(private)
 cpu_stage_begin :: proc(r: ^Renderer, w: ^platform.Window, surface: platform.Surface_Handles, size: [2]int, transparent: bool, space: Blend_Space) -> bool {
 	when !CPU_FIRST { return false } else {
-		if w == nil || !cpu_first_wanted() || !platform.can_show_pixels(w) { return false }
+		if w == nil || !cpu_first_wanted() { return false }
 		if device_preload_state() != .Creating { return false }
-		// (a device is coming: its adapter is known in milliseconds. None: init fails now, with the no-graphics sentence
-		// of a failed host_open. GL: the window makes its own device there, and its first frame would wait for its
-		// pipelines at the start anyway, wgpu_gl_pipelines)
-		if preload_adapter_wait() != .Vulkan { return false }
-		// (what adapter_info says during the stage: the adapter that will draw)
-		r.wg.adapter_name_len = copy(r.wg.adapter_name[:], preload.adapter_name[:preload.adapter_name_len])
-		r.wg.backend_type, r.wg.cpu_adapter = preload.adapter_backend, preload.adapter_software
-		r.cpu = {active = true, window = w, init = {surface = surface, transparent = transparent, space = space}}
+		when USE_WGPU {
+			if !platform.can_show_pixels(w) { return false }
+			// (a device is coming: its adapter is known in milliseconds. None: init fails now, with the no-graphics sentence
+			// of a failed host_open. GL: the window makes its own device there, and its first frame would wait for its
+			// pipelines at the start anyway, wgpu_gl_pipelines)
+			if preload_adapter_wait() != .Vulkan { return false }
+			// (what adapter_info says during the stage: the adapter that will draw)
+			r.wg.adapter_name_len = copy(r.wg.adapter_name[:], preload.adapter_name[:preload.adapter_name_len])
+			r.wg.backend_type, r.wg.cpu_adapter = preload.adapter_backend, preload.adapter_software
+			r.cpu = {active = true, window = w, init = {surface = surface, transparent = transparent, space = space}}
+		} else {
+			// (Direct3D 11 falls back to WARP: a device always comes, and the stage's own WARP device proves WARP works. The
+			// tests that refuse devices count CreateDevice's calls: no stage while they do)
+			if fault_armed(.D3D_Device) { return false }
+			r.cpu = {active = true, window = w, init = {surface = surface, transparent = transparent, space = space}}
+			r.hwnd = win.HWND(surface.hwnd)
+			shown := transparent ? cpu_show_open(r, size) : platform.can_show_pixels(w)
+			if !shown { cpu_show_close(&r.cpu.show); r.cpu = {}; return false }
+		}
 		r.surface_handles = surface
 		r.size = size
 		r.transparent, r.transparent_asked = transparent, transparent
@@ -137,6 +166,9 @@ cpu_stage_end :: proc(r: ^Renderer) -> bool {
 	when !CPU_FIRST { return true } else {
 		if !r.cpu.active { return true }
 		if r.cpu.failed { return false }
+		when !USE_WGPU {
+			return cpu_stage_end_d3d(r)
+		} else {
 		in_ := r.cpu.init
 		size := r.size
 		if !wgpu_init(r, in_.surface, size, in_.transparent, in_.space) {
@@ -172,13 +204,32 @@ cpu_stage_end :: proc(r: ^Renderer) -> bool {
 			if len(data) > 0 { wgpu.QueueWriteBuffer(g.queue, h.wbuf, 0, raw_data(data), uint(len(data))) }
 		}
 		wgpu_app_shaders_recreate(r)
+		cpu_stage_ended(r)
+		return true
+		}
+	}
+}
+
+// The device has everything the stage held: the frames are the GPU's from now on, and the CPU copies go.
+@(private)
+cpu_stage_ended :: proc(r: ^Renderer) {
+	when CPU_FIRST {
 		r.cpu.active = false
 		r.cpu.shown_at = r.present.presents
 		if !r.cpu.shadow { cpu_mirror_free(r) }
 		for &h in r.cpu.heaps { delete(h); h = nil }
 		base.start_mark("render: device after the CPU stage")
-		return true
 	}
+}
+
+// What the Windows stage made to show its frames, released (what the renderer took over is nil already).
+@(private)
+cpu_show_close :: proc(s: ^Cpu_Show) {
+	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	rel(&s.visual); rel(&s.target); rel(&s.dcomp); rel(&s.swapchain)
+	if s.ctx != nil { s.ctx->ClearState() }
+	rel(&s.ctx); rel(&s.device)
+	s^ = {}
 }
 
 // The bytes a texel takes in a texture's CPU copy (as the GPU stores it).
@@ -265,6 +316,7 @@ cpu_stage_destroy :: proc(r: ^Renderer) {
 	when CPU_FIRST {
 		if r.cpu.active && device_preload_state() != .Not_Started { release_preloaded_device() }
 		if r.cpu.shown && r.cpu.window != nil { platform.drop_pixels(r.cpu.window) }
+		cpu_show_close(&r.cpu.show)
 		cpu_mirror_free(r)
 		for &h in r.cpu.heaps { delete(h) }
 		delete(r.cpu.frame)
@@ -321,7 +373,13 @@ cpu_frame_end :: proc(r: ^Renderer) {
 		t1 := time.tick_now()
 		// (counted shown or not: a window not on the screen yet must not keep the stage for ever)
 		r.cpu.frames += 1
-		if !platform.show_pixels(r.cpu.window, r.cpu.bgra[:], r.size, r.opaque_frames) { return }
+		shown: bool
+		when USE_WGPU {
+			shown = platform.show_pixels(r.cpu.window, r.cpu.bgra[:], r.size, r.opaque_frames)
+		} else {
+			shown = r.cpu.show.swapchain != nil ? cpu_show_present(r) : platform.show_pixels(r.cpu.window, r.cpu.bgra[:], r.size, r.opaque_frames)
+		}
+		if !shown { return }
 		if r.cpu.shown && render_trace() {
 			fmt.eprintfln("render: CPU frame %d (%dx%d) shown %.0f ms after the process started", r.cpu.frames, r.size.x, r.size.y, base.start_ms())
 		}
@@ -347,6 +405,7 @@ cpu_after_present :: proc(r: ^Renderer) {
 		if !r.cpu.shown || r.cpu.active || r.present.presents <= r.cpu.shown_at { return }
 		r.cpu.shown = false
 		platform.drop_pixels(r.cpu.window)
+		cpu_show_close(&r.cpu.show)   // (the visual is the renderer's now: what is left is the WARP device)
 		base.start_mark("render: first frame on the GPU")
 		if render_trace() { fmt.eprintfln("render: first GPU present %.0f ms after the process started (%d frames on the CPU before it)", base.start_ms(), r.cpu.frames) }
 	}

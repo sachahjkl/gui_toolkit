@@ -102,10 +102,12 @@ window and the font are then made side by side); a program that asked earlier ke
 small window, `-o:speed`, Xvfb): the first frame shown 592 ms after the process started before, 205 ms after
 ([src/md/infrastructure/fast-start.md](../src/md/infrastructure/fast-start.md)).
 
-**The first frame on the CPU** (Linux). `init_window(..., cpu_first = true)` returns at once while the device made early is
-still being made: the renderer is in its CPU stage (`render.cpu_stage_active`). Its first frame is drawn on the CPU, with
-the shaders' formulas, and shown on the window through the platform (`platform.show_pixels`: a `wl_shm` buffer on
-Wayland, `PutImage` on X11). The next `frame_begin` ends the stage (`render.cpu_stage_end`, which a program may also
+**The first frame on the CPU** (Linux; Windows on Direct3D 11). `init_window(..., cpu_first = true)` returns at once
+while the device made early is still being made: the renderer is in its CPU stage (`render.cpu_stage_active`). Its
+first frame is drawn on the CPU, with the shaders' formulas, and shown on the window: through the platform on Linux
+(`platform.show_pixels`: a `wl_shm` buffer on Wayland, `PutImage` on X11), through a WARP device's swap chain on the
+window's DirectComposition visual on Windows (GDI for a window without composition). A program with its own loop asks
+`render.cpu_stage_next(&r)` after each frame: `owed`, its next frame must come at once; `failed`, the device did not come. The next `frame_begin` ends the stage (`render.cpu_stage_end`, which a program may also
 call itself): it waits for the device, makes the surface and the pipelines, gives every texture and retained heap made
 meanwhile its GPU object in the same handle, and that frame is drawn on the GPU. If the device does not come, the frames
 stay on the CPU and `render.init_failure` says why. `host.host_open` asks for the stage and asks for the second frame at

@@ -532,6 +532,14 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 	desc.Format = composition_format(r.space)
 	if win.FAILED(factory->CreateSwapChainForComposition(r.device, &desc, nil, &r.swapchain)) { return false }
 	set_composition_color_space(r)
+	if s := &r.cpu.show; s.visual != nil {
+		// (the CPU stage's visual shows its picture: this chain goes there at its first present, composition_show, in one
+		// commit. The window has one target: a second one is refused, and one let go first showed nothing meanwhile)
+		r.dcomp, r.dcomp_target, r.dcomp_visual = s.dcomp, s.target, s.visual
+		r.swap_retired = s.swapchain
+		s.dcomp, s.target, s.visual, s.swapchain = nil, nil, nil, nil
+		return true
+	}
 	ok := win.SUCCEEDED(DCompositionCreateDevice((^win.IUnknown)(dxgi_device), IDCompositionDevice_UUID, (^rawptr)(&r.dcomp)))
 	ok = ok && win.SUCCEEDED(r.dcomp->CreateTargetForHwnd(hwnd, !r.under_children, &r.dcomp_target))
 	ok = ok && win.SUCCEEDED(r.dcomp->CreateVisual(&r.dcomp_visual))
