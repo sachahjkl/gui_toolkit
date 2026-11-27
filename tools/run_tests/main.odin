@@ -233,10 +233,11 @@ STEPS := []Step{
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci6, oses = EVERYWHERE, text = true},
 	// (what covers a change: a process of its own; with the scenes above it passed 420 s on WARP, its six scenes 308 s:
-	// two shards. Its quiet buttons in every finish are a process of their own too, each on its runner: 280 s and 212 s)
+	// two shards. Its quiet buttons in every finish are one test per finish, sharded in two per format so each test and
+	// each runner stays well under WARP's 5-minute limit)
 	{name = "partial_redraw_layers", one = true, shards = {.Ci4, .Ci5}, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.a_change_under_a_dialog_redraws_the_dialog_over_it,partial_redraw_layers_test.text_that_changes_under_an_internal_window_stays_under_it,partial_redraw_layers_test.a_table_with_code_in_striped_rows_is_exact_and_opaque,partial_redraw_layers_test.framed_panels_and_a_dialog_over_them_stay_opaque,partial_redraw_layers_test.an_unseen_dialog_redraws_nothing,partial_redraw_layers_test.the_palette_redraws_nothing_before_it_shows"}},
-	{name = "partial_redraw_buttons", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci8, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque"}},
-	{name = "partial_redraw_buttons_half", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci7, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque_in_half_floats"}},
+	{name = "partial_redraw_buttons", path = "tests/partial_redraw_layers", one = true, shards = {.Ci8, .Ci1}, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_flat,partial_redraw_layers_test.quiet_buttons_gradient,partial_redraw_layers_test.quiet_buttons_glass,partial_redraw_layers_test.quiet_buttons_machined,partial_redraw_layers_test.quiet_buttons_edged"}},
+	{name = "partial_redraw_buttons_half", path = "tests/partial_redraw_layers", one = true, shards = {.Ci7, .Ci10}, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_half_flat,partial_redraw_layers_test.quiet_buttons_half_gradient,partial_redraw_layers_test.quiet_buttons_half_glass,partial_redraw_layers_test.quiet_buttons_half_machined,partial_redraw_layers_test.quiet_buttons_half_edged"}},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},
@@ -639,7 +640,7 @@ carry_out :: proc(s: ^Step, o: ^Run_Options, r: ^Result) {
 		_ = os.make_directory_all(crash_dir)
 		env, _ := os.environ(context.temp_allocator)
 		env_crash := make([dynamic]string, 0, len(env) + 1, context.temp_allocator)
-		append(&env_crash, ..env)
+		for e in env { if e != "" { append(&env_crash, e) } }
 		append(&env_crash, fmt.tprintf("%s=%s", CRASH_DIR_ENV, crash_dir))
 		if !run_to_log({exe_path}, log_file, o.limit, r, env_crash[:]) {
 			if r.why == "" { r.why = "a test failed" }

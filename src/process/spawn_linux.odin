@@ -35,7 +35,7 @@ resolve :: proc(name: string, env: []string) -> (path: string, ok: bool) {
 @(private)
 spawn :: proc(desc: os.Process_Desc, resolved: string) -> (p: os.Process, err: os.Error) {
 	argv := cstrings(desc.command)
-	envp := desc.env != nil ? cstrings(desc.env) : environment_cstrings()
+	envp := desc.env != nil ? env_cstrings(desc.env) : environment_cstrings()
 	dir: cstring = desc.working_dir != "" ? strings.clone_to_cstring(desc.working_dir, context.temp_allocator) : nil
 	null, nerr := linux.open("/dev/null", {.RDWR, .CLOEXEC})
 	if nerr != .NONE { return {}, os.Platform_Error(nerr) }
@@ -57,10 +57,23 @@ cstrings :: proc(list: []string) -> [^]cstring {
 	return raw_data(out)
 }
 
+// A nil-terminated environment list in temp memory; empty entries and those with a NUL are dropped (Odin's Linux
+// os.environ appends a trailing "" from the final nil of posix.environ, which crashes Zig's startup).
+@(private)
+env_cstrings :: proc(list: []string) -> [^]cstring {
+	out := make([dynamic]cstring, 0, len(list) + 1, context.temp_allocator)
+	for s in list {
+		if s == "" || strings.index_byte(s, 0) >= 0 { continue }
+		append(&out, strings.clone_to_cstring(s, context.temp_allocator))
+	}
+	append(&out, nil)
+	return raw_data(out)
+}
+
 @(private)
 environment_cstrings :: proc() -> [^]cstring {
 	env, _ := os.environ(context.temp_allocator)
-	return cstrings(env)
+	return env_cstrings(env)
 }
 
 // Forks; the child puts fds[i] at descriptor i, marks every other descriptor close-on-exec, moves to `dir` (nil:

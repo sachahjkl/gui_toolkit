@@ -182,11 +182,20 @@ spec_encode :: proc(path, dir: string, argv: []string, env: []string) -> []u8 {
 	put_u32 :: proc(b: ^[dynamic]u8, v: u32) { v := v; append(b, ..([^]u8)(&v)[:4]) }
 	put :: proc(b: ^[dynamic]u8, s: string) { put_u32(b, u32(len(s))); append(b, s) }
 	put_u32(&b, u32(len(argv)))
-	put_u32(&b, env == nil ? ENV_INHERIT : u32(len(env)))
+	if env == nil {
+		put_u32(&b, ENV_INHERIT)
+	} else {
+		count: u32
+		for e in env { if e != "" && strings.index_byte(e, 0) < 0 { count += 1 } }
+		put_u32(&b, count)
+	}
 	put(&b, path)
 	put(&b, dir)
 	for a in argv { put(&b, a) }
-	for e in env { put(&b, e) }
+	for e in env {
+		if e == "" || strings.index_byte(e, 0) >= 0 { continue }
+		put(&b, e)
+	}
 	return b[:]
 }
 

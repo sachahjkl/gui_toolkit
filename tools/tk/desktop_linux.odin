@@ -142,7 +142,7 @@ run_desktop_tests :: proc(args: []string) -> string {
 	_ = os.chmod(run_dir, {.Read_User, .Write_User, .Execute_User})
 	environ, _ := os.environ(context.temp_allocator)
 	d.env = make([dynamic]string, context.temp_allocator)
-	append(&d.env, ..environ)
+	for e in environ { if e != "" { append(&d.env, e) } }
 	env_set(&d, "PATH", fmt.tprintf("%s:%s", bin, os.get_env("PATH", context.temp_allocator)))
 	env_unset(&d, "DBUS_SESSION_BUS_ADDRESS")   // (no session bus of a person: open_url must come to the xdg-open here)
 	env_set(&d, "XDG_RUNTIME_DIR", run_dir)

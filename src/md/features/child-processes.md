@@ -39,7 +39,9 @@ On Linux `os.pipe` sets close-on-exec, and the child gets only what is put in it
 
 `start` does not call `os.process_start` on Linux and Windows. It finds a bare name in `PATH` itself (never in the
 current folder), and spawns with its own fork and exec (Linux) or its own `CreateProcessW` (Windows: the application
-name given, no console window, a `.bat` or `.cmd` script quoted for cmd.exe). Why, and the rules:
+name given, no console window, a `.bat` or `.cmd` script quoted for cmd.exe). Empty environment entries and entries with
+a NUL byte are dropped on both systems: Odin's Linux `os.environ` appends a trailing `""` from the final `nil` of
+`posix.environ`, and strict children such as Zig crash on an empty `envp` entry. Why, and the rules:
 [process-trees.md](process-trees.md).
 
 ## `run`

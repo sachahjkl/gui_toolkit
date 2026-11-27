@@ -171,7 +171,7 @@ start_program :: proc(command: []string, extra_env: []string, dir := "", stderr:
 	env := make([dynamic]string, context.temp_allocator)
 	all, _ := os.environ(context.temp_allocator)
 	next: for e in all {
-		if strings.has_prefix(e, "TOOLKIT_DEVTOOLS=") { continue }
+		if e == "" || strings.has_prefix(e, "TOOLKIT_DEVTOOLS=") { continue }
 		for x in extra_env {
 			if eq := strings.index_byte(x, '='); eq > 0 && strings.has_prefix(e, x[:eq + 1]) { continue next }
 		}

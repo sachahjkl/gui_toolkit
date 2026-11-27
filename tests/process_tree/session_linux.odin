@@ -30,3 +30,37 @@ a_tree_child_leads_a_session_of_its_own :: proc(t: ^testing.T) {
 	end, done := process.tree_wait(&tree, 15 * time.Second)
 	testing.expect(t, done && end.signaled && end.code == 15, fmt.tprint(end))
 }
+
+// A tree's child receives no empty entry in envp, whether inheriting or given an explicit list containing "".
+@(test)
+a_tree_child_inherits_a_clean_environment :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 60 * time.Second)
+	testing.expect(t, os.set_env("GT_TREE_CLEAN_ENV", "present") == nil)
+	defer _ = os.unset_env("GT_TREE_CLEAN_ENV")
+
+	read_tree_env :: proc(t: ^testing.T, env: []string, want_entry: string) {
+		r, w, perr := process.pipe()
+		if !testing.expect(t, perr == nil, "a pipe") { return }
+		tree, err := process.tree_start({command = {"cat", "/proc/self/environ"}, env = env, stdout = w})
+		os.close(w)
+		if !testing.expect(t, err == nil, fmt.tprint(err)) { os.close(r); return }
+		data, _ := os.read_entire_file_from_file(r, context.temp_allocator)
+		os.close(r)
+		end, done := process.tree_wait(&tree, 15 * time.Second)
+		process.tree_close(&tree)
+		testing.expect(t, done && !end.signaled && end.code == 0, fmt.tprint(end))
+		raw := string(data)
+		testing.expect(t, len(raw) > 0 && raw[len(raw) - 1] == 0, "environ ends with NUL")
+		entries := strings.split(strings.trim_suffix(raw, "\x00"), "\x00", context.temp_allocator)
+		found := false
+		for e, i in entries {
+			testing.expectf(t, e != "", "empty envp entry at index %d of %d", i, len(entries))
+			if e == want_entry { found = true }
+		}
+		testing.expectf(t, found, "tree child env missing %s", want_entry)
+	}
+
+	read_tree_env(t, nil, "GT_TREE_CLEAN_ENV=present")
+	path_env := fmt.tprintf("PATH=%s", os.get_env("PATH", context.temp_allocator))
+	read_tree_env(t, {"", path_env, "GT_TREE_EXPLICIT=yes", ""}, "GT_TREE_EXPLICIT=yes")
+}

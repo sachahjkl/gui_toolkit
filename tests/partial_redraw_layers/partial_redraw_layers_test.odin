@@ -439,16 +439,21 @@ quiet_build :: proc(s: ^session.Session) {
 	}
 }
 
-@(test)
-quiet_buttons_above_framed_panels_are_exact_and_opaque :: proc(t: ^testing.T) {
-	for f in ui.Finish { quiet_scene(t, false, f) }
-}
+// One test per finish and format: all five finishes in one test passed session.TEST_LIMIT (5 minutes) on WebGPU's WARP
+// once page held the buttons and panels, and separate tests let run_tests shard them across runners.
+#assert(len(ui.Finish) == 5)
 
-// The same in half floats: a test of its own, each format within WARP's time (both in one passed 5 minutes there).
-@(test)
-quiet_buttons_above_framed_panels_are_exact_and_opaque_in_half_floats :: proc(t: ^testing.T) {
-	for f in ui.Finish { quiet_scene(t, true, f) }
-}
+@(test) quiet_buttons_flat :: proc(t: ^testing.T) { quiet_scene(t, false, .Flat) }
+@(test) quiet_buttons_gradient :: proc(t: ^testing.T) { quiet_scene(t, false, .Gradient) }
+@(test) quiet_buttons_glass :: proc(t: ^testing.T) { quiet_scene(t, false, .Glass) }
+@(test) quiet_buttons_machined :: proc(t: ^testing.T) { quiet_scene(t, false, .Machined) }
+@(test) quiet_buttons_edged :: proc(t: ^testing.T) { quiet_scene(t, false, .Edged) }
+
+@(test) quiet_buttons_half_flat :: proc(t: ^testing.T) { quiet_scene(t, true, .Flat) }
+@(test) quiet_buttons_half_gradient :: proc(t: ^testing.T) { quiet_scene(t, true, .Gradient) }
+@(test) quiet_buttons_half_glass :: proc(t: ^testing.T) { quiet_scene(t, true, .Glass) }
+@(test) quiet_buttons_half_machined :: proc(t: ^testing.T) { quiet_scene(t, true, .Machined) }
+@(test) quiet_buttons_half_edged :: proc(t: ^testing.T) { quiet_scene(t, true, .Edged) }
 
 // A scale of Windows' displays: the buttons' edges and their shadows fall between pixels. (1, 1.25 and 1.5 all passed
 // on WebGPU; one scale keeps the package within WARP's time.)

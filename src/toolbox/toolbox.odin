@@ -120,13 +120,14 @@ env_with :: proc(without: []string, extra: ..string) -> []string {
 env_merge :: proc(all, without, extra: []string) -> []string {
 	out := make([dynamic]string, 0, len(all) + len(extra), context.temp_allocator)
 	next: for e in all {
+		if e == "" { continue }   // (Odin's Linux os.environ appends a trailing "" from the final nil of posix.environ)
 		name := env_name(e)
 		if name == "" { append(&out, e); continue }   // (Windows' per-drive entries, "=C:=C:\...", have no name to match)
 		for w in without { if env_name_equal(name, w) { continue next } }
-		for x in extra { if env_name_equal(name, env_name(x)) { continue next } }
+		for x in extra { if x != "" && env_name_equal(name, env_name(x)) { continue next } }
 		append(&out, e)
 	}
-	append(&out, ..extra)
+	for x in extra { if x != "" { append(&out, x) } }
 	return out[:]
 }
 

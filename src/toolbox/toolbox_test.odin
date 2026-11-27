@@ -66,6 +66,14 @@ an_environment_with_and_without :: proc(t: ^testing.T) {
 	testing.expect_value(t, count(env, "TK_TOOLBOX_ADDED=yes"), 1)
 	testing.expect_value(t, env_name("=C:=C:\\work"), "")
 	testing.expect_value(t, env_name("PATH=/bin"), "PATH")
+	for e in env { testing.expect(t, e != "", "env_with keeps no empty entry") }
+	for e in env_with(nil) { testing.expect(t, e != "", "env_with(nil) keeps no empty entry") }
+	cleaned := env_merge({"", "A=1", "=C:=C:\\work", ""}, nil, {""})
+	testing.expect_value(t, len(cleaned), 2)
+	if len(cleaned) == 2 {
+		testing.expect_value(t, cleaned[0], "A=1")
+		testing.expect_value(t, cleaned[1], "=C:=C:\\work")
+	}
 	when ODIN_OS == .Windows {
 		testing.expect_value(t, named(env_with({"tk_toolbox_kept"}), "TK_TOOLBOX_KEPT"), 0)
 	} else {
@@ -112,6 +120,22 @@ a_command_run :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, !over, "past its limit: a failure")
 	testing.expect(t, time.tick_since(began) < LIMIT_SLACK, "stopped, not waited for")
+
+	// o.env == nil inherits this process's environment.
+	testing.expect(t, os.set_env("TK_TOOLBOX_INHERITED", "inherited_value") == nil)
+	defer _ = os.unset_env("TK_TOOLBOX_INHERITED")
+	env_log := fmt.tprintf("%s/env.txt", dir)
+	when ODIN_OS == .Windows {
+		env_line := "echo %TK_TOOLBOX_INHERITED%"
+	} else {
+		env_line := "printf '%s' \"$TK_TOOLBOX_INHERITED\""
+	}
+	testing.expect(t, run(shell(env_line), {log = env_log}))
+	env_data, _ := os.read_entire_file(env_log, context.temp_allocator)
+	testing.expect_value(t, strings.trim_space(string(env_data)), "inherited_value")
+	cap_out, cap_code := capture(shell(env_line))
+	testing.expect_value(t, cap_code, 0)
+	testing.expect_value(t, strings.trim_space(cap_out), "inherited_value")
 }
 
 @(test)

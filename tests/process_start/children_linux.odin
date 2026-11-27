@@ -61,3 +61,34 @@ a_bare_name_never_runs_from_the_current_folder :: proc(t: ^testing.T) {
 		testing.expect(t, state.exited && state.exit_code == 0)
 	}
 }
+
+// A child inherits the parent environment when env is nil and receives no empty entry in envp, whether inheriting or
+// given a list containing "" (Odin's Linux os.environ appends a trailing "" from posix.environ's final nil).
+@(test)
+a_child_inherits_a_clean_environment :: proc(t: ^testing.T) {
+	testing.expect(t, os.set_env("GT_PROCESS_CLEAN_ENV", "present") == nil)
+	defer _ = os.unset_env("GT_PROCESS_CLEAN_ENV")
+
+	check_environ :: proc(t: ^testing.T, raw: string, want_entry: string) {
+		testing.expect(t, len(raw) > 0 && raw[len(raw) - 1] == 0, "environ ends with NUL")
+		trimmed := strings.trim_suffix(raw, "\x00")
+		entries := strings.split(trimmed, "\x00", context.temp_allocator)
+		found := false
+		for e, i in entries {
+			testing.expectf(t, e != "", "empty envp entry at index %d of %d", i, len(entries))
+			if e == want_entry { found = true }
+		}
+		testing.expectf(t, found, "child env missing %s", want_entry)
+	}
+
+	r := process.run({"cat", "/proc/self/environ"}, {}, context.temp_allocator)
+	if testing.expect(t, r.ok, r.stderr) {
+		check_environ(t, r.stdout, "GT_PROCESS_CLEAN_ENV=present")
+	}
+
+	path_env := fmt.tprintf("PATH=%s", os.get_env("PATH", context.temp_allocator))
+	r2 := process.run({"cat", "/proc/self/environ"}, {env = {"", path_env, "GT_PROCESS_EXPLICIT=yes", ""}}, context.temp_allocator)
+	if testing.expect(t, r2.ok, r2.stderr) {
+		check_environ(t, r2.stdout, "GT_PROCESS_EXPLICIT=yes")
+	}
+}
