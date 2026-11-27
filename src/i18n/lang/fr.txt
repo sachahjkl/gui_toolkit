@@ -1534,6 +1534,45 @@ fr+ %d refusés (%s)
 en %s; %s.
 fr %s ; %s.
 
+en Close %s, then start %s again: its settings and its install move then.
+fr Fermez %s, puis relancez %s : ses réglages et son installation suivront alors.
+
+en Another start of %s is taking over %s: start it again in a moment.
+fr Un autre lancement de %s reprend %s : relancez-le dans un instant.
+
+en %s replaces the install of %s.
+fr %s remplace l'installation de %s.
+
+en %s is installed for every account: an administrator replaces it.
+fr %s est installé pour tous les comptes : un administrateur le remplace.
+
+en %s is still installed in %s: the Nix package replaces it.
+fr %s est encore installé dans %s : le paquet Nix le remplace.
+
+en %s could not replace the install of %s: %s
+fr %s n'a pas pu remplacer l'installation de %s : %s
+
+en The settings and data of %s came along.
+fr Les réglages et les données de %s ont suivi.
+
+en The settings and data of %s came along as a copy: the earlier folder stays in %s.
+fr Les réglages et les données de %s ont suivi sous forme de copie : le dossier d'origine reste dans %s.
+
+en The settings of %s stay in %s: %s had its own already.
+fr Les réglages de %s restent dans %s : %s avait déjà les siens.
+
+en The settings of %s could not move (%s): they stay where they were.
+fr Les réglages de %s n'ont pas pu être déplacés (%s) : ils restent où ils étaient.
+
+en Start %s again to try once more.
+fr Relancez %s pour réessayer.
+
+en The command %s is now %s.
+fr La commande %s est maintenant %s.
+
+en Pin %s to the taskbar again: the pin of %s starts nothing now.
+fr Épinglez de nouveau %s à la barre des tâches : l'épingle de %s ne lance plus rien.
+
 en Install folder
 fr Dossier d'installation
 
@@ -2628,6 +2667,9 @@ fr Graphe
 en node graph
 fr graphe de nœuds
 
+en %d of %d here · Alt+wheel for the next
+fr %d sur %d ici · Alt+molette pour le suivant
+
 en No shortcut
 fr Aucun raccourci
 
@@ -3000,42 +3042,3 @@ fr le serveur a répondu %d
 
 en the update has no signature: refused
 fr la mise à jour n'a pas de signature : refusée
-
-en Close %s, then start %s again: its settings and its install move then.
-fr Fermez %s, puis relancez %s : ses réglages et son installation suivront alors.
-
-en %s replaces the install of %s.
-fr %s remplace l'installation de %s.
-
-en %s is installed for every account: an administrator replaces it.
-fr %s est installé pour tous les comptes : un administrateur le remplace.
-
-en %s is still installed in %s: the Nix package replaces it.
-fr %s est encore installé dans %s : le paquet Nix le remplace.
-
-en %s could not replace the install of %s: %s
-fr %s n'a pas pu remplacer l'installation de %s : %s
-
-en The settings and data of %s came along.
-fr Les réglages et les données de %s ont suivi.
-
-en The settings of %s stay in %s: %s had its own already.
-fr Les réglages de %s restent dans %s : %s avait déjà les siens.
-
-en The settings of %s could not move (%s): they stay where they were.
-fr Les réglages de %s n'ont pas pu être déplacés (%s) : ils restent où ils étaient.
-
-en The command %s is now %s.
-fr La commande %s est maintenant %s.
-
-en Pin %s to the taskbar again: the pin of %s starts nothing now.
-fr Épinglez de nouveau %s à la barre des tâches : l'épingle de %s ne lance plus rien.
-
-en Another start of %s is taking over %s: start it again in a moment.
-fr Un autre lancement de %s reprend %s : relancez-le dans un instant.
-
-en The settings and data of %s came along as a copy: the earlier folder stays in %s.
-fr Les réglages et les données de %s ont suivi sous forme de copie : le dossier d'origine reste dans %s.
-
-en Start %s again to try once more.
-fr Relancez %s pour réessayer.

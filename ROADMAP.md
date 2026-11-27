@@ -210,6 +210,9 @@
 - **inspecteur's duration words from `timefmt`.** Its `duration_words` and `bits_text` give way to
   `timefmt.duration` and `timefmt.rate`, with a style for "3 days, 4 h 12 min" if `timefmt` lacks it.
 
+- **A node graph's links from the keyboard and in the accessibility tree.** A selected node's links listed for a screen
+  reader, and a key that walks them and selects one (Delete removes it), as Alt+wheel does for the pointer. Intent:
+  [src/md/features/node-graph.md](src/md/features/node-graph.md).
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.

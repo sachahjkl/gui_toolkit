@@ -12,13 +12,14 @@ import "gt:ui"
 
 @(private = "file")
 Near :: struct {
-	at: ui.Rect,
+	at:    ui.Rect,
+	avoid: []ui.Vec2,
 }
 
 @(private = "file")
 build :: proc(s: ^session.Session) {
 	n := (^Near)(s.user)
-	if ui.tooltip_near(n.at) { _ = ui.tooltip_text("What the rectangle is about, in a few words") }
+	if ui.tooltip_near(n.at, n.avoid) { _ = ui.tooltip_text("What the rectangle is about, in a few words") }
 }
 
 // The tooltip's rectangle with the anchor `at` (frames enough to measure it, then place it).
@@ -74,4 +75,13 @@ a_tooltip_near_a_rectangle_takes_the_side_with_room :: proc(t: ^testing.T) { unw
 	at = {{400, 300}, {f32(WINDOW.x) + 200, f32(WINDOW.y) + 200}}
 	tip = tip_at(s, &n, at)
 	testing.expectf(t, inside(tip) && (tip.max.y <= at.min.y || tip.max.x <= at.min.x), "above or left, inside: %v", tip)
+
+	// room everywhere, a vertical line through it to avoid: beside it, not below or above
+	line: [21]ui.Vec2
+	for &p, i in line { p = {150, f32(i) * 20} }
+	n.avoid = line[:]
+	at = {{140, 190}, {160, 210}}
+	tip = tip_at(s, &n, at)
+	testing.expectf(t, inside(tip) && (tip.min.x >= at.max.x || tip.max.x <= at.min.x), "beside the line: %v", tip)
+	n.avoid = nil
 }) }

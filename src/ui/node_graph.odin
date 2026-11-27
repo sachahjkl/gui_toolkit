@@ -122,8 +122,13 @@ Graph_View :: struct {
 	minimap:   Graph_Minimap,       // of the last build: graph_fit leaves its corner free
 	gesture:   Graph_Gesture,
 	link:      Maybe(Graph_Link),   // the link selected (a click on it): Delete removes it
-	hover_link: Maybe(Graph_Link),  // the link under the pointer
+	hover_link: Maybe(Graph_Link),  // the link under the pointer (the nearest, or the one Alt+wheel chose among those there)
 	hover_node: u64,                // the node under the pointer (one of its ports too), 0: none
+	link_pick: Maybe(Graph_Link),   // the link Alt+wheel chose among those under the pointer (nil: the nearest)
+	link_wheel: f32,                // Alt+wheel's fraction of a step (a touchpad's), while the pointer stays over the links
+	lit_link:  Maybe(Graph_Link),   // what the links' emphasis is about, kept while it fades out: a link,
+	lit_node:  u64,                 // or a node's links (0: none)
+	lit_dim:   f32,                 // how far the other links fade at the full emphasis (GRAPH_LINK_DIM_*)
 	tip:       [2]u64,              // what the pointer rests on for a tooltip ({}: nothing): the node, its port's mark
 	tip_since: f64,                 // when it came there (State.time_ms)
 }

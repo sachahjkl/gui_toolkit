@@ -51,7 +51,10 @@ change its model between two frames.
 | a drag from an out port | a new link; the ports it can end on glow, the others are dimmed; let go on a port: `Graph_Linked` |
 | a drag from an in port | its link comes off (`Graph_Unlinked` if it is let go on nothing, `Graph_Unlinked` and `Graph_Linked` on another port); an in port without a link starts a link backward |
 | a link let go on nothing | `Graph_Dropped_Link`: the program can offer to add a node there, linked |
-| a click on a link | selects it (drawn thicker); Delete removes it |
+| the pointer on a link | the nearest link under it stands out (see Drawing); where several links are under it, a tooltip names it (its two ends) and says which of them it is |
+| Alt+wheel over several links | the next of them (the wheel down) or the one before (a touchpad's fractions add up to a step); over one link or none, the wheel moves the view |
+| the pointer on a node | its links stand out |
+| a click on a link | selects the link under the pointer (drawn thicker); Delete removes it |
 | a right click | `Graph_Context`: where, on which node and port |
 | a double click on a node | `Graph_Opened` |
 | the middle button, or Space with the left one | moves the view |
@@ -113,7 +116,7 @@ temp allocator too.
 - `port_rows`: in `.Right`, each port on a row of its own with its name, the thumbnail and widgets under the rows (for
   typed ports whose names must stay visible next to a body).
 - `link_looks`: a `Graph_Link_Look` per link, in the order of `links`. A shorter slice (or none) leaves the other links
-  plain. A link that is selected or under the pointer is drawn thicker, in its own look.
+  plain. A link that is selected or under the pointer is drawn thicker and lighter, in its own look (see Drawing).
 - `minimap` (`Graph_Minimap`): a map of the graph and the view. `show`; `corner` (a `Corner`; nil: `.Bottom_Right`);
   `size` in logical pixels (0: a quarter of the area's width, from 100 to 200 pixels, 0.65 as tall, at most 0.35 of the
   area's height). An area too small for it shows none. Its transform freezes while dragging so moving past its edge
@@ -138,8 +141,8 @@ if app.view.hover_node != 0 { /* show its card */ }
 program's to set or save. Its other fields are the widget's.
 
 - `hover_node` is the node under the pointer (one of its ports counts), 0 when there is none or when the pointer is
-  over something built over the graph. `hover_link` is the link under the pointer (nil during a gesture). Both are set
-  at each build.
+  over something built over the graph. `hover_link` is the link under the pointer (nil during a gesture): the nearest
+  to it, or the one Alt+wheel chose among those there. Both are set at each build.
 - `graph_fit(view, nodes, area)` zooms (to 1 at most) and pans to show every node; `area` in logical pixels, 0: the box
   of the last frame. With the minimap of the last build, the nodes fit beside it or above it (below it in a top corner),
   whichever shows them larger: none is under it.
@@ -155,6 +158,19 @@ The box draws a sunken canvas (`machined_well`) with a grid. A node is a raised 
 each finish: flat, gradient, machined, edged. Its header is tinted with its accent. A selected node has a ring of the
 accent. Links are cubic curves (`draw.bezier`) in the colour of their out port's kind, or in their own look (`link_looks`): an
 intent's hue, dashes or dots (`draw.path_dash`).
+
+The link under the pointer stands out of the links that cross it:
+
+- It is drawn over every other link, thicker, its colour stepped toward the text's, on a halo of its colour.
+- Its two ports glow and the edges of its two nodes take its colour.
+- The other links fade toward the canvas.
+- A node under the pointer does the same for all its links, in and out; the others fade less.
+- The links of the selected nodes and the selected link are drawn over the plain ones, thicker and lighter. They do not
+  fade the others.
+- In every theme the hovered link reads at 3:1 on the canvas at least, and a faded link keeps 1.5:1.
+
+The emphasis fades in and out with the animations (`ui.anim`). The fade asks for frames while it runs; at rest it asks
+for none.
 
 Only the nodes and links in view are drawn and built. A node out of view has no box: its widgets' state (a text
 field's) does not survive it. A running node asks for frames while it is in view; at rest the graph asks for none.
@@ -280,3 +296,8 @@ ports linked (`Graph_Linked`), a link of other kinds refused, a band selection, 
 under the pointer, `graph_fit`, `hover_node`, a link from a bottom port to a top port in `.Down`, each link's look read
 by its pixels, a title on two lines then cut with its tooltip, and the minimap's corner and size that a fit avoids.
 `tests/node_graph/tooltip_near_test.odin` places `tooltip_near` at each edge of the window.
+`tests/node_graph/link_hover_test.odin` reads the hover of links where they cross: the nearest link picked among three,
+Alt+wheel walking them (a touchpad's fractions adding up) and the tooltip that names them, the hovered link lit over
+another and the others dimmed (by their pixels), the contrast of both on a light theme with pale kinds, a node's links
+lit, the fade that comes to rest, and a dense bundle in the dark and light themes with the tooltip beside the hovered
+link.

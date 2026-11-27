@@ -3,6 +3,7 @@ package ui
 // node_graph: the build of a frame (the area, the nodes' boxes) and what the pointer and the keys do to the graph. The
 // drawing is node_graph_draw.odin's.
 
+import "core:fmt"
 import "core:math"
 import "../draw"
 import "../flowgraph"
@@ -15,8 +16,12 @@ import "../platform"
 // A port is hit this far from its centre at least (logical px), and a wire finds a port this many times further.
 @(private) GRAPH_PORT_HIT_PX :: 8
 @(private) GRAPH_WIRE_REACH :: 1.8
-// A link is hit this close to its curve (logical px).
+// A link is hit this close to its curve (logical px at the zoom 1, within GRAPH_LINK_ZOOMS; at least half its drawn width
+// and GRAPH_LINK_HIT_LEAST_PX more).
 @(private) GRAPH_LINK_HIT_PX :: 6
+@(private) GRAPH_LINK_HIT_LEAST_PX :: 2
+// A link's tooltip avoids this many pieces of its curve (their ends).
+@(private) GRAPH_LINK_TIP_POINTS :: 48
 // The zoom glides toward what the wheel asked at this rate (per second, in its logarithm).
 @(private) GRAPH_ZOOM_RATE :: 18
 // An arrow key moves the selection this far (graph units) when the graph has no snap; with Shift ten times.
@@ -63,6 +68,8 @@ Node_Graph_Hit :: struct {
 	node: int,              // the node's index (Node, Port)
 	port: flowgraph.Port_Ref,   // Port
 	link: Graph_Link,       // Link
+	links: int,             // Link: how many links are under the point (within the hit width)
+	pick:  int,             // Link: the place of `link` among them, from 1, in the links' order
 }
 
 // The graph in a box of the size `next` gives it (else it fills). Returns what happened, in the temp allocator.
@@ -101,6 +108,9 @@ node_graph :: proc(id: string, view: ^Graph_View, nodes: []Graph_Node, links: []
 	case .Node, .Port: view.hover_node = f.nodes[under.node].id
 	case .Link: if view.gesture == nil && s.hot_key == area.key { view.hover_link = under.link }
 	}
+	// (a pick lasts while its link is under the pointer; the wheel's fraction while several links are)
+	if pick, ok := view.link_pick.?; ok && (under.kind != .Link || under.link != pick) { view.link_pick = nil }
+	if under.kind != .Link || under.links < 2 { view.link_wheel = 0 }
 	node_graph_build(&f)
 	node_graph_tip(&f, s, under)
 	a11y_default(area, {role = .Group, name = i18n.tr("Graph"), role_description = i18n.tr("node graph")})
@@ -231,21 +241,51 @@ node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 	for i := len(f.nodes) - 1; i >= 0; i -= 1 {
 		if draw.rect_contains(node_graph_screen_rect(f, i), p) { return {kind = .Node, node = i} }
 	}
-	best := GRAPH_LINK_HIT_PX * f.sc
+	under, nearest := node_graph_links_at(f, p)
+	if len(under) == 0 { return }
+	h = {kind = .Link, link = under[nearest], links = len(under), pick = nearest + 1}
+	// (the link Alt+wheel chose, while it is still under the point)
+	if pick, ok := f.view.link_pick.?; ok {
+		for l, i in under { if l == pick { h.link, h.pick = l, i + 1 } }
+	}
+	return
+}
+
+// The links under point `p` (frame px), in the links' order (the temp allocator), and the nearest of them: the distance to
+// its curve, a tie to the one drawn last.
+@(private)
+node_graph_links_at :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (under: []Graph_Link, nearest: int) {
+	reach := node_graph_link_reach(f)
+	out := make([dynamic]Graph_Link, 0, 4, context.temp_allocator)
+	best := max(f32)
 	for l in f.links {
 		a, ok_a := node_graph_port_screen(f, {l.from_node, l.from_port, .Out})
 		b, ok_b := node_graph_port_screen(f, {l.to_node, l.to_port, .In})
 		if !ok_a || !ok_b { continue }
 		ca, cb := node_graph_curve(a, b, node_graph_curve_least(f), f.down)
-		lo := [2]f32{min(a.x, b.x, ca.x, cb.x), min(a.y, b.y, ca.y, cb.y)} - best
-		hi := [2]f32{max(a.x, b.x, ca.x, cb.x), max(a.y, b.y, ca.y, cb.y)} + best
+		lo := [2]f32{min(a.x, b.x, ca.x, cb.x), min(a.y, b.y, ca.y, cb.y)} - reach
+		hi := [2]f32{max(a.x, b.x, ca.x, cb.x), max(a.y, b.y, ca.y, cb.y)} + reach
 		if !draw.rect_contains({lo, hi}, p) { continue }
-		if d := node_graph_curve_distance(a, ca, cb, b, p); d <= best {
-			best = d
-			h = {kind = .Link, link = l}
-		}
+		d := node_graph_curve_distance(a, ca, cb, b, p)
+		if d > reach { continue }
+		if d <= best { best, nearest = d, len(out) }
+		append(&out, l)
 	}
-	return
+	return out[:], nearest
+}
+
+// A link's drawn width (frame px): GRAPH_LINK_PX at the zoom, within GRAPH_LINK_ZOOMS.
+@(private)
+node_graph_link_width :: proc(f: ^Node_Graph_Frame) -> f32 {
+	return GRAPH_LINK_PX * f.sc * clamp(graph_zoom(f.view), GRAPH_LINK_ZOOMS.x, GRAPH_LINK_ZOOMS.y)
+}
+
+// How far from its curve a link is hit (frame px): it scales with the zoom as the link does, and never less than the
+// link under the pointer is wide.
+@(private)
+node_graph_link_reach :: proc(f: ^Node_Graph_Frame) -> f32 {
+	z := clamp(graph_zoom(f.view), GRAPH_LINK_ZOOMS.x, GRAPH_LINK_ZOOMS.y)
+	return max(GRAPH_LINK_HIT_PX * f.sc * z, node_graph_link_width(f) * GRAPH_LINK_HOT * 0.5 + GRAPH_LINK_HIT_LEAST_PX * f.sc)
 }
 
 // Whether the pointer is over the graph and not over something built over it (a popup, a panel): the area is the box it
@@ -265,10 +305,22 @@ node_graph_pointer_over :: proc(s: ^State, area: ^Box) -> bool {
 node_graph_tip :: proc(f: ^Node_Graph_Frame, s: ^State, h: Node_Graph_Hit) {
 	view := f.view
 	target: [2]u64
-	text: string
+	text, more: string
 	at: Rect
+	avoid: []Vec2
 	if view.gesture == nil {
 		#partial switch h.kind {
+		case .Link:
+			// (only where links overlap: one link alone is read from its curve)
+			if h.links > 1 {
+				l := h.link
+				target = node_graph_link_tip(l)
+				text = fmt.tprintf("%s → %s", node_graph_end_name(f, {l.from_node, l.from_port, .Out}), node_graph_end_name(f, {l.to_node, l.to_port, .In}))
+				more = fmt.tprintf(i18n.tr("%d of %d here · Alt+wheel for the next"), h.pick, h.links)
+				reach := node_graph_link_reach(f)
+				at = {s.mouse - reach, s.mouse + reach}
+				avoid = node_graph_link_points(f, l)
+			}
 		case .Port:
 			i, found := f.index[h.port.node]
 			if port, _, ok := node_graph_port(f, h.port); ok && found && !f.geo[i].names && port.name != "" {
@@ -301,7 +353,10 @@ node_graph_tip :: proc(f: ^Node_Graph_Frame, s: ^State, h: Node_Graph_Hit) {
 		wake_within(s, max(1, int(delay - waited) + WAKE_MARGIN_MS))
 		return
 	}
-	if tooltip_near(at) { tooltip_text(text) }
+	if tooltip_near(at, avoid) {
+		tooltip_text(text)
+		if more != "" { if muted() { tooltip_text(more) } }
+	}
 }
 
 // How far a link leaves its out port before it bends (frame px).
@@ -412,7 +467,9 @@ node_graph_input :: proc(f: ^Node_Graph_Frame, s: ^State, sig: Signal) {
 
 	// the wheel: Ctrl zooms about the pointer, else it moves the view (a touchpad's two fingers both ways)
 	if sig.scrolled != {} {
-		if .Ctrl in sig.mods {
+		if .Alt in sig.mods && node_graph_cycle(f, s, sig.scrolled) {
+			// (Alt+wheel over several links chose another of them; over one or none it moves the view)
+		} else if .Ctrl in sig.mods {
 			from := view.zoom_to > 0 ? view.zoom_to : graph_zoom(view)
 			node_graph_zoom_toward(view, from * math.pow(f32(GRAPH_ZOOM_STEP), -sig.scrolled.y), local)
 		} else {
@@ -444,6 +501,54 @@ node_graph_input :: proc(f: ^Node_Graph_Frame, s: ^State, sig: Signal) {
 
 	node_graph_follow(f, s, sig)
 	if s.focus_key == area.key { node_graph_keys(f) }
+}
+
+// Alt+wheel over several links: the next of them (the wheel down) or the one before, in the links' order, with its
+// tooltip at once; a notch is a step, fractions (a touchpad's) add up to one. false: fewer than two links under the
+// pointer.
+@(private)
+node_graph_cycle :: proc(f: ^Node_Graph_Frame, s: ^State, scrolled: [2]f32) -> bool {
+	if f.view.gesture != nil { return false }
+	h := node_graph_hit(f, s.mouse)
+	if h.kind != .Link || h.links < 2 { return false }
+	f.view.link_wheel += scrolled.y != 0 ? scrolled.y : scrolled.x
+	steps := int(f.view.link_wheel)   // (toward zero: the fraction stays)
+	if steps == 0 { return true }
+	f.view.link_wheel -= f32(steps)
+	under, _ := node_graph_links_at(f, s.mouse)
+	n := len(under)
+	l := under[((h.pick - 1 + steps) % n + n) % n]
+	f.view.link_pick = l
+	f.view.tip, f.view.tip_since = node_graph_link_tip(l), s.time_ms - f64(s.feel.tooltip_delay_ms)
+	return true
+}
+
+// Points along link `l`'s curve (frame px, the temp allocator), for its tooltip to avoid: nil when an end is not drawn.
+@(private = "file")
+node_graph_link_points :: proc(f: ^Node_Graph_Frame, l: Graph_Link) -> []Vec2 {
+	a, ok_a := node_graph_port_screen(f, {l.from_node, l.from_port, .Out})
+	b, ok_b := node_graph_port_screen(f, {l.to_node, l.to_port, .In})
+	if !ok_a || !ok_b { return nil }
+	ca, cb := node_graph_curve(a, b, node_graph_curve_least(f), f.down)
+	points := make([]Vec2, GRAPH_LINK_TIP_POINTS + 1, context.temp_allocator)
+	for &p, i in points { p = draw.bezier_cubic_at(a, ca, cb, b, f32(i) / GRAPH_LINK_TIP_POINTS) }
+	return points
+}
+
+// A link as the target of a tooltip (Graph_View.tip): apart from a node's and a port's by its first word's top bit.
+@(private)
+node_graph_link_tip :: proc(l: Graph_Link) -> [2]u64 {
+	return {(l.from_node ~ (l.to_node * 0x9e3779b97f4a7c15)) | 1 << 63, u64(l.from_port) << 32 | u64(l.to_port)}
+}
+
+// A port's name for a link's tooltip: its node's title, and the port's name after it when it has one.
+@(private)
+node_graph_end_name :: proc(f: ^Node_Graph_Frame, ref: flowgraph.Port_Ref) -> string {
+	i, found := f.index[ref.node]
+	if !found { return "?" }
+	title := f.nodes[i].title
+	if port, _, ok := node_graph_port(f, ref); ok && port.name != "" { return fmt.tprintf("%s · %s", title, port.name) }
+	return title
 }
 
 // A left press on the area: what is under it says which gesture starts.

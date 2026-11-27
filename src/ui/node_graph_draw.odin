@@ -23,7 +23,22 @@ import "../render"
 @(private) GRAPH_GRID_MAJOR_ALPHA :: 0.45
 // A link's width (logical px at the zoom 1, within these zooms); under the pointer or selected, this many times.
 @(private) GRAPH_LINK_PX :: 2
+@(private) GRAPH_LINK_ZOOMS :: [2]f32{0.6, 1.5}
 @(private) GRAPH_LINK_HOT :: 1.8
+// The emphasis of a link under the pointer, or of a node's links: their colour this far toward the text's (lighter on a
+// dark theme, darker on a light one), a halo this many link widths wider than the link, of this share of the link's
+// colour over the well. The other links keep this share of their colour over the well: less while a link is under the
+// pointer (one path to follow) than while a node is (its links among the rest). The emphasis comes and goes at this rate
+// (anim: halvings per second).
+@(private) GRAPH_LINK_LIT :: 0.3
+@(private) GRAPH_LINK_HALO :: 3
+@(private) GRAPH_LINK_HALO_MIX :: 0.32
+@(private) GRAPH_LINK_DIM_LINK :: 0.22
+@(private) GRAPH_LINK_DIM_NODE :: 0.45
+@(private) GRAPH_LIT_RATE :: 24
+// The contrast on the well a lit link reaches at least (WCAG's for what is not text), and a faded link keeps.
+@(private) GRAPH_LINK_LIT_CONTRAST :: 3
+@(private) GRAPH_LINK_DIM_CONTRAST :: 1.5
 // A dashed link's dash and gap, a dotted link's gap between dots: in the link's widths.
 @(private) GRAPH_DASH :: [2]f32{3.5, 2.5}
 @(private) GRAPH_DOT_GAP :: 2.5
@@ -65,6 +80,7 @@ Node_Graph_Port_Draw :: struct {
 	index:     int,
 	linked:    bool,
 	mark:      Node_Graph_Port_Mark,
+	lit:       f32,     // an end of a link in the emphasis: how much (0..1)
 }
 
 @(private)
@@ -75,6 +91,7 @@ Node_Graph_Node_Draw :: struct {
 	accent:    Color,
 	state:     Graph_Node_State,
 	selected:  bool,
+	lit:       Color,                 // an end of a link in the emphasis: its edge in this colour (alpha: how much; 0: none)
 	geo:       Node_Graph_Geometry,   // graph units: what is drawn at `k` frame px per unit from the box's top-left
 	k:         f32,
 	em:        f32,                   // the em, frame px
@@ -92,6 +109,9 @@ Node_Graph_Link_Draw :: struct {
 	color: Color,
 	width: f32,
 	dash:  Graph_Dash,
+	layer: u8,       // 0 plain, 1 of the selection, 2 in the emphasis: drawn in this order
+	halo:  Color,    // layer 2: under the link, opaque
+	halo_width: f32,
 }
 
 @(private)
@@ -145,13 +165,21 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 	links := make([dynamic]Node_Graph_Link_Draw, 0, len(f.links), frame_allocator())
 	linked := make(map[flowgraph.Port_Ref]bool, len(f.links) * 2, context.temp_allocator)
 	selected_link, has_selected := view.link.?
-	hover_link, has_hover := view.hover_link.?
-	base_width := GRAPH_LINK_PX * f.sc * clamp(z, 0.6, 1.5)
+	base_width := node_graph_link_width(f)
+	lit_t := node_graph_emphasis(f)
+	// the ends of the links in the emphasis: their ports and the edges of their nodes lit in the link's colour
+	lit_ports := make(map[flowgraph.Port_Ref]bool, 8, context.temp_allocator)
+	lit_nodes := make(map[u64]Color, 8, context.temp_allocator)
+	lit_colors := make(map[[5]f32]Color, 8, context.temp_allocator)   // (readable steps in OKLCH: once per colour and level)
 	for l, li in f.links {
 		if wiring && has_detached && l == detached { continue }
 		from := flowgraph.Port_Ref{l.from_node, l.from_port, .Out}
 		to := flowgraph.Port_Ref{l.to_node, l.to_port, .In}
 		linked[from], linked[to] = true, true
+		lit := lit_t > 0 && node_graph_is_lit(view, l)
+		if lit {
+			lit_ports[from], lit_ports[to] = true, true
+		}
 		a, ok_a := node_graph_port_screen(f, from)
 		b, ok_b := node_graph_port_screen(f, to)
 		if !ok_a || !ok_b { continue }
@@ -167,16 +195,30 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 			port, _, _ := node_graph_port(f, from)
 			c = node_graph_kind_color(f, port.kind, colors.accent)
 		}
-		w := base_width
-		if has_selected && l == selected_link {
-			w *= GRAPH_LINK_HOT
-			c = srgb_step(c, {1, 1, 1, 1}, 0.35)
-		} else if has_hover && l == hover_link {
-			w *= GRAPH_LINK_HOT
-		}
 		// (a link to a node that was skipped faded: an opaque mix, a translucent stroke goes through a layer)
 		if i, ok := f.index[l.to_node]; ok && f.nodes[i].state == .Skipped { c = draw.mix(colors.well, c, GRAPH_SKIPPED_ALPHA) }
-		append(&links, Node_Graph_Link_Draw{a = a - view.origin, b = b - view.origin, color = c, width = w, dash = look.dash})
+		ld := Node_Graph_Link_Draw{a = a - view.origin, b = b - view.origin, color = c, width = base_width, dash = look.dash}
+		// (the selected link, the links of the selected nodes: over the others, thicker and lighter, not dimmed)
+		if (has_selected && l == selected_link) || f.sel[l.from_node] || f.sel[l.to_node] {
+			ld.layer, ld.width, ld.color = 1, base_width * GRAPH_LINK_HOT, node_graph_lit_color(&lit_colors, c, colors, 1)
+		}
+		if lit {
+			for end in ([2]u64{l.from_node, l.to_node}) {
+				if end != view.lit_node && end not_in lit_nodes { lit_nodes[end] = c }
+			}
+			ld.layer = 2
+			ld.width = max(ld.width, base_width * (1 + (GRAPH_LINK_HOT - 1) * lit_t))
+			ld.color = node_graph_lit_color(&lit_colors, c, colors, lit_t)
+			ld.halo = draw.mix(colors.well, c, GRAPH_LINK_HALO_MIX)
+			ld.halo.a = 1
+			ld.halo_width = ld.width + base_width * GRAPH_LINK_HALO * lit_t
+		} else if lit_t > 0 {
+			// (an opaque mix toward the well, as a skipped node's links: no layer per link)
+			keep := max(view.lit_dim, node_graph_dim_floor(ld.color, colors.well))
+			ld.color = draw.mix(colors.well, ld.color, 1 - (1 - keep) * lit_t)
+			ld.color.a = 1
+		}
+		append(&links, ld)
 	}
 	ad.links = links[:]
 	f.area.custom, f.area.custom_user = node_graph_area_draw, ad
@@ -196,6 +238,7 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 				font = top_style().font, icon_font = f.o.icon_font,
 				accent = n.color.a > 0 ? n.color : colors.accent,
 				state = n.state, selected = f.sel[n.id], geo = g, k = k, em = f.em * k,
+				lit = node_graph_lit_edge(lit_nodes, n.id, lit_t),
 				thumbnail = n.thumbnail, phase = phase, colors = colors, sc = f.sc,
 			}
 			nd.geo.rect = {{}, g.rect.max - g.rect.min}   // (drawn from the box's top-left)
@@ -210,7 +253,7 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 					}
 					ports[at] = {
 						name = strings.clone(p.name, frame_allocator()), color = node_graph_kind_color(f, p.kind, colors.accent),
-						side = side, index = idx, linked = linked[ref], mark = mark,
+						side = side, index = idx, linked = linked[ref], mark = mark, lit = lit_ports[ref] ? lit_t : 0,
 					}
 					at += 1
 				}
@@ -311,6 +354,68 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 	if running { keep_animating() }
 }
 
+// How much of the emphasis shows (0..1): of the link under the pointer, else of the node under it (with a link; its
+// own during its move). It fades in and out (anim); Graph_View.lit_* keep what it is about while it fades out.
+@(private)
+node_graph_emphasis :: proc(f: ^Node_Graph_Frame) -> f32 {
+	view := f.view
+	link, on_link := view.hover_link.?
+	node := u64(0)
+	_, moving := view.gesture.(Graph_Gesture_Move)
+	if !on_link && view.hover_node != 0 && (view.gesture == nil || moving) {
+		for l in f.links {
+			if l.from_node == view.hover_node || l.to_node == view.hover_node { node = view.hover_node; break }
+		}
+	}
+	on := on_link || node != 0
+	if on {
+		view.lit_link, view.lit_node = nil, node
+		if on_link { view.lit_link = link }
+		view.lit_dim = on_link ? GRAPH_LINK_DIM_LINK : GRAPH_LINK_DIM_NODE
+	}
+	t := anim(key_from_string(view.key, "###graph_lit"), on ? 1 : 0, GRAPH_LIT_RATE)
+	if !on && t <= 0 { view.lit_link, view.lit_node = nil, 0 }
+	return t
+}
+
+// A link of colour `c` lit at `t` (0..1): stepped toward the text, and at least GRAPH_LINK_LIT_CONTRAST on the well
+// at the full emphasis (the ratio grows with `t`). `cache` keeps the colours this build made: a hub node lights hundreds
+// of links of a few colours.
+@(private = "file")
+node_graph_lit_color :: proc(cache: ^map[[5]f32]Color, c: Color, colors: Node_Graph_Colors, t: f32) -> Color {
+	key := [5]f32{c.r, c.g, c.b, c.a, t}
+	if x, ok := cache[key]; ok { return x }
+	lit := readable(srgb_step(c, colors.text, GRAPH_LINK_LIT * t), colors.well, 1 + (GRAPH_LINK_LIT_CONTRAST - 1) * t)
+	cache[key] = lit
+	return lit
+}
+
+// The share of colour `c` over the well that keeps GRAPH_LINK_DIM_CONTRAST on it (1: `c` has less; it does not fade).
+// A mix toward the well is linear in luminance: the share is solved, not searched.
+@(private = "file")
+node_graph_dim_floor :: proc(c, well: Color) -> f32 {
+	lc, lw := luminance(c) + 0.05, luminance(well) + 0.05
+	if contrast(c, well) <= GRAPH_LINK_DIM_CONTRAST { return 1 }
+	want := lc > lw ? lw * GRAPH_LINK_DIM_CONTRAST : lw / GRAPH_LINK_DIM_CONTRAST
+	return clamp((want - lw) / (lc - lw), 0, 1)
+}
+
+// Whether link `l` is in the emphasis (Graph_View.lit_*).
+@(private)
+node_graph_is_lit :: proc(view: ^Graph_View, l: Graph_Link) -> bool {
+	if x, ok := view.lit_link.?; ok { return x == l }
+	return view.lit_node != 0 && (l.from_node == view.lit_node || l.to_node == view.lit_node)
+}
+
+// The colour of node `id`'s lit edge, its alpha the emphasis (none: not an end of a lit link).
+@(private = "file")
+node_graph_lit_edge :: proc(lit_nodes: map[u64]Color, id: u64, t: f32) -> Color {
+	c, ok := lit_nodes[id]
+	if !ok { return {} }
+	c.a = t
+	return c
+}
+
 ////////////////////////////////
 // Drawing
 
@@ -349,20 +454,38 @@ node_graph_area_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			}
 		}
 	}
-	for l in d.links {
-		a, e := r.min + l.a, r.min + l.b
-		ca, cb := node_graph_curve(a, e, d.least, d.down)
-		if l.dash == .Solid {
-			draw.bezier(dc, a, ca, cb, e, l.width, l.color)
-			continue
+	// the plain links, then the selection's over them, then the emphasis's over all: their halos first, so that none
+	// covers another lit link
+	for layer in u8(0) ..= 2 {
+		if layer == 2 {
+			for l in d.links {
+				if l.layer != 2 || l.halo_width <= l.width { continue }
+				a, e := r.min + l.a, r.min + l.b
+				ca, cb := node_graph_curve(a, e, d.least, d.down)
+				draw.bezier(dc, a, ca, cb, e, l.halo_width, l.halo)
+			}
 		}
-		p := draw.path_make(allocator = context.temp_allocator)
-		draw.path_move_to(&p, a)
-		draw.path_cubic_to(&p, ca, cb, e)
-		pattern := l.dash == .Dashed ? []f32{GRAPH_DASH.x * l.width, GRAPH_DASH.y * l.width} : []f32{0, GRAPH_DOT_GAP * l.width}
-		cut := draw.path_dash(&p, pattern, 0, context.temp_allocator)
-		draw.path_stroke(dc, &cut, l.width, l.color)
+		for l in d.links {
+			if l.layer != layer { continue }
+			node_graph_link_stroke(dc, r.min, l, d.least, d.down)
+		}
 	}
+}
+
+@(private = "file")
+node_graph_link_stroke :: proc(dc: ^draw.Context, origin: [2]f32, l: Node_Graph_Link_Draw, least: f32, down: bool) {
+	a, e := origin + l.a, origin + l.b
+	ca, cb := node_graph_curve(a, e, least, down)
+	if l.dash == .Solid {
+		draw.bezier(dc, a, ca, cb, e, l.width, l.color)
+		return
+	}
+	p := draw.path_make(allocator = context.temp_allocator)
+	draw.path_move_to(&p, a)
+	draw.path_cubic_to(&p, ca, cb, e)
+	pattern := l.dash == .Dashed ? []f32{GRAPH_DASH.x * l.width, GRAPH_DASH.y * l.width} : []f32{0, GRAPH_DOT_GAP * l.width}
+	cut := draw.path_dash(&p, pattern, 0, context.temp_allocator)
+	draw.path_stroke(dc, &cut, l.width, l.color)
 }
 
 // A node's title as drawn: its first line, and its second cut with an ellipsis when the title had more (at the drawn
@@ -487,6 +610,9 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		if port.mark == .Glow {
 			dr *= 1.3
 			draw.box_shadow(dc, {at - dr, at + dr}, {dr, dr, dr, dr}, dr, {port.color.r, port.color.g, port.color.b, 0.7})
+		} else if port.lit > 0 {
+			dr *= 1 + 0.3 * port.lit
+			draw.box_shadow(dc, {at - dr, at + dr}, {dr, dr, dr, dr}, dr, {port.color.r, port.color.g, port.color.b, 0.7 * port.lit})
 		}
 		draw.rect(dc, {at - dr - p, at + dr + p}, c.well, dr + p)
 		if port.linked || port.mark == .Glow {
@@ -514,6 +640,8 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.image(dc, d.thumbnail, t, radius = rad(d.em * 0.25))
 	}
 	if d.state == .Failed { draw.rect(dc, r, c.bad, radius, 1.5 * p) }
+	// (an end of a link in the emphasis: its edge in the link's colour, outside a failed node's)
+	if d.lit.a > 0 { draw.rect(dc, draw.rect_pad(r, p), d.lit, radius + p, 1.5 * p) }
 	if d.message != "" {
 		size := d.em * 0.85
 		ink := d.state == .Failed ? c.bad : c.weak
