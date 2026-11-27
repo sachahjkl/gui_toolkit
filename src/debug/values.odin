@@ -187,7 +187,10 @@ act :: proc(label: string) -> (pressed: bool) {
 				ui.next({width = ui.fill(), height = ui.px(ui.dense_row_height()), axis = .X, cross = .Center})
 				row := ui.build_box({}, widget_id(key, "acts"))
 				ui.push_parent(row)
-				p.acts, p.acts_used, p.acts_room = true, 0, row.rect.max.x - row.rect.min.x
+				// (the buttons start where the labels' words start, not at the row's edge: a label's text has its inset)
+				inset := ui.top_style().text_pad
+				ui.spacer(ui.px(inset))
+				p.acts, p.acts_used, p.acts_room = true, inset, row.rect.max.x - row.rect.min.x
 			} else {
 				ui.spacer(ui.px(gap))
 				p.acts_used += gap

@@ -135,7 +135,9 @@ do not follow the page. `ui.dense_scope` holds it:
   sections and is not indented. Refused: a fixed column of 7 ems (a gap before every short label's field), and a share
   of the row (an indented row's share is narrower: the fields of two depths did not line up);
 - acts one after another share a row, as many as it holds, then the next (Dear ImGui's SameLine, implied): a row
-  each for "Print" and "Reset" was a row of nothing after a short button. What is not an act ends their row;
+  each for "Print" and "Reset" was a row of nothing after a short button. What is not an act ends their row. The first
+  button starts where the labels' words start (a label's text inset), at its depth: at the row's edge it stood out of
+  the column, left of the labels above it (socle's Apply panel);
 - the theme's colours (light or dark, their contrast checked as every theme's), not a fixed dark skin: a dark window
   over a light program reads as another program, and its contrast would be nobody's. A theme's weak ink is made for
   text at its size: a dense label's is moved from its ground until it reads at 4.5:1 (Graphite's dark was 4.4, Midnight's
