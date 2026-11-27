@@ -508,6 +508,9 @@ drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Ma
 	d.script = {}
 	defer delete(steps)
 	if drag_data_empty(data) || allowed == {} { return nil, false }
+	// (an offscreen window has no HWND: the system's loop would run a real drag with the real mouse, on whatever is
+	// under it; without a script it cannot drag, as on Linux, and ui.Drag_Out records the drag instead)
+	if w.offscreen && len(steps) == 0 { return nil, false }
 	if !ole_ready() { return nil, false }
 	obj := make_data_object(data)
 	if obj == nil { return nil, false }
