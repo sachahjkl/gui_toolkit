@@ -36,7 +36,8 @@ key_from_keysym :: proc(sym: Xkb_Keysym) -> Key {
 	case 0x03d:  return .Equal
 	case 0xffe1, 0xffe2: return .Shift        // Shift_L / Shift_R
 	case 0xffe3, 0xffe4: return .Ctrl         // Control_L / Control_R
-	case 0xffe9, 0xffea, 0xfe03: return .Alt  // Alt_L / Alt_R / ISO_Level3_Shift
+	// (not ISO_Level3_Shift: AltGr types a level of the layout, € on a French E; as Alt, let go alone it lit the menu bar)
+	case 0xffe9, 0xffea: return .Alt          // Alt_L / Alt_R
 	case 0xff67: return .Menu
 	case 0xffab: return .Num_Add              // KP_Add
 	case 0xffad: return .Num_Subtract         // KP_Subtract
