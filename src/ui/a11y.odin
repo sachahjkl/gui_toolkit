@@ -1,5 +1,6 @@
 package ui
 
+import "core:slice"
 import "core:strings"
 import "core:time"
 import "../font"
@@ -122,24 +123,57 @@ a11y_focus_on :: proc(key: Key) { gs().a11y.focus_to = key }
 
 // Gives the next box built its accessibility (merged over the widget's defaults: what is set here wins).
 a11y :: proc(info: A11y_Info) {
-	gs().a11y.next = info
+	gs().a11y.next = a11y_frame_copy(info)
 	gs().a11y.has_next = true
 }
 
 // Gives a built box its accessibility (over what it had: the fields set here win).
 a11y_set :: proc(b: ^Box, info: A11y_Info) {
 	if b == nil { return }
-	if b.a11y == nil { b.a11y = new_clone(info, frame_allocator()); return }
-	a11y_merge(b.a11y, info)
+	kept := a11y_frame_copy(info)
+	if b.a11y == nil { b.a11y = new_clone(kept, frame_allocator()); return }
+	a11y_merge(b.a11y, kept)
 }
 
 // The default a widget gives its box: only the fields the app did not set.
 a11y_default :: proc(b: ^Box, info: A11y_Info) {
 	if b == nil { return }
-	if b.a11y == nil { b.a11y = new_clone(info, frame_allocator()); return }
+	kept := a11y_frame_copy(info)
+	if b.a11y == nil { b.a11y = new_clone(kept, frame_allocator()); return }
 	app := b.a11y^
-	b.a11y^ = info
+	b.a11y^ = kept
 	a11y_merge(b.a11y, app)
+}
+
+// The tree is made at the end of the build, from what each box was given: a widget's strings are often the program's
+// (a node's title, a row's label, a tprintf), and a program may free or reuse them before the build ends. So a box keeps
+// copies in this build's memory, made here once for every widget and every program instead of at each call.
+@(private)
+a11y_frame_copy :: proc(info: A11y_Info) -> A11y_Info {
+	a := frame_allocator()
+	out := info
+	out.name = strings.clone(info.name, a)
+	out.description = strings.clone(info.description, a)
+	out.value = strings.clone(info.value, a)
+	out.placeholder = strings.clone(info.placeholder, a)
+	out.shortcut = strings.clone(info.shortcut, a)
+	out.role_description = strings.clone(info.role_description, a)
+	if info.text != nil {
+		t := new_clone(info.text^, a)
+		t.text = strings.clone(info.text.text, a)
+		if info.text.lines != nil { t.lines = slice.clone(info.text.lines, a) }
+		out.text = t
+	}
+	if info.parts != nil {
+		parts := make([]A11y_Part, len(info.parts), a)
+		for p, i in info.parts {
+			parts[i] = p
+			parts[i].name = strings.clone(p.name, a)
+			parts[i].url = strings.clone(p.url, a)
+		}
+		out.parts = parts
+	}
+	return out
 }
 
 @(private)

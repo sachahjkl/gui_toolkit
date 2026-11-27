@@ -101,7 +101,8 @@ labelled by / described by / controls (keys), active descendant, a graft (a tree
 below), an editable text (`A11y_Text`: text runs for reading by character, word and line, caret and selection), parts
 (nodes that are no boxes: the links of a paragraph), `ignore` (not a node: decoration), `no_children`, and `write` (a
 callback adding properties of `platform.A11y_Prop_Kind`). `a11y` / `a11y_set` win over the widget's defaults
-(`a11y_default`, for widget writers).
+(`a11y_default`, for widget writers). The three keep copies of the strings (and of an `A11y_Text` and of parts) in the
+build's memory: the tree is made at the end of the build, and a program may free or reuse its strings before that.
 
 `ui.a11y_wanted()` says during a build whether the tree is made at its end: an app with content of its own to describe
 does that work only then.
