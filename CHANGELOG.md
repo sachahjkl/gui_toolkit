@@ -5,6 +5,75 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.365.0] - 2026-11-27 12:34
+
+### Added
+- **A dialog's body can take its height (`dialog_body(id, stretch = true)`).** In a resizable dialog, a part built with `fill_least` (a preview, a list) grows when the person makes the dialog taller; the dialog opens as tall as the least heights of its parts, which a resizable dialog of no height now counts.
+- **A large picture's upload no longer freezes a frame.** `render.Upload` (`upload_begin`, `upload_step`) writes a
+texture over several frames within a time budget and makes its mips once at the end; `gt:pictures` uploads every
+picture of 16 MiB and more so. A 186 MB picture took one frame of 84 to 140 ms; it now takes about 17 frames of at most
+3 ms each, every picture of a cache within one budget a frame (docs/rendering.md, "Staged upload").
+- **`ui.cell_row`: a row of cells of which only those in view are built.** A folder's ten thousand pictures under a
+viewer build the same few cells as ten; the chosen one stays in the middle, the wheel moves the row and it stays where
+the person put it. A screen reader hears each cell's place in the whole row, and a focused cell keeps the focus when
+it scrolls out of view (docs/cell-row.md).
+- **Fast JPEG decoding.** With `toolbox.Feature.Jpeg`, a JPEG is decoded by the native library: a 24-megapixel photo in
+138 ms instead of 356 ms, and at 1/2, 1/4 or 1/8 of its size in under 90 ms without making the whole picture
+(`Decode_Options.need_side`). Pure Rust (zune-jpeg, jpeg-decoder): no C compiler in the build (docs/image.md, "Fast JPEG").
+- **`image.decode` options: orientation, limits and a memory gate.** `Decode_Options.orient` shows a phone's photo
+upright; `max_pixels` and `max_bytes` refuse a picture from its header before any allocation
+(`image.file_dimensions`; a GIF's first frame counts, a progressive JPEG's coefficients too); large decodes wait at a process-wide byte budget (`image.decode_gate`), so several decode
+threads never hold several huge pictures at once. A program raises the Odin core's 8192 x 8192 cap with
+`-define:MAX_DIMENSIONS` in its project's `defines` (docs/image.md, "Large pictures").
+- **Every frame of a GIF.** `gif.Decoder` and `next_frame` give an animation frame by frame, each drawn over what the one
+before left, with its delay; `gif.decode_frames` gives them all within a byte budget, or the first alone for a
+thumbnail. A frame that claims 65535 by 65535 pixels is refused before any allocation; `gif.canvas_size` gives the
+canvas a decode makes without decoding it (docs/gif.md).
+- **`gt:exif`: a camera's metadata.** `exif.read` gives a photo's camera, lens, date, exposure and GPS from a JPEG, PNG
+or WebP; `exif.orientation` and `exif.thumbnail` (the camera's own small JPEG, shown at once) read without
+allocating; `exif.set_orientation` turns a JPEG losslessly. Damaged metadata reads as none (docs/exif.md).
+- **The main zone**: `ui.view_show_main(vs, id, data)` shows a view in place of the window's content, which comes back when the view closes or moves away (its state kept meanwhile); `ui.views_main` says which view is there. Its place is remembered with the layout, the focus leaves the hidden content, and F6 skips it.
+- **The corners of a dock space**: `View_Dock_Options.top_span` and `bottom_span` (`ui.View_Span`: `.Content`, `.Left`, `.Right`, `.Full`) say how far the top and the bottom zones go across, as VS Code's panel alignment. The window's frame lays its bottom panel under the content alone by default: a terminal at the bottom no longer runs under a sidebar, which goes the window's full height; a space of the program's keeps `.Full`. The person's choice (`ui.views_space_set_span`, the settings' Window page with `prefs_page.Page_Options.views`) is kept with the layout; drops land where the span says, and a change of span keeps the content's state.
+- **`ui.tooltip_near(at)`**: a tooltip about a rectangle that is no box (a part of a drawing, a node's header): below it,
+above it or beside it, on the side that covers the least of it, inside the window.
+- **`Graph_View.hover_node`**: the node under the pointer (its ports count), 0 for none, so a program shows something
+about it without its own hit test. The link under the pointer is now `Graph_View.hover_link` (it was `hover`).
+- **A look per link in `ui.node_graph`**: `Graph_Options.link_looks` gives each link an intent (the theme's hue of it,
+following the theme) and a dash (`.Solid`, `.Dashed`, `.Dotted`, scaled with the zoom). A link with no look keeps the
+colour of its out port's kind.
+- **`ui.node_graph` lays a graph out from top to bottom**: `Graph_Options.direction = .Down` puts the in ports along a
+node's top edge and the out ports along its bottom edge, and links bend vertically: a tree. A named port shows its name
+in a tooltip when the pointer rests on it.
+- **`process.tree_start`**: a child that starts children runs as a tree that ends whole, at `tree_kill` or `tree_close`, when its child ends, and when the program ends however it ends (a crash and a kill included): on Linux a keeper process per tree (the program's own executable again) and a session of its own, so no terminal prompt stops the child, on Windows a Job Object with no breakaway. `tree_signal` and `tree_wait` act on the tree. See docs/process.md.
+- **`gt:rpc`**: a JSON-RPC 2.0 peer over a child's standard input and output, for ACP agents (`gemini --acp`, `agy acp`, `claude-agent-acp`, `codex-acp`) and language servers: one message per line (ACP) or `Content-Length` headers (LSP); requests both ways, the child's answered later from any thread; a time limit per request and ACP's or LSP's cancel; messages drained on the program's thread after a wake procedure (`ui.post`); bounded memory (a message's size, the bytes waiting both ways, back-pressure on the child); bad messages as values; a stop bounded by its graces; the end with its exit code or signal and the last bytes of the standard error. See docs/rpc.md.
+
+### Changed
+- **A stack's Maximise keeps chosen zones and is remembered**: `ui.views_space_maximise(vs, name, edge, stack, keep)` maximises a stack while the zones of `keep` stay as they were (a sidebar), `ui.views_space_restore` ends it; the person's Maximise keeps `View_Dock_Options.maximise_keeps`. A double click on a stack's strip maximises or restores it, as its button, its menu and Escape do; a drop into a hidden zone ends it. The maximise is kept with the layout and comes back once its stack's views reopen.
+- **A node graph's ports sit on the node's edges, beside its widgets**: left to right, the ports of a side are spread over
+the node's edge and the widgets and thumbnail start right under the header, so ports no longer push them down. A port's
+name is drawn when nothing is beside it, else it shows in a tooltip. `Graph_Options.port_rows` keeps a row per port, with
+its name, before the widgets. From top to bottom, the ports stand just outside the node's edges.
+- **The node graph's minimap has a corner and a size**: `Graph_Options.minimap` is a `Graph_Minimap` (`show`, `corner`,
+`size`). By default it is a quarter of the area's width, from 100 to 200 pixels, so it no longer covers a narrow
+panel. `graph_fit` (and F, and "Back to content") places the nodes beside or above it, never under it.
+- **A node's title takes two lines**: it wraps at the node's width, the header growing by one line; a longer title ends
+its second line with an ellipsis and shows whole in a tooltip when the pointer rests on the header. The title always
+leaves the room of the state's mark, so a run that starts does not move it.
+- **A child started on Windows opens no console window**: `process.start`, `process.run` and `process.tree_start` start it with `CREATE_NO_WINDOW`, so a program with a window that runs git or node flashes no console.
+
+### Fixed
+- **Photo thumbnails stand upright, and SVG files get one.** The file picker's and classeur's thumbnails
+(`ui.file_thumbnail_make`) showed a phone's photo sideways; they now follow its EXIF orientation, and the picture cache
+(`gt:pictures`) does too. An SVG drawing is drawn as its thumbnail. A JPEG thumbnail is decoded at a reduced size when
+the program has the fast decoder.
+- **`ui.chores_stop` no longer stops every later task of the process.** After one app closed and stopped the chores, a
+second app in the same process (a program's tests, a window opened after the first closed) never got an answer from
+`ui.task`, `ui.open` or a file dialog. The next use after a stop now starts the chores again; during the stop, a chore that asks for more is still refused.
+- **A child started on Linux gets the default signals**: `process.start` and `process.run` no longer pass on the signals that the starting thread blocks, nor the ignored `SIGPIPE` of the toolkit, so a child such as `yes | head` ends at a closed pipe as it does from a shell.
+
+### Security
+- **`process.start` and `process.run` find a command in `PATH` only, and quote a script's arguments for cmd.exe**: a bare name is never looked for in the current folder, where a planted program would run; on Windows `PATHEXT` finds npm's `.cmd` shims, and a `.bat` or `.cmd` script gets the quoting of Rust's fix of CVE-2024-24576 (BatBadBut): an argument cmd.exe would read as a command is quoted or refused (`process.windows_command_line`, `process.resolve_command`). On Windows a child inherits only its three standard handles, not every inheritable handle of the program.
+
 ## [0.364.0] - 2026-11-27 10:36
 
 ### Added
@@ -5119,6 +5188,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.365.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.365.0
 [0.364.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.364.0
 [0.363.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.1
 [0.363.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.0
