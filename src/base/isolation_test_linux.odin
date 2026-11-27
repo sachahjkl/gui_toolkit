@@ -103,17 +103,21 @@ an_isolated_environment_reaches_nothing_of_the_person :: proc(t: ^testing.T) {
 	testing.expect(t, n == 0, "not the person's desktop")
 }
 
-// This test process was isolated before its main: what isolated_env gives for its environment is what it has.
+// This test process was isolated before its main: what isolated_env gives for the variables it decides is what the
+// process has. (Only those: the other tests of the process set their own variables meanwhile.)
 @(test)
 a_test_process_is_isolated_before_its_main :: proc(t: ^testing.T) {
 	now, err := os.environ(context.temp_allocator)
 	if !testing.expect(t, err == nil) { return }
 	again := isolated_env(now)
-	for e in again {
-		eq := strings.index_byte(e, '=')
-		if eq <= 0 { continue }
-		v, found := os.lookup_env(e[:eq], context.temp_allocator)
-		testing.expectf(t, found && v == e[eq + 1:], "%s is already as isolated_env says (%q)", e[:eq], v)
+	decided := []string{
+		"DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES",
+		"VK_LOADER_LAYERS_DISABLE", "__EGL_VENDOR_LIBRARY_FILENAMES", "LIBVA_DRIVER_NAME", "LIBVA_DRIVERS_PATH",
+	}
+	for name in decided {
+		want, n := env_value(again, name)
+		v, found := os.lookup_env(name, context.temp_allocator)
+		testing.expectf(t, found == (n > 0) && v == want, "%s is already as isolated_env says (%q, not %q)", name, want, v)
 	}
 	if own := os.get_env(ISOLATION_DISPLAY_ENV, context.temp_allocator); own == "" {
 		testing.expect(t, os.get_env("WAYLAND_DISPLAY", context.temp_allocator) == "", "no Wayland display")
