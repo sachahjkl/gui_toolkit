@@ -24,6 +24,12 @@ button and the list show their words whole and spend no width on nothing.
   and inside the window. A list that ran past a floating view's edge read as cut by it. A list wider than that room
   keeps its place by its button: pinned to the room's left edge, a list aligned to its button's end ran the other way.
 
+- **A row's measure has a pixel of slack.** The rows' columns have fractional widths (ems at 120 dpi); placed, each
+  edge is rounded, and the label could get up to a pixel less than its share. A label a fraction short is cut: socle's
+  language list showed "English (United Kingdo…" at the window's right edge and at its left one alike (it read as a
+  list clamped by the edge; the list did move left). `menu_row_width` adds the pixel. Refused: a tolerance in the
+  text's cut (a text a pixel wider than its box would draw past it).
+
 ## Not here
 
 - The list's filter, keys and placement above or below: popups.odin's menus, shared by every menu.

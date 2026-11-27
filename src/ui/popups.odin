@@ -802,6 +802,9 @@ menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool, dense
 		w += em * (MENU_ROW_LEAD_EM + MENU_ICON_EM + MENU_ROW_TRAIL_EM)
 	}
 	w += text_width(st.font, em, label) + 2 * pad
+	// (the label's two edges are rounded apart when it is placed after columns of fractional widths: it can get up to a
+	// pixel less than its share, and a label a fraction short is cut to "…" (English (United Kingdo…, at 120 dpi)
+	w += 1
 	// (the layout ceils a text box: layout_standalone)
 	if shortcut != "" { w += math.ceil(text_width(st.font, em, shortcut) + 2 * (pad + em * MENU_KEY_PAD_EM)) }
 	if submenu && widget_icons() != 0 { w += em * (dense ? MENU_DENSE_MARK_EM : MENU_ARROW_EM) }
