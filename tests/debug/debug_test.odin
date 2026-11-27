@@ -628,3 +628,38 @@ acts_flow_on_one_row :: proc(t: ^testing.T) {
 	session.click(s, debug.box_name("Acts/Reset", "act"))
 	testing.expect_value(t, a.pressed[1], 1)
 }
+
+// Clicking a tab in the debug window switches the shown panel.
+@(test)
+clicking_a_debug_tab_switches_panels :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+	debug.open(s.state)
+	session.wait_box(s, debug.box_name("View/wireframe", "row"))
+	testing.expect(t, session.find(s, debug.box_name("Soldier/speed")) == nil, "View panel shows first")
+	session.click(s, "debug_tabs_1")
+	session.wait_box(s, debug.box_name("Soldier/speed"))
+	testing.expect(t, session.find(s, debug.box_name("View/wireframe", "row")) == nil, "Soldier panel replaces View")
+	session.click(s, "debug_tabs_0")
+	session.wait_box(s, debug.box_name("View/wireframe", "row"))
+	testing.expect(t, session.find(s, debug.box_name("Soldier/speed")) == nil, "View panel returns on click")
+}
+
+// Many debug tabs in a floating debug window shrink or scroll inside view_header so pin and window controls stay inside.
+@(test)
+many_debug_tabs_keep_header_controls_inside :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := session.start(t, {size = WINDOW, build = page})
+	for name in ([]string{"Folder", "Draft", "Apply", "Indexes", "Installer"}) {
+		debug.panel(s.state, name, soldier_debug, &soldier)
+	}
+	debug.open(s.state)
+	session.wait_box(s, "debug_pin")
+	session.frames(s, 3)
+	head := session.get(s, "view_header")
+	for id in ([]string{"debug_tabs", "debug_pin", "view_window", "view_close"}) {
+		b := session.get(s, id)
+		testing.expectf(t, b.rect.min.x >= head.rect.min.x - 1 && b.rect.max.x <= head.rect.max.x + 1, "%s %v inside header %v", id, b.rect, head.rect)
+	}
+}

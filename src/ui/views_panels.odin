@@ -1015,7 +1015,7 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 	}
 	// the program's tools of the shown view: its body fills this slot (view_header_tools)
 	spacer(px(em * 0.4))
-	next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
+	next({width = children_sum(0), height = pct(1), axis = .X, cross = .Center})
 	shown.strip_tools = build_box({}, "###view_strip_tools").key
 	spacer(fill())
 	// the stack's own, at the right end, as a window's: Minimise (a side zone's to its rail), Maximise, Close

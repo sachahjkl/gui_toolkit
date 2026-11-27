@@ -707,7 +707,8 @@ view_header_tools :: proc(v: ^View) -> bool {
 	}
 	if r.tools == 0 {
 		push_parent(head)
-		next({width = children_sum(), height = children_sum(), axis = .X, cross = .Center})
+		// (strictness 0: rigid tools keep their least_x whole while a shrinkable tool such as a strip of tabs gives way)
+		next({width = children_sum(0), height = children_sum(), axis = .X, cross = .Center})
 		r.tools = build_box({}, "###view_tools").key
 		pop_parent()
 	}

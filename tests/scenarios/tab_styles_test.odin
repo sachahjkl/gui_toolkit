@@ -331,3 +331,94 @@ tabs_over_scopes_nest :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing
 	testing.expect_value(t, r.after_tabs, ui.Tab_Style.Header)
 	testing.expect_value(t, ui.tab_style_now(), ui.Tab_Style.Folder)
 }) }
+
+@(private = "file")
+Changed_Run :: struct {
+	ex_sel, basic_sel, panel_sel:             int,
+	ex_changes, basic_changes, panel_changes: int,
+	ex_last, basic_last, panel_last:          bool,
+}
+
+// ui.tabs_ex, ui.tabs and ui.tab_panel report changed == true on the frame a click or arrow key changes selection,
+// and false when selection does not change.
+@(test)
+tab_selection_reports_changed :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r: Changed_Run
+	build :: proc(s: ^session.Session) {
+		r := (^Changed_Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+		if ui.column(id = "###page") {
+			ui.next({width = ui.px(400), height = ui.px(36)})
+			ex := ui.tabs_ex("###ex", STYLE_TABS[:], nil, &r.ex_sel, {style = .Segmented})
+			r.ex_last = ex.changed
+			if ex.changed { r.ex_changes += 1 }
+			ui.next({width = ui.px(400), height = ui.px(36)})
+			basic := ui.tabs("###basic", STYLE_TABS[:], nil, &r.basic_sel)
+			r.basic_last = basic
+			if basic { r.basic_changes += 1 }
+			ui.next({width = ui.px(400), height = ui.px(160)})
+			if res, ok := ui.tab_panel("###panel", STYLE_TABS[:], nil, &r.panel_sel, {tabs = {style = .Folder}}); ok {
+				r.panel_last = res.changed
+				if res.changed { r.panel_changes += 1 }
+				ui.spacer(ui.px(10))
+			}
+		}
+	}
+	s := session.start(t, {size = {480, 320}, user = &r, build = build})
+	session.wait_idle(s)
+	testing.expect_value(t, r.ex_changes, 0)
+	testing.expect_value(t, r.basic_changes, 0)
+	testing.expect_value(t, r.panel_changes, 0)
+	testing.expect(t, !r.ex_last && !r.basic_last && !r.panel_last, "unchanged while idle")
+
+	// clicking the active tab reports no change
+	session.click(s, "ex_0")
+	session.frames(s, 2)
+	testing.expect_value(t, r.ex_sel, 0)
+	testing.expect_value(t, r.ex_changes, 0)
+	testing.expect(t, !r.ex_last, "unchanged when clicking the active tab")
+
+	// tabs_ex: click changes selection and reports changed once
+	session.click(s, "ex_1")
+	session.frames(s, 2)
+	testing.expect_value(t, r.ex_sel, 1)
+	testing.expect_value(t, r.ex_changes, 1)
+	testing.expect(t, !r.ex_last, "false again on the following frame")
+
+	// tabs_ex: click the active tab to focus it (no change), then Right moves to tab 2
+	session.click(s, "ex_1")
+	session.frames(s, 2)
+	testing.expect_value(t, r.ex_changes, 1)
+	testing.expect_value(t, s.state.focus_key, session.get(s, "ex_1").key)
+	session.key(s, platform.Key.Right)
+	session.frames(s, 2)
+	testing.expect_value(t, r.ex_sel, 2)
+	testing.expect_value(t, r.ex_changes, 2)
+	testing.expect(t, !r.ex_last, "false again after keyboard navigation")
+
+	// tabs_ex: Right at the last tab does not change selection
+	session.key(s, platform.Key.Right)
+	session.frames(s, 2)
+	testing.expect_value(t, r.ex_sel, 2)
+	testing.expect_value(t, r.ex_changes, 2)
+
+	// ui.tabs: click changes selection and reports changed
+	session.click(s, "basic_2")
+	session.frames(s, 2)
+	testing.expect_value(t, r.basic_sel, 2)
+	testing.expect_value(t, r.basic_changes, 1)
+	testing.expect(t, !r.basic_last, "false again after ui.tabs change")
+	session.click(s, "basic_2")
+	session.frames(s, 2)
+	testing.expect_value(t, r.basic_changes, 1)
+
+	// ui.tab_panel: click changes selection and reports changed
+	session.click(s, "panel_1")
+	session.frames(s, 2)
+	testing.expect_value(t, r.panel_sel, 1)
+	testing.expect_value(t, r.panel_changes, 1)
+	testing.expect(t, !r.panel_last, "false again after ui.tab_panel change")
+	session.click(s, "panel_1")
+	session.frames(s, 2)
+	testing.expect_value(t, r.panel_changes, 1)
+}) }
