@@ -46,6 +46,7 @@ pretty := image.background(framed, 48, {from = image.hex(0x6A5ACD), to = image.h
 | `pad(img, left, top, right, bottom, color)` | a margin around it |
 | `cut_out(img, at, size, columns)` | without a band of columns (or rows), the two sides joined |
 | `trim_bounds(img, tolerance)` | the `Rect` left once the edges of the top-left corner's colour are trimmed (auto crop) |
+| `place(dst, src, x, y)` | in place: `src` copied into `dst` at (x, y), alpha too (no blend: `draw_over` blends); what falls outside `dst` is cut (a canvas larger or smaller than the picture) |
 | `edge_mean(img, r)` | the mean colour of the pixels on the edge of `r`: what surrounds it, to fill it with |
 
 `Filter`:

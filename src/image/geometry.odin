@@ -150,9 +150,10 @@ edge_mean :: proc(img: Image, r: Rect) -> Color #no_bounds_check {
 	return {u8((sum[0] + n / 2) / n), u8((sum[1] + n / 2) / n), u8((sum[2] + n / 2) / n), u8((sum[3] + n / 2) / n)}
 }
 
-// `src` copied into `dst` with its top-left corner at (x, y), replacing what is there; the part outside `dst` is left out.
-@(private)
+// `src` copied into `dst` with its top-left corner at (x, y), replacing what is there (alpha too: no blend, see
+// draw_over); the part outside `dst` is left out.
 place :: proc(dst, src: Image, x, y: int) #no_bounds_check {
+	if !valid(dst) || !valid(src) { return }
 	r := clip_rect(dst, {x, y, src.width, src.height})
 	if r.w == 0 { return }
 	for j in 0 ..< r.h {

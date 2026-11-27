@@ -88,6 +88,16 @@ geometry_is_exact :: proc(t: ^testing.T) {
 	expect_pixels(t, image.crop(img, -5, 1, 7, 9, a), 2, {D, E}, "crop past the edges")
 	testing.expect_value(t, image.crop(img, 5, 5, 2, 2, a).width, 0)
 
+	// place: copied over, alpha too, cut at the edges on every side
+	canvas := image.create(2, 2, {9, 9, 9, 9}, a)
+	image.place(canvas, img, -1, 1)
+	expect_pixels(t, canvas, 2, {{9, 9, 9, 9}, {9, 9, 9, 9}, B, C}, "place cut at the left and the bottom")
+	clear_ := image.create(1, 1, {}, a)
+	image.place(canvas, clear_, 1, 0)
+	expect_pixels(t, canvas, 2, {{9, 9, 9, 9}, {}, B, C}, "place replaces, alpha too")
+	image.place(canvas, img, 5, 5)
+	expect_pixels(t, canvas, 2, {{9, 9, 9, 9}, {}, B, C}, "place outside changes nothing")
+
 	expect_pixels(t, image.flip(img, true, a), 3, {C, B, A, F, E, D}, "flip across")
 	expect_pixels(t, image.flip(img, false, a), 3, {D, E, F, A, B, C}, "flip down")
 
