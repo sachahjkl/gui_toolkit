@@ -219,13 +219,16 @@ the_feet_flow_into_the_line_at_every_scale :: proc(t: ^testing.T) {
 			for y in line_row - foot - px ..< bottom { if close_to(session.pixel(img, x, y), line, 24) { found = true; break } }
 			testing.expectf(t, found, "%.2f: the left fillet broken at column %d", dpi, x)
 		}
-		// no hook: where the fillet's curve stands clear of the line (its height over the line's middle more than the stroke
-		// and its soft edge), the line under it is gone (the fill covers it): the curve meets the line tangent at the
-		// fillet's outer end, the line does not run on under the curve to the side
+		// no hook: where the fillet's stroke stands clear of a pixel of the line's rows (its edge more than its soft edge
+		// away), the line under it is gone (the fill covers it): the curve meets the line tangent at the fillet's outer end,
+		// the line does not run on under the curve to the side. (The distance is the pixel's centre to the arc, across it:
+		// near the side the arc stands almost upright, and its soft edge reaches a pixel its height alone says is clear.)
+		hp := f32(px) * 0.5
+		arc := [2]f32{f32(left) + hp - f32(foot), f32(bottom) - hp - f32(foot)}   // (the stroke's centres, as tab_draw snaps them)
 		for k in 1 ..< foot {
-			d := f32(foot - k)
-			if f32(foot) - math.sqrt(f32(foot * foot) - d * d) < f32(px) + 0.5 { continue }
 			for y in line_row ..< bottom {
+				at := [2]f32{f32(left - k) + 0.5, f32(y) + 0.5}
+				if math.sqrt((at.x - arc.x) * (at.x - arc.x) + (at.y - arc.y) * (at.y - arc.y)) - f32(foot) - hp < 0.75 { continue }
 				q := session.pixel(img, left - k, y)
 				testing.expectf(t, nearer(q, page, line), "%.2f: the line runs under the left fillet %d px from the side, row %d: %v, the page %v", dpi, k, y, q, page)
 				q = session.pixel(img, right + px - 1 + k, y)
