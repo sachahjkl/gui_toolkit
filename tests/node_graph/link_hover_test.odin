@@ -16,6 +16,8 @@ import "gt:ui"
 @(private = "file") RED :: 0
 @(private = "file") BLUE :: 1
 @(private = "file") GREEN :: 2
+// A node's header, at least (em at the zoom 1): its title's line.
+@(private = "file") HEADER_EM :: 1.6
 // The tooltips' delay here: a frame is slow on a software GPU.
 @(private = "file") TIP_DELAY_MS :: 100
 
@@ -326,12 +328,20 @@ a_link_in_a_dense_bundle_stands_out :: proc(t: ^testing.T) { unwatched.run(t, pr
 		name := light ? "link_hover_light.png" : "link_hover_dark.png"
 		session.save_png(s, name)
 		testing.expect(t, ok && hovered.from_node + hovered.to_node == 15, "a link of the crossing is hovered")
-		// (the tooltip beside the hovered link, not over the part of it around the pointer)
+		// (the tooltip near the pointer, over neither the hovered link's middle nor a node's title)
 		tip := session.get(s, "tooltip").rect
 		for i in 0 ..= 20 {
 			p := link_at(&h, hovered, 0.3 + 0.4 * f32(i) / 20)
 			testing.expectf(t, !draw.rect_contains(tip, p), "the tooltip %v covers the hovered link at %v (%s)", tip, p, name)
 		}
+		for &n in h.nodes {
+			r := ui.graph_node_rect(&h.view, &n)
+			header := ui.Rect{ui.graph_to_screen(&h.view, r.min), ui.graph_to_screen(&h.view, {r.max.x, r.min.y + HEADER_EM * h.view.em})}
+			covers := tip.min.x < header.max.x && header.min.x < tip.max.x && tip.min.y < header.max.y && header.min.y < tip.max.y
+			testing.expectf(t, !covers, "the tooltip %v covers %s's header %v (%s)", tip, n.title, header, name)
+		}
+		gap := [2]f32{max(tip.min.x - at.x, at.x - tip.max.x, 0), max(tip.min.y - at.y, at.y - tip.max.y, 0)}
+		testing.expectf(t, gap.x <= 24 && gap.y <= 24, "the tooltip %v near the pointer %v (%s)", tip, at, name)
 		counted := false
 		for text in ([4]string{"1 of 4 here · Alt+wheel for the next", "2 of 4 here · Alt+wheel for the next", "3 of 4 here · Alt+wheel for the next", "4 of 4 here · Alt+wheel for the next"}) {
 			if session.find_text(s, text) != nil { counted = true }

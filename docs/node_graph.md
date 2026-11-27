@@ -51,7 +51,7 @@ change its model between two frames.
 | a drag from an out port | a new link; the ports it can end on glow, the others are dimmed; let go on a port: `Graph_Linked` |
 | a drag from an in port | its link comes off (`Graph_Unlinked` if it is let go on nothing, `Graph_Unlinked` and `Graph_Linked` on another port); an in port without a link starts a link backward |
 | a link let go on nothing | `Graph_Dropped_Link`: the program can offer to add a node there, linked |
-| the pointer on a link | the nearest link under it stands out (see Drawing); where several links are under it, a tooltip names it (its two ends) and says which of them it is |
+| the pointer on a link | the nearest link under it stands out (see Drawing); where several links are under it, a tooltip names it (its two ends) and says which of them it is; the tooltip stays at the pointer, off the link there, the nodes' titles and the other links |
 | Alt+wheel over several links | the next of them (the wheel down) or the one before (a touchpad's fractions add up to a step); over one link or none, the wheel moves the view |
 | the pointer on a node | its links stand out |
 | a click on a link | selects the link under the pointer (drawn thicker); Delete removes it |
@@ -299,5 +299,5 @@ by its pixels, a title on two lines then cut with its tooltip, and the minimap's
 `tests/node_graph/link_hover_test.odin` reads the hover of links where they cross: the nearest link picked among three,
 Alt+wheel walking them (a touchpad's fractions adding up) and the tooltip that names them, the hovered link lit over
 another and the others dimmed (by their pixels), the contrast of both on a light theme with pale kinds, a node's links
-lit, the fade that comes to rest, and a dense bundle in the dark and light themes with the tooltip beside the hovered
-link.
+lit, the fade that comes to rest, and a dense bundle in the dark and light themes with the tooltip near the pointer,
+off the hovered link's middle and every node's title.

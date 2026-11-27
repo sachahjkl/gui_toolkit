@@ -70,8 +70,11 @@ from top to bottom, one link per child, states that change while it is watched).
   pointer names the hovered one (its two ends: node · port → node · port) and its place among them ("2 of 3 here");
   Alt+wheel takes the next or the one before, in the links' order (stable while the pointer moves, unlike an order by
   distance), and shows the tooltip at once. The wheel's fractions (a touchpad) add up to whole steps
-  (`Graph_View.link_wheel`): one swipe does not spin through the bundle. The tooltip avoids the points of the hovered
-  link's curve (`tooltip_near`'s `avoid`): it goes beside a steep link, not over the part of it under the pointer. A
+  (`Graph_View.link_wheel`): one swipe does not spin through the bundle. The tooltip stays at the pointer (`tooltip_near`'s
+  sides and corners) and avoids, in this order (`avoid`'s lists): the hovered link within `GRAPH_LINK_TIP_NEAR_EM` of
+  the pointer (the part being read), the headers of the nodes in view (their titles), then the other links near it and
+  the rest of the hovered one. It is computed once the tooltip shows, for the links whose box reaches the places it
+  can take. A
   click selects the link picked. The pick (`Graph_View.link_pick`) lasts
   while its link is under the pointer. Over one link or none, Alt+wheel moves the view as the wheel does. Refused: Tab
   (it moves the focus between widgets); a tooltip on every link (one link alone is read from its curve: the tooltip

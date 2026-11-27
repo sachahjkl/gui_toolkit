@@ -1178,11 +1178,11 @@ tooltip_beside :: proc(at := Rect{}) -> bool {
 
 // `if tooltip_near(at) { tooltip_text("...") }`: a tooltip about the rectangle `at` (frame px), not about the pointer: a
 // part of a drawing that is no box (a node's header in a graph), or a box the keyboard reached. It goes below `at`,
-// above it, to its right or to its left, each moved inside the window: the side that covers the least of `at` (on a
-// tie, the one that holds the fewest of the points `avoid`, frame px: a curve the tooltip must not hide; then the
-// first in that order), centred on `at` along that side.
+// above it, to its right or to its left, then at its corners, each moved inside the window: the place that covers the
+// least of `at`, centred on `at` along a side. On a tie, the one that touches the fewest rectangles of `avoid[0]`,
+// then of `avoid[1]`, and so on (frame px; a point is a rectangle of no size: a curve's); then the first in that order.
 @(require_results, deferred_none = tooltip_end)
-tooltip_near :: proc(at: Rect, avoid: []Vec2 = nil) -> bool {
+tooltip_near :: proc(at: Rect, avoid: [][]Rect = nil) -> bool {
 	s := gs()
 	em := font_size()
 	size := tooltip_last_size(em)
@@ -1192,33 +1192,55 @@ tooltip_near :: proc(at: Rect, avoid: []Vec2 = nil) -> bool {
 
 // tooltip_near's gap between the rectangle and the tooltip.
 @(private = "file") TOOLTIP_NEAR_GAP_EM :: 0.4
+// The lists of `avoid` that tooltip_near weighs; more are read as the last.
+@(private = "file") TOOLTIP_NEAR_TIERS :: 4
+
+// The places tooltip_near tries for a tooltip of `size` about `at`, in its order (before they are moved inside the
+// window): its sides, then its corners.
+@(private)
+tooltip_near_places :: proc(at: Rect, size: Vec2, gap: f32) -> [8]Vec2 {
+	mid := (at.min + at.max) * 0.5
+	below, above := at.max.y + gap, at.min.y - gap - size.y
+	right, left := at.max.x + gap, at.min.x - gap - size.x
+	return {
+		{mid.x - size.x * 0.5, below}, {mid.x - size.x * 0.5, above},
+		{right, mid.y - size.y * 0.5}, {left, mid.y - size.y * 0.5},
+		{right, above}, {left, above}, {right, below}, {left, below},
+	}
+}
 
 // Where tooltip_near puts a tooltip of `size` about `at` in a window of `window` (all frame px).
 @(private)
-tooltip_near_place :: proc(at: Rect, size, window: Vec2, gap: f32, avoid: []Vec2 = nil) -> Vec2 {
-	mid := (at.min + at.max) * 0.5
-	sides := [4]Vec2{
-		{mid.x - size.x * 0.5, at.max.y + gap},    // below
-		{mid.x - size.x * 0.5, at.min.y - gap - size.y},   // above
-		{at.max.x + gap, mid.y - size.y * 0.5},    // right
-		{at.min.x - gap - size.x, mid.y - size.y * 0.5},   // left
-	}
+tooltip_near_place :: proc(at: Rect, size, window: Vec2, gap: f32, avoid: [][]Rect = nil) -> Vec2 {
 	best := Vec2{}
-	least, fewest := max(f32), max(int)
-	for p in sides {
+	least := max(f32)
+	fewest: [TOOLTIP_NEAR_TIERS]int
+	for p, pi in tooltip_near_places(at, size, gap) {
 		q := clamp_popup(p, size, window)
 		cover := Rect{{max(q.x, at.min.x), max(q.y, at.min.y)}, {min(q.x + size.x, at.max.x), min(q.y + size.y, at.max.y)}}
 		c := max(cover.max.x - cover.min.x, 0) * max(cover.max.y - cover.min.y, 0)
-		// (the points count with the gap around the tooltip: a curve that grazes its edge reads as covered)
-		held := 0
-		for a in avoid {
-			if a.x >= q.x - gap && a.x <= q.x + size.x + gap && a.y >= q.y - gap && a.y <= q.y + size.y + gap { held += 1 }
+		// (with the gap around the tooltip: what grazes its edge reads as covered)
+		box := Rect{q - gap, q + size + gap}
+		held: [TOOLTIP_NEAR_TIERS]int
+		for list, i in avoid {
+			for r in list {
+				if r.min.x <= box.max.x && r.max.x >= box.min.x && r.min.y <= box.max.y && r.max.y >= box.min.y {
+					held[min(i, TOOLTIP_NEAR_TIERS - 1)] += 1
+				}
+			}
 		}
-		if c < least || (c == least && held < fewest) {
+		if pi == 0 || c < least || (c == least && tooltip_near_fewer(held, fewest)) {
 			least, fewest, best = c, held, q
 		}
 	}
 	return best
+}
+
+// Whether counts `a` are fewer than `b`, the first list first.
+@(private = "file")
+tooltip_near_fewer :: proc(a, b: [TOOLTIP_NEAR_TIERS]int) -> bool {
+	for i in 0 ..< TOOLTIP_NEAR_TIERS { if a[i] != b[i] { return a[i] < b[i] } }
+	return false
 }
 
 // The size the tooltip had in the last build.

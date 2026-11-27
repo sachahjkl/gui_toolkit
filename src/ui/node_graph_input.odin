@@ -20,8 +20,10 @@ import "../platform"
 // and GRAPH_LINK_HIT_LEAST_PX more).
 @(private) GRAPH_LINK_HIT_PX :: 6
 @(private) GRAPH_LINK_HIT_LEAST_PX :: 2
-// A link's tooltip avoids this many pieces of its curve (their ends).
+// A link's tooltip avoids the points of this many pieces of each curve near it (their ends), above all those of the
+// hovered link this close to the pointer (em).
 @(private) GRAPH_LINK_TIP_POINTS :: 48
+@(private) GRAPH_LINK_TIP_NEAR_EM :: 8
 // The zoom glides toward what the wheel asked at this rate (per second, in its logarithm).
 @(private) GRAPH_ZOOM_RATE :: 18
 // An arrow key moves the selection this far (graph units) when the graph has no snap; with Shift ten times.
@@ -307,7 +309,7 @@ node_graph_tip :: proc(f: ^Node_Graph_Frame, s: ^State, h: Node_Graph_Hit) {
 	target: [2]u64
 	text, more: string
 	at: Rect
-	avoid: []Vec2
+	link: Maybe(Graph_Link)   // (a link's tooltip: what it avoids is found once it shows)
 	if view.gesture == nil {
 		#partial switch h.kind {
 		case .Link:
@@ -319,7 +321,7 @@ node_graph_tip :: proc(f: ^Node_Graph_Frame, s: ^State, h: Node_Graph_Hit) {
 				more = fmt.tprintf(i18n.tr("%d of %d here · Alt+wheel for the next"), h.pick, h.links)
 				reach := node_graph_link_reach(f)
 				at = {s.mouse - reach, s.mouse + reach}
-				avoid = node_graph_link_points(f, l)
+				link = l
 			}
 		case .Port:
 			i, found := f.index[h.port.node]
@@ -353,6 +355,8 @@ node_graph_tip :: proc(f: ^Node_Graph_Frame, s: ^State, h: Node_Graph_Hit) {
 		wake_within(s, max(1, int(delay - waited) + WAKE_MARGIN_MS))
 		return
 	}
+	avoid: [][]Rect
+	if l, ok := link.?; ok { avoid = node_graph_link_tip_avoid(f, s, l, at) }
 	if tooltip_near(at, avoid) {
 		tooltip_text(text)
 		if more != "" { if muted() { tooltip_text(more) } }
@@ -523,16 +527,40 @@ node_graph_cycle :: proc(f: ^Node_Graph_Frame, s: ^State, scrolled: [2]f32) -> b
 	return true
 }
 
-// Points along link `l`'s curve (frame px, the temp allocator), for its tooltip to avoid: nil when an end is not drawn.
+// What the tooltip of link `l` about `at` avoids, in tooltip_near's lists (the temp allocator): the link near the
+// pointer; the headers of the nodes; the other links and the rest of `l`. Only what lies where the tooltip can go
+// (`at` widened by the tooltip's size) is read: a link whose box does not reach there costs a box test.
 @(private = "file")
-node_graph_link_points :: proc(f: ^Node_Graph_Frame, l: Graph_Link) -> []Vec2 {
-	a, ok_a := node_graph_port_screen(f, {l.from_node, l.from_port, .Out})
-	b, ok_b := node_graph_port_screen(f, {l.to_node, l.to_port, .In})
-	if !ok_a || !ok_b { return nil }
-	ca, cb := node_graph_curve(a, b, node_graph_curve_least(f), f.down)
-	points := make([]Vec2, GRAPH_LINK_TIP_POINTS + 1, context.temp_allocator)
-	for &p, i in points { p = draw.bezier_cubic_at(a, ca, cb, b, f32(i) / GRAPH_LINK_TIP_POINTS) }
-	return points
+node_graph_link_tip_avoid :: proc(f: ^Node_Graph_Frame, s: ^State, l: Graph_Link, at: Rect) -> [][]Rect {
+	em := f.em * f.sc
+	size := tooltip_last_size(font_size()) + em
+	room := Rect{at.min - size, at.max + size}
+	near := GRAPH_LINK_TIP_NEAR_EM * em
+	reading := make([dynamic]Rect, 0, GRAPH_LINK_TIP_POINTS + 1, context.temp_allocator)
+	headers := make([dynamic]Rect, 0, 8, context.temp_allocator)
+	links := make([dynamic]Rect, 0, 64, context.temp_allocator)
+	for g, i in f.geo {
+		r := node_graph_screen_rect(f, i)
+		header := Rect{r.min, {r.max.x, r.min.y + g.header * graph_zoom(f.view) * f.sc}}
+		if node_graph_overlaps(header, room) { append(&headers, header) }
+	}
+	for x in f.links {
+		a, ok_a := node_graph_port_screen(f, {x.from_node, x.from_port, .Out})
+		b, ok_b := node_graph_port_screen(f, {x.to_node, x.to_port, .In})
+		if !ok_a || !ok_b { continue }
+		ca, cb := node_graph_curve(a, b, node_graph_curve_least(f), f.down)
+		box := Rect{{min(a.x, b.x, ca.x, cb.x), min(a.y, b.y, ca.y, cb.y)}, {max(a.x, b.x, ca.x, cb.x), max(a.y, b.y, ca.y, cb.y)}}
+		if !node_graph_overlaps(box, room) { continue }
+		for k in 0 ..= GRAPH_LINK_TIP_POINTS {
+			p := draw.bezier_cubic_at(a, ca, cb, b, f32(k) / GRAPH_LINK_TIP_POINTS)
+			if !draw.rect_contains(room, p) { continue }
+			d := p - s.mouse
+			if x == l && d.x * d.x + d.y * d.y <= near * near { append(&reading, Rect{p, p}) } else { append(&links, Rect{p, p}) }
+		}
+	}
+	out := make([][]Rect, 3, context.temp_allocator)
+	out[0], out[1], out[2] = reading[:], headers[:], links[:]
+	return out
 }
 
 // A link as the target of a tooltip (Graph_View.tip): apart from a node's and a port's by its first word's top bit.

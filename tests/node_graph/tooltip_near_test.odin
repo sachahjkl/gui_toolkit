@@ -13,7 +13,7 @@ import "gt:ui"
 @(private = "file")
 Near :: struct {
 	at:    ui.Rect,
-	avoid: []ui.Vec2,
+	avoid: [][]ui.Rect,
 }
 
 @(private = "file")
@@ -76,12 +76,19 @@ a_tooltip_near_a_rectangle_takes_the_side_with_room :: proc(t: ^testing.T) { unw
 	tip = tip_at(s, &n, at)
 	testing.expectf(t, inside(tip) && (tip.max.y <= at.min.y || tip.max.x <= at.min.x), "above or left, inside: %v", tip)
 
-	// room everywhere, a vertical line through it to avoid: beside it, not below or above
-	line: [21]ui.Vec2
-	for &p, i in line { p = {150, f32(i) * 20} }
-	n.avoid = line[:]
+	// room everywhere, a vertical line through it to avoid (points): beside it, not below or above
+	line: [21]ui.Rect
+	for &r, i in line { r = {{150, f32(i) * 20}, {150, f32(i) * 20}} }
+	n.avoid = {line[:]}
 	at = {{140, 190}, {160, 210}}
 	tip = tip_at(s, &n, at)
 	testing.expectf(t, inside(tip) && (tip.min.x >= at.max.x || tip.max.x <= at.min.x), "beside the line: %v", tip)
+
+	// the line first, then a band to its right at the height of `at`: the first list outweighs the second, which
+	// leaves the corners right of the line: the first of them, above right
+	band := []ui.Rect{{{170, 195}, {400, 205}}}
+	n.avoid = {line[:], band}
+	tip = tip_at(s, &n, at)
+	testing.expectf(t, inside(tip) && tip.min.x >= at.max.x && tip.max.y <= at.min.y, "above right: %v", tip)
 	n.avoid = nil
 }) }
