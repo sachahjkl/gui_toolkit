@@ -80,9 +80,11 @@ a_program_draws_on_lavapipe_unless_it_asks_for_the_gpu :: proc(t: ^testing.T) {
 }
 
 // lavapipe's manifest is found among the others of an icd.d folder, for this architecture; a VK_DRIVER_FILES that names
-// it alone is kept; one that names another driver is not taken.
+// it alone is kept; one that names another driver is not taken. (Linux's: VK_DRIVER_FILES is a list split on ':', and
+// the session runs there only)
 @(test)
 lavapipe_is_found_among_the_drivers :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux { return }
 	dir := testkit.temp_folder(t, "icd")
 	other := fmt.tprintf("%s/other", dir)
 	icd := fmt.tprintf("%s/icd.d", dir)
