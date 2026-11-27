@@ -123,6 +123,9 @@ Page_Options :: struct {
 	diagnostics: Diagnostics_Source,
 	// the program's changelog (changelog.odin): a What's new page, first of the toolkit's own (nil: not shown)
 	changelog:   ^Changelog,
+	// the program's views (panels.odin): the page "window" shows how far its frame's bottom panel goes across, and its
+	// top panel's (views.md, section 6.1b); the choice is kept with the layout, not in the settings file (nil: not shown)
+	views:       ^ui.Views,
 }
 
 // The page's state, kept by the program between frames (destroy). Keep it as long as the ui.State it is built in: the
@@ -472,6 +475,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 								sections(p, prefs, o, pg.category, advanced[:], em)
 							} else {
 								sections(p, prefs, o, pg.category, basic[:], em)
+								if pg.category == PANELS_PAGE { panel_lines(p, o, em) }
 								if len(advanced) > 0 { advanced_part(p, prefs, o, pg.category, advanced[:], em) }
 							}
 							if o.page_foot != nil { o.page_foot(o.user, pg.category, em) }
@@ -1059,7 +1063,7 @@ note_of :: proc(e: ^config.Entry) -> string {
 	return strings.join(parts[:], " ", context.temp_allocator)
 }
 
-@(private = "file")
+@(private)
 reset_button :: proc(o: Page_Options, em: f32) -> bool {
 	sz := math.round(em * 1.6)
 	if o.icon_font != 0 && o.reset_icon != "" {

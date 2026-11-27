@@ -19,13 +19,20 @@ Views_Variant :: enum u8 {
 	Floating,   // the panels and a floating window over the content
 	Dialog,     // the panels and a dialog over all of it (its header: the Detach icon, the close cross)
 	Tabs,       // the panels, every terminal open: in a narrow window their tabs overflow the strip (its arrows)
+	Span_Full,  // a sidebar at the left, the terminals across the whole width under it (View_Span.Full)
+	Span_Content,   // the same, the terminals under the content alone, the sidebar the space's height (View_Span.Content)
+	Main,       // the sidebar, and a board in the main zone in place of the picture (view_show_main)
+	Kept,       // the sidebar, the terminals maximised keeping it (views_space_maximise with keep = {.Left})
 }
-VIEWS_VARIANT_NAMES := [Views_Variant]string{.Docked = "docked", .Floating = "floating", .Dialog = "dialog", .Tabs = "tabs"}
+VIEWS_VARIANT_NAMES := [Views_Variant]string{.Docked = "docked", .Floating = "floating", .Dialog = "dialog", .Tabs = "tabs",
+	.Span_Full = "span_full", .Span_Content = "span_content", .Main = "main", .Kept = "kept"}
 
 VIEWS_SPACE :: "views_scene"
 TERMINAL_VIEW :: "terminal"
 INSPECTOR_VIEW :: "inspector"
 COLOUR_VIEW :: "colour"
+FILES_VIEW :: "files"
+BOARD_VIEW :: "board"
 TERMINALS_MAX :: 6
 
 // A terminal's tab: its name and what it shows.
@@ -54,12 +61,23 @@ views_register :: proc(app: ^App) {
 	ui.view_register(vs, COLOUR_VIEW, colour_view, ui.View_Options{
 		title = "Colour", icon = lucide.PALETTE, home = .Dialog, first = .Internal, width_em = 19,
 	})
+	ui.view_register(vs, FILES_VIEW, files_view, ui.View_Options{
+		title = "Files", icon = lucide.FOLDER, home = .Panel, home_place = {space = VIEWS_SPACE, edge = .Left}, extent_em = 13,
+	})
+	ui.view_register(vs, BOARD_VIEW, board_view, ui.View_Options{
+		title = "Board", icon = lucide.LAYOUT_GRID, home = .Panel, home_place = {space = VIEWS_SPACE, edge = .Center},
+	})
 }
 
 views_build :: proc(app: ^App, em: f32) {
 	vs := ui.views()
 	// (the space: its content in the centre, the terminals' zone a share of its height, the inspector's a sidebar's width)
-	if ui.views_dock(vs, VIEWS_SPACE, {content = true, extent_frac = #partial [ui.View_Edge]f32{.Bottom = 0.36}, extent_em = #partial [ui.View_Edge]f32{.Right = 17}}) {
+	// (the span scenes say how far the terminals go across; the others keep a space's .Full)
+	o := ui.View_Dock_Options{content = true, extent_frac = #partial [ui.View_Edge]f32{.Bottom = 0.36}, extent_em = #partial [ui.View_Edge]f32{.Right = 17}}
+	#partial switch app.views_variant {
+	case .Span_Content, .Main, .Kept: o.bottom_span = .Content
+	}
+	if ui.views_dock(vs, VIEWS_SPACE, o) {
 		heading("Views", "One build procedure each, shown where the person puts it: docked in a panel, floating over the content, in a window of its own, or a dialog. Drag a tab or a header to move it.", em)
 		views_canvas(app, em)
 	}
@@ -107,6 +125,16 @@ views_scene_open :: proc(app: ^App) {
 	case .Floating: ui.view_open(vs, COLOUR_VIEW, app)
 	case .Dialog:   ui.view_open(vs, EXPORT_VIEW, app)
 	case .Tabs:     for app.terminal_count < TERMINALS_MAX { terminal_open(app) }
+	case .Span_Full, .Span_Content:
+		ui.view_close(vs, INSPECTOR_VIEW)
+		ui.view_open(vs, FILES_VIEW, app)
+	case .Main:
+		ui.view_close(vs, INSPECTOR_VIEW)
+		ui.view_open(vs, FILES_VIEW, app)
+		ui.view_open(vs, BOARD_VIEW, app)
+	case .Kept:
+		ui.view_open(vs, FILES_VIEW, app)
+		ui.views_space_maximise(vs, VIEWS_SPACE, .Bottom, 0, {.Left})
 	}
 }
 
@@ -117,6 +145,9 @@ views_scene_follow :: proc(app: ^App) {
 	for i in 0 ..< app.terminal_count { ui.view_close(vs, TERMINAL_VIEW, app.terminals[i].name) }
 	ui.view_close(vs, INSPECTOR_VIEW)
 	ui.view_close(vs, COLOUR_VIEW)
+	ui.view_close(vs, FILES_VIEW)
+	ui.view_close(vs, BOARD_VIEW)
+	ui.views_space_restore(vs, VIEWS_SPACE)
 	app.views_opened = false
 }
 
@@ -201,5 +232,52 @@ colour_view :: proc(v: ^ui.View, app: ^App) {
 		if ui.form_row("Hue") { ui.slider("###colour_hue", &app.views_hue, 0, 360, 1, "%.0f°") }
 		if ui.form_row("Saturation") { ui.slider("###colour_sat", &app.views_sat, 0, 1, 0.01, "%.2f") }
 		if ui.form_row("Light") { ui.slider("###colour_val", &app.views_val, 0, 1, 0.01, "%.2f") }
+	}
+}
+
+// A sidebar of files: the left zone of the span scenes.
+@(private = "file")
+files_view :: proc(v: ^ui.View, app: ^App) {
+	em := ui.font_size()
+	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+	if ui.column(id = "###files") {
+		ui.spacer(ui.px(em * 0.6))
+		if ui.tags("weak") {
+			ui.next({width = ui.fill(), height = ui.text_size(), text_pad = math.round(em * 0.8)})
+			ui.label("PICTURES###files_title")
+		}
+		names := [?]string{"harbour-at-dusk.webp", "lighthouse.webp", "market-street.webp", "night-ferry.webp", "old-pier.webp", "storm-front.webp"}
+		for n, i in names {
+			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.9)), text_pad = math.round(em * 0.8)})
+			if i == 0 {
+				if ui.tags("selected") { ui.build_box({.Draw_Background, .Draw_Text}, fmt.tprintf("%s###file%d", n, i)) }
+			} else {
+				ui.build_box({.Draw_Text}, fmt.tprintf("%s###file%d", n, i))
+			}
+		}
+	}
+}
+
+// A board of tiles: a view in the main zone, in place of the picture.
+@(private = "file")
+board_view :: proc(v: ^ui.View, app: ^App) {
+	em := ui.font_size()
+	gap := math.round(em * 0.6)
+	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+	if ui.column(id = "###board") {
+		for row in 0 ..< 2 {
+			ui.spacer(ui.px(gap))
+			ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
+			if ui.row(id = fmt.tprintf("###board_row%d", row)) {
+				for col in 0 ..< 3 {
+					k := row * 3 + col
+					ui.spacer(ui.px(gap))
+					ui.next({width = ui.fill(), height = ui.fill(), radius = math.round(em * 0.5), bg = draw.hsv(f32(k) / 6, 0.35, 0.55), text_pad = math.round(em * 0.8)})
+					ui.build_box({.Draw_Background, .Draw_Text}, fmt.tprintf("Agent %d###tile%d", k + 1, k))
+				}
+				ui.spacer(ui.px(gap))
+			}
+		}
+		ui.spacer(ui.px(gap))
 	}
 }

@@ -66,6 +66,10 @@ SHOWCASE_SHOTS := []Shot {
 	{name = "showcase_views_light", example = "showcase", args = {"--headless", "--scene=views", "--views=floating", "--theme=Glacier", "--light", "--size=1280x720"}, webp = true},
 	// (six terminals in a small window: their tabs overflow the stack's strip, the one shown on its plate brought into
 	// view, the left arrow; the sidebar's scenes overflow its vertical strip: its down arrow. No bar anywhere)
+	{name = "views_span_full", example = "showcase", args = {"--headless", "--scene=views", "--views=span_full", "--theme=Graphite", "--size=1280x720"}, webp = true},
+	{name = "views_span_content", example = "showcase", args = {"--headless", "--scene=views", "--views=span_content", "--theme=Graphite", "--size=1280x720"}, webp = true},
+	{name = "views_main", example = "showcase", args = {"--headless", "--scene=views", "--views=main", "--theme=Graphite", "--size=1280x720"}, webp = true},
+	{name = "views_kept", example = "showcase", args = {"--headless", "--scene=views", "--views=kept", "--theme=Graphite", "--size=1280x720"}, webp = true},
 	{name = "showcase_views_tabs", example = "showcase", args = {"--headless", "--scene=views", "--views=tabs", "--theme=Graphite", "--size=760x560"}, webp = true},
 	{name = "showcase_dialog", example = "showcase", args = {"--headless", "--scene=dialog", "--theme=Graphite", "--size=1280x680"}, webp = true},
 	{name = "showcase_confirm", example = "showcase", args = {"--headless", "--scene=confirm", "--theme=Gruvbox", "--size=1280x680"}, webp = true},

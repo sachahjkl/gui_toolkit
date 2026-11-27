@@ -517,9 +517,10 @@ draws, except the header that a dialog always had. The rules:
    - **Words are the program's source words**: `title`, `new_tab_label` and `Views_Options.labels` are kept as given
      (English, `i18n.later`) and translated when shown, at each build. Refused: translating at registration (the
      words stayed in the language of the start).
-   - **Maximise**: the stack takes the whole dock space for a while: the other zones are not built, the program's
-     content is laid out at no size (built, its state kept, not seen). Maximise again, or Escape with the focus in it,
-     restores. Not remembered across runs: a program that starts with its content hidden looks broken.
+   - **Maximise**: the stack takes the dock space for a while, but the zones the space keeps (section 6.1d): the
+     other zones are not built, the program's content is laid out at no size (built, its state kept, not seen).
+     Maximise again, a double click on its strip's free part, its menu's Restore, or Escape with the focus in it,
+     restores. Remembered with the layout (section 6.1d).
    - **Minimise**: the zone collapses; a click on a tab, or the button again, restores. Remembered per zone
      (`bottom.min=1` in the space's line). A side zone's Minimise and Restore are the manual acts of its fold
      ([side-panels.md](side-panels.md)): they hold until the space's width next crosses the zone's threshold
@@ -755,7 +756,7 @@ window resized keeps it filling. Its grips are not built: nothing resizes it. Re
 **Decisions.**
 
 1. **The flag is the opening's, not the memory's** (`View_Record.maximised`, reset at each opening). Maximise is a look
-   for a while (a diagram to zoom), as the stack's Maximise of a panel (rule 2b) is not remembered either. A viewer
+   for a while (a diagram to zoom). (A stack's Maximise of a panel is a layout, and is remembered: section 6.1d.) A viewer
    that opened maximised once and then always opened over the whole window would hide the program each time. A
    program that wants a viewer to open maximised says so at each opening: `view_maximise(vs, id, true)` after
    `view_open`.
@@ -1301,7 +1302,8 @@ of splits in a zone (any split in any direction). A row along one axis is what M
 list of shares. A zone's axis is set by the first split of its one stack; with two stacks or more only that axis
 splits it.
 
-**A space without content has a centre zone.** `views_dock(vs, name, {})` (no `content`) lays out a fifth zone,
+**A space without content has a centre zone; a space with content has one while views are there (its main zone,
+section 6.1c).** `views_dock(vs, name, {})` (no `content`) lays out a fifth zone,
 `.Center`, which fills what the edges leave: its views are the space's main area (Mission Control). A space with
 content (the frame, `{content = true}`) has none: its centre is the program's.
 
@@ -1309,8 +1311,8 @@ content (the frame, `{content = true}`) has none: its centre is the program's.
 
 1. It settles the views of its State (`views_settle_all`, once per build): a dialog, an internal window or a panel
    that opens or moves is decided before anything of this frame is built.
-2. It lays out the frame's space: the top zone, then the left zone, the content, the right zone, then the bottom
-   zone, each zone with its handle (the `splitter` of `split.odin`) on its content side. A zone with no view is not
+2. It lays out the frame's space: its four zones around the content, as far across as its corners say (section
+   6.1b), each zone with its handle (the `splitter` of `split.odin`) on its content side. A zone with no view is not
    built: a window with no panel has its content and one box around it.
 3. It builds the panels into their zones, then the internal windows. Their code runs before the content's code, so
    they read keys first (section 6.5). The internal windows are children of the root, after the program's first box:
@@ -1320,6 +1322,119 @@ content (the frame, `{content = true}`) has none: its centre is the program's.
    that forgets `views_frame` still gets its dialogs and its internal windows; its panels float until a space is built.
 
 The window's title bar stays the program's, inside the content. A panel at the top goes under it.
+
+### 6.1b The corners: how far the top and the bottom zones go across
+
+opencode native asked for it: a terminal docked at the bottom ran under the sessions' sidebar, across the whole window.
+VS Code calls the same choice the panel's alignment. Each corner of a space belongs to one of the two zones that meet
+there. The top and the bottom zones say which with a `View_Span`:
+
+| `View_Span` | The top or the bottom zone | The side zones |
+|---|---|---|
+| `.Content` | across the content only | the space's full height on that side |
+| `.Left` | across the left zone and the content | the left stops at it; the right goes on to the edge |
+| `.Right` | across the content and the right zone | the right stops at it; the left goes on to the edge |
+| `.Full` | the space's whole width | both stop at it (the layout before this choice) |
+
+- **Who chooses.** The program gives its default (`View_Dock_Options.top_span`, `bottom_span`); the person's choice
+  wins over it (`views_space_set_span`, the settings' Window page) and is remembered with the layout, in the space's
+  line (`bottom.span=content`). `views_space_reset` forgets it with the rest of the layout.
+- **The toolkit's default, when the program gives none (nil): `.Content` for the window's frame, `.Full` for a space
+  of the program's.** The frame wraps a program's content (its title bar, its body, its status bar): a sidebar the
+  window's height and a panel under the content is what a person who knows VS Code expects, and what opencode native
+  asks. A space of the program's is a layout of its own: Mission Control's machine runs across its top and its row of
+  lists across its bottom, the health and the memory between them; `.Content` would change that look for nothing.
+  The other programs (classeur: left and right only; cliche: a right zone in its history; inspecteur's Services: a
+  bottom zone only; Wren: its developer tools at the bottom of its frame and no side zone; papier, atelier, feuille:
+  no docked panel at first) look the same in either mode: a span matters only where a side zone and a top or bottom
+  zone are both there. Refused: one default for both kinds (`.Content` changes Mission Control; `.Full` keeps the
+  terminal under the sidebar, what was asked to go).
+- **The layout: zones peeled from the outside in.** A zone that owns both of its corners (a corner whose other zone is
+  absent counts as its own) takes a whole side of what is left, and is laid out there first; the zones peeled together
+  are on one axis (the top and the bottom, or the left and the right), siblings in one column or one row around what
+  is left; then the same again inside, down to the content. `.Full` gives today's column (the top, a row of the left,
+  the content and the right, the bottom); `.Content` a row (the left, a column of the top, the content and the bottom,
+  the right). Every mix is such a nest but one: the top `.Left` with the bottom `.Right` (or the mirror), with the
+  four zones there, where each zone holds one corner of the next and none can go first. There the top gives way: it
+  is laid out as `.Content`. Refused: absolute rects for the zones (the space's rect is known only after the layout:
+  a resize would show one frame late); a fixed nest per mode with every container built (simpler keys, but the
+  pinwheel still needs a rule, and absent zones would leave containers to lay out).
+- **A share stays a share of the space.** A zone's `pct(frac, 1)` is of its nearest sized ancestor before anything
+  shrinks: every box of the nest is `fill()`, so each is the space's size in that pass, and the share is of the
+  space whatever the nest. A zone's handle converts a drag against the space's rect, as before.
+- **The keys do not follow the nest.** The content's box and each zone's box take their key from the space's box, not
+  from their parent (`State.key_under`): a change of span, or a zone that comes or goes and changes the nest, keeps
+  the content's state (its scroll, its focus, a field typed in) and the zones' strips. The panels' bodies were already
+  rooted (section 6.4).
+- **Everything else keeps working in every mode.** The handles sit on the content side of their zone, as before. A
+  side zone's fit (side-panels.md) reads the space's width, which its row always has but where the other side zone was
+  peeled first (it then has the room that zone leaves: the same sum). Maximise lays out the one stack over the whole
+  space whatever the span; a top or bottom zone minimised is its strips across its own span; a side zone's rail is
+  as tall as its zone. F6 goes round the content, then the zones by edge, as before; Tab follows the boxes, so in
+  `.Content` the left zone comes before the top zone: the order they are read in, left to right.
+- **The drops follow the span.** The preview of an edge where no zone is yet is where the zone would be: in `.Content`
+  a view dropped at the bottom shows, and lands, under the content between the side zones. An edge's square sits at
+  the middle of that span (a bottom zone's under the content's middle).
+- **The settings.** `prefs_page.Page_Options.views` (the program's `Views`) adds to the Window page a line "Bottom
+  panel" (and "Top panel" while the frame has a top zone, or the person chose one): a choice of the four, with a
+  reset while the person's choice is not the program's. Refused: a preference in the settings file (one layout in
+  two files; "Reset the layout" would not reset it). A layout's choice is not a preference: the search of the
+  settings does not find it.
+
+### 6.1c The main zone
+
+opencode native shows its Swarm in place of its conversation, and built it by hand: its own flag, its own branch in
+its content, its own focus. The frame gives that place: the centre of a space with content is a zone too, its **main
+zone**, while views are docked there.
+
+- **A view in the main zone is in place of the content.** `View_Place{edge = .Center}` in a space with content (the
+  frame's: `{edge = .Center}`). While the main zone has a view, it takes the content's rect (what the four zones
+  leave, as the spans say), and the program's content is laid out at no size: built, its state kept (its scroll, a
+  field's text), not seen, as under a Maximise. When the last view there closes or moves away, the content is back,
+  in the same frame. Refused: a flag of the program's that it reads in its content (each program writes its own
+  branch, its focus, its menus' items; the memory does not keep it); hiding the content's build (its state, and its
+  workers that read its build, would go).
+- **It is a zone as any other.** Two views there are tabs; a split makes stacks one above the other; its stacks
+  maximise (their zones kept or not, section 6.1d); its views' menu and the palette move them out. It has no Minimise
+  (nowhere to fold to), no handle (it is what the others leave).
+- **`view_show_main(vs, id, data, instance)`** opens the view in the frame's main zone, or moves it there when it is
+  open elsewhere (its home stays its own); `views_main(vs, space) -> (id, instance, ok)` says which view the main
+  zone shows (its first stack's tab shown). A view registered with `home_place = {edge = .Center}` opens there by
+  `view_open`; `view_reattach` brings it back.
+- **Remembered with the layout.** The view's line keeps its place (`dock=:center:...`), as any panel's: a view open in
+  the main zone at the quit is there again when the program restores it (`view_restore`). Before it opens, the
+  content shows: a start never shows an empty main zone.
+- **The focus.** When the content goes under a main view, a focus left in it goes to the main view's first stop: keys
+  typed into a content nobody sees would be lost. F6 skips the content while it is hidden; Tab follows the boxes.
+- **The drops.** While the main zone has views, its stacks' crosses take a drop (a tab, a split), as the centre zone of
+  a space without content. Without a view there, a space with content shows no centre square: a drop never hides the
+  program's content by surprise; `view_show_main`, the program's command, does.
+
+### 6.1d A maximise that keeps zones
+
+A stack's Maximise hid every other zone. opencode native wants its Swarm, or a terminal, to take the window while its
+sessions' sidebar stays: the sidebar is how one leaves.
+
+- **The zones a maximise keeps.** A maximise has a set of edges it keeps (`keep`): those zones stay laid out as
+  before, their extents, their spans and their handles unchanged; the maximised stack takes the rest of the space;
+  the other zones are not built, the main zone among them when the stack is elsewhere (as any hidden zone, its views'
+  boxes go and come back with it); the content is laid out at no size.
+  The nest of section 6.1b does it: the kept zones are peeled around the stack, which stands in the content's place.
+- **Who turns it on.** The program: `views_space_maximise(vs, name, edge, stack, keep)`. The person: the strip's
+  Maximise, the stack's menu, a double click on the strip's free part: these keep `View_Dock_Options.maximise_keeps`
+  (the program's set for the person's maximise; none: the whole space, as before).
+- **Who turns it off.** The same acts again (the strip's Restore, the menu's Restore, a double click on the strip),
+  Escape with the focus in the stack, the stack's Close, `views_space_restore(vs, name)`. A drop into a zone the
+  maximise hides ends it: the view shows where it went. A drop on a kept zone, or on the stack, keeps it.
+- **Remembered with the layout.** The space's line keeps it (`max=bottom.0 max.keep=left`); `views_space_reset`
+  forgets it. Refused before: "not remembered, a program that starts with its content hidden looks broken". With a
+  kept sidebar the program does not look broken, and a person who chose a layout finds it again. At a start the
+  maximise waits for its stack: until the views there reopen, the space is laid out as if none; a stack that emptied
+  after it showed ends the maximise, and so does a drop while it waits (a program that removed the view: a stale one
+  would come back the next time the person docks a view there, and hide the content).
+- **Read it.** `views_space_maximised(vs, name) -> (edge, stack, ok)` and `views_space_maximise_keeps(vs, name)`.
+- **The focus and the keys.** F6 goes round what is built: the kept zones' stacks and the maximised stack. A focus in
+  a zone that the maximise hides goes to the maximised stack's first stop.
 
 **Panels show at once.** A panel's size is its zone's, not its content's: it has no unseen builds. A view that opens
 or moves into a zone settles in the settle pass and is built there in the same frame. Its content may measure itself

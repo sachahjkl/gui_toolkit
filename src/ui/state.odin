@@ -615,8 +615,11 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	if id != "" && s.key_rooted {
 		// (the same box wherever its parent is: what is under it keeps its keys, and the focus, from one place to another)
 		key = key_from_string(0, id)
+	} else if id != "" && s.key_under != 0 {
+		// (the same key whatever boxes lie between: a dock space's content keeps its state when the zones' nest changes)
+		key = key_from_string(s.key_under, id)
 	} else if id == "" { key = key_from_u64(parent.key, u64(parent.child_count) + HASH_GOLDEN_RATIO_64) } else { key = key_from_string(parent.key, id) }
-	s.key_rooted = false
+	s.key_rooted, s.key_under = false, 0
 	// two siblings with the same id would share state: keep going until the key is free for this build
 	for {
 		if existing, ok := s.boxes[key]; ok && existing.last_build == s.build_index {

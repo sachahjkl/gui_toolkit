@@ -714,6 +714,51 @@ fr Oui
 en Reading the fonts…
 fr Lecture des polices…
 
+en Top panel
+fr Panneau du haut
+
+en Bottom panel
+fr Panneau du bas
+
+en How far the panel at the top of the window goes across.
+fr Jusqu'où le panneau du haut de la fenêtre s'étend en largeur.
+
+en How far the panel at the bottom of the window goes across.
+fr Jusqu'où le panneau du bas de la fenêtre s'étend en largeur.
+
+en Content
+fr Contenu
+
+en Left
+fr Gauche
+
+en Right
+fr Droite
+
+en Full
+fr Toute la largeur
+
+en Over the content only: the side panels go up to the window's top
+fr Au-dessus du contenu seul : les panneaux latéraux montent jusqu'en haut de la fenêtre
+
+en Over the left panel and the content
+fr Au-dessus du panneau de gauche et du contenu
+
+en Over the content and the right panel
+fr Au-dessus du contenu et du panneau de droite
+
+en Across the whole window
+fr Sur toute la largeur de la fenêtre
+
+en Under the content only: the side panels go down to the window's bottom
+fr Sous le contenu seul : les panneaux latéraux descendent jusqu'en bas de la fenêtre
+
+en Under the left panel and the content
+fr Sous le panneau de gauche et le contenu
+
+en Under the content and the right panel
+fr Sous le contenu et le panneau de droite
+
 en Back
 fr Retour
 

@@ -112,8 +112,12 @@ again.
 | `view_maximise(vs, id, on, instance)`, `view_maximised(vs, id, instance) -> bool` | its dialog fills the window, or goes back to its size; for this opening only (after `view_open`: a viewer that opens maximised); the remembered size is not changed |
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
 | `views_frame(vs, o = {})`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels); `o`: `View_Dock_Options` |
-| `views_space_maximised(vs, name) -> (edge, stack, ok)` | the stack of a space that its strip's Maximise shows alone |
+| `views_space_maximised(vs, name) -> (edge, stack, ok)`, `views_space_maximise_keeps(vs, name)` | the stack of a space that is maximised, and the zones it keeps |
+| `views_space_maximise(vs, name, edge, stack, keep)`, `views_space_restore(vs, name)` | the program's Maximise of a stack, keeping the zones of `keep` (`{.Left}`: a sidebar stays), and its end (section Panels) |
+| `view_show_main(vs, id, data, instance, owner)`, `views_main(vs, space) -> (id, instance, ok)` | a view in the main zone, in place of the content; the view the main zone shows (section Panels, "The main zone") |
 | `views_space_reset(vs, name)` | the layout of a space as at first: its zones, axes and shares the defaults, its views back home (section Panels) |
+| `views_space_span(vs, name, edge) -> (span, chosen)`, `views_space_set_span(vs, name, edge, span)` | how far the top or the bottom zone goes across (section Panels, "The corners"); `chosen`: the person's; `nil` forgets it |
+| `views_space_zones(vs, name) -> bit_set[View_Edge]` | the zones the space's last build laid out |
 | `view_dock_line(vs, edge, space) -> (Rect, ok)` | where a zone's handle draws its rule, window pixels (this frame's layout from a custom draw, else the last): a program's line across its title or status bar takes its place from here, so both meet on one pixel column; a side zone's rail has it too; `ok` false with no handle there |
 | `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
 | `views_space_format(m)`, `views_space_parse(text) -> (View_Space_Memory, ok)` | a dock space's line of the memory |
@@ -352,6 +356,38 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   ask the space for no width (`.Fits_Width`, [least-width.md](../src/md/features/least-width.md)), so a wide tool bar or
   row in them never pushes a zone out of the window. What does not fit overflows inside them: a program scrolls it or
   folds it there.
+- **The main zone.** A view docked at `.Center` of a space with content (the frame's: `{edge = .Center}`) is in
+  place of the content: it takes the content's rect, and the content is laid out at no size (built, its state kept)
+  until the last view there closes or moves away. `view_show_main(vs, id, data)` opens a view there, or moves it
+  there; `views_main(vs)` says which view shows. It is a zone as any other (tabs, splits, a maximise) but has no
+  Minimise and no handle. A focus left in the hidden content goes to the view; F6 skips the content meanwhile. The
+  view's line keeps its place: restored, it is in the main zone again. Without a view there, a space with content
+  shows no centre square during a drag: a drop never hides the content.
+
+  | A board in the main zone | The terminals maximised, the sidebar kept |
+  |---|---|
+  | ![A board of tiles in place of the picture, the sidebar and the terminals around it](screenshots/views_main.webp) | ![The terminals take the space but the sidebar, which stays](screenshots/views_kept.webp) |
+
+  ```odin
+  if ui.button("swarm", "Swarm").clicked { ui.view_show_main(&app.views, "swarm", app) }   // the conversation goes under it
+  ```
+
+- **The corners.** Each corner of a space belongs to one of the two zones that meet there. The top and the bottom
+  zones say which with a `View_Span` (`View_Dock_Options.top_span`, `bottom_span`): `.Content` (across the
+  content only: the side zones go the space's full height; a terminal at the bottom stays out from under a sidebar),
+  `.Left` (under the left zone too), `.Right` (under the right zone too), `.Full` (the whole width: the side zones
+  stop at it). With none given, the window's frame is `.Content` and a space of the program's `.Full`. The person's
+  choice wins over the program's: `views_space_set_span(vs, "", .Bottom, .Full)` (the settings' Window page does it,
+  `prefs_page.Page_Options.views`), kept in the space's line (`bottom.span=full`); `nil` gives the program's
+  back, and `views_space_reset` forgets it. The top `.Left` with the bottom `.Right` (or the mirror), with the four
+  zones there, cannot be laid out as rows and columns: the top is then laid out as `.Content`. The drop targets
+  follow: in `.Content` a view dropped at the bottom lands under the content. A change of span keeps the content's
+  state: its key does not depend on the boxes around it.
+
+  | `.Full` | `.Content` |
+  |---|---|
+  | ![The bottom panel across the whole window, under the sidebar](screenshots/views_span_full.webp) | ![The bottom panel under the content only, the sidebar the window's height](screenshots/views_span_content.webp) |
+
 - A zone holds one stack or several in a row along its axis: one above the other at the left, the right and the
   centre, side by side at the top and the bottom (the first split of a zone's one stack may choose the other). A
   handle between two stacks moves their share of the zone. A view's place says its stack: `View_Place.stack`, its
@@ -382,9 +418,15 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   - The words of `View_Options` (`title`, `new_tab_label`) and of `Views_Options.labels` are the program's source
     words (English, `i18n.later`): the toolkit translates them when it shows them, so a change of language during the
     session shows at the next build.
-  - **Maximise**: the stack fills the dock space; the other zones are not built and the program's content is laid out
-    at no size (still built: its state is kept). Maximise again, or Escape with the focus in it, restores. Not
-    remembered across runs. `views_space_maximised(vs, name) -> (edge, stack, ok)` says which.
+  - **Maximise**: the stack fills the dock space but the zones it keeps; the other zones are not built and the
+    program's content is laid out at no size (still built: its state is kept). The kept zones keep their rects, their
+    handles and their spans. The person's Maximise (the strip's button, the stack's menu, a double click on the
+    strip's free part) keeps `View_Dock_Options.maximise_keeps` (`{.Left}`: the sidebar stays; none: the whole
+    space). The program's: `views_space_maximise(vs, "", .Bottom, 0, {.Left})`. The same acts restore it, and Escape
+    with the focus in the stack, its Close, `views_space_restore`, a drop into a zone it hides. Remembered with the
+    layout (`max=bottom.0 max.keep=left`): at a start it waits for its stack's views to reopen; a stack that empties
+    ends it, as does a drop while it waits. `views_space_maximised(vs, name) -> (edge, stack, ok)` says which, `views_space_maximise_keeps` what
+    it keeps.
   - **Minimise**: at the top and the bottom the zone shows its strips only; a click on a tab, or Minimise again,
     restores it. At the left and the right it becomes a rail one strip wide: a Restore button, then a button per view
     (its icon, its title as the tooltip), which restores the zone with that view shown. Remembered (`bottom.min=1` in

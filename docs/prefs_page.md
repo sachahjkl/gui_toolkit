@@ -469,6 +469,14 @@ prefs_page.install_launch(&app.install)
 
 The command line is `setup.command_of` and `setup.command_run` (`--install`, `--uninstall`, `--setup`).
 
+## The panels of the window
+
+`Page_Options.views` (the program's `ui.Views`) adds to the page `window` how far the frame's bottom panel goes
+across: Content, Left, Right or Full ([views.md](views.md), Panels, "The corners"), and the top panel's while the frame
+has a top zone. A choice is the person's span (`ui.views_space_set_span`), kept with the layout in the views' memory,
+not in the settings file; its reset gives the program's back. A program whose pages have no `window` page adds
+`{category = "window", title = "Window"}` to them.
+
 ## Diagnostics
 
 `Page_Options.diagnostics` (a `Diagnostics_Source` of the window the settings are in) adds a **Diagnostics** page after

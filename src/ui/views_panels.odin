@@ -49,12 +49,18 @@ View_Space :: struct {
 	stack_key: [View_Edge][VIEW_STACKS_MAX]Key,
 	count:     [View_Edge]int,                          // ... how many stacks each zone had
 	content:   Key,
+	middle:    Rect,                                    // ... the centre's (the content, or the centre zone)
+	key:       Key,                                     // its box's: the content's and the zones' keys come from it (State.key_under)
+	// the spans its last build laid out (.Top, .Bottom; section 6.1b): what it was asked, but the top's yield in a pinwheel
+	laid_span: [View_Edge]View_Span,
 	has_content: bool,                                  // the program's content is its centre (else its centre is a zone)
 	em:        f32,                                     // its font size in its last build (the targets' size, read from another window too)
 	defaults:  View_Dock_Options,                       // what its last build gave (its zones' extents at first)
-	// the stack that takes the whole space for a while (its Maximise; not remembered: a start shows the content)
-	max_edge:  Maybe(View_Edge),
-	max_stack: int,
+	// the stack of mem.max showed maximised in this run (a stack that then empties ends it; at a start it waits for its
+	// views: section 6.1d)
+	max_seen:  bool,
+	// the program's content is laid out at no size in its last build (a view in the main zone, a maximise)
+	content_hidden: bool,
 	// a side zone's rail width (em) this build: the largest View_Options.rail_em of its views (0: the icons' rail)
 	rail_em:   [View_Edge]f32,
 	// a side zone's least open (em): the largest View_Options.min_width_em of its views (0: its extent, it does not narrow)
@@ -118,7 +124,23 @@ View_Dock_Options :: struct {
 	content:     bool,
 	extent_em:   [View_Edge]f32,
 	extent_frac: [View_Edge]f32,
+	// how far the top and the bottom zones go across (views.md, section 6.1b); the person's choice wins
+	// (views_space_set_span). nil: .Content for the window's frame, .Full for a space of the program's
+	top_span:    Maybe(View_Span),
+	bottom_span: Maybe(View_Span),
+	// the zones the person's Maximise of a stack keeps (its strip's, its menu's, a double click on its strip; section
+	// 6.1d): {.Left} keeps a sidebar. {}: the stack takes the whole space
+	maximise_keeps: bit_set[View_Edge],
 }
+
+// How far a top or a bottom zone goes across its space: which zone takes each of its two corners (views.md, section
+// 6.1b). .Content: across the content only, the side zones the space's full height; .Left: across the left zone too;
+// .Right: across the right zone too; .Full: the whole width, the side zones between the top and the bottom.
+View_Span :: enum u8 { Content, Left, Right, Full }
+
+// The words of a span in a space's memory line (`bottom.span=content`).
+@(rodata)
+VIEW_SPAN_NAMES := [View_Span]string{.Content = "content", .Left = "left", .Right = "right", .Full = "full"}
 
 // `if ui.views_frame(vs) { ... }` around the window's content: its zones, its panels, its internal windows (before the
 // content: they read their keys first), then the content's box as the block's parent. `o`: its zones' extents at first
@@ -161,7 +183,6 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 		p := view_panel_place(r.machine)
 		if r.owner != s || !view_builds_panel(r.machine) || p.space != name { continue }
 		if r.ibuilt == s.build_index { continue }   // (floating this frame, its space was not built: from the next one here)
-		if p.edge == .Center && content { continue }   // (a space with content has no centre zone: it waits)
 		// (placed in this build, its tab shown or not: not a late panel of end_build, whose body would cover its zone)
 		r.pbuilt = s.build_index
 		append(&zones[p.edge][clamp(p.stack, 0, VIEW_STACKS_MAX - 1)], r)
@@ -179,20 +200,21 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 		}
 	}
 	has :: proc(z: ^View_Zone_Lists) -> bool { return len(z[0]) > 0 }   // (compact: a zone with views has a stack 0)
-	stacks :: proc(z: ^View_Zone_Lists) -> (n: int) { for k in 0 ..< VIEW_STACKS_MAX { if len(z[k]) > 0 { n = k + 1 } }; return }
 
-	// a stack maximised (its strip's button): it alone fills the space, the other zones are not built, and the content
-	// is laid out at no size (built: its state is kept). A stack that went: nothing maximised.
-	maxed_e, maxed := sp.max_edge.?
-	if maxed && (sp.max_stack < 0 || sp.max_stack >= VIEW_STACKS_MAX || len(zones[maxed_e][sp.max_stack]) == 0) {
-		sp.max_edge, maxed = nil, false
+	// a stack maximised (section 6.1d): it fills the space but the zones it keeps, the other zones are not built, and the
+	// content is laid out at no size (built: its state is kept). Its stack not there: at a start it waits for its views;
+	// one that emptied after it showed ends it.
+	mx, maxed := sp.mem.max.?
+	maxed_e := mx.edge
+	if maxed && (mx.stack < 0 || mx.stack >= VIEW_STACKS_MAX || len(zones[mx.edge][mx.stack]) == 0) {
+		maxed = false
+		if sp.max_seen {
+			sp.mem.max, sp.max_seen = nil, false
+			view_space_remember(vs, sp)
+			vs.version += 1
+		}
 	}
-	shows :: proc(e: View_Edge, maxed_e: View_Edge, maxed: bool) -> bool { return !maxed || e == maxed_e }
-	// (a zone's handle: not when it is maximised, nor a top or bottom zone minimised to its strips; a side zone's rail
-	// keeps it: its edge line, and the pull that opens it)
-	handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32, maxed: bool) {
-		if !maxed && (!view_zone_collapsed(sp, e) || e == .Left || e == .Right) { view_zone_handle(vs, sp, e, em) }
-	}
+	if maxed { sp.max_seen = true }
 	for e in ([]View_Edge{.Left, .Right}) {
 		sp.rail_em[e], sp.least_em[e] = 0, 0
 		for k in 0 ..< VIEW_STACKS_MAX {
@@ -206,56 +228,49 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	first :: proc(z: ^View_Zone_Lists) -> ^View_Record { return len(z[0]) > 0 ? z[0][0] : nil }
 	view_sides_fit(vs, sp, first(&zones[.Left]), first(&zones[.Right]), content, em)
 
-	// the layout: the top zone, the left, the centre, the right, the bottom; each zone's handle on the centre's side
+	// the layout (section 6.1b): the zones peeled from the outside in, as far across as the spans say, each zone's
+	// handle on the centre's side; maximised, the one stack's zone alone, the content at no size
 	mod := s.has_next ? s.next_mod : Style_Mod{width = fill(), height = fill()}
 	if mod.width == nil { mod.width = fill() }
 	if mod.height == nil { mod.height = fill() }
 	next(mod)
 	space := build_box({}, fmt.tprintf("###views_space_%s", name))
-	sp.rect = space.rect
+	sp.rect, sp.key = space.rect, space.key
 	push_parent(space)
-	next({width = fill(), height = fill(), axis = .Y})
-	push_parent(build_box({}, "###views_col"))
 	boxes: [View_Edge]^Box
+	was_zones := sp.zone_key
 	sp.zone, sp.zone_key, sp.stacks, sp.stack_key, sp.count = {}, {}, {}, {}, {}
-	if has(&zones[.Top]) && shows(.Top, maxed_e, maxed) {
-		boxes[.Top] = view_zone_box(sp, .Top, zones[.Top][0][0], em, maxed, stacks(&zones[.Top]))
-		handle(vs, sp, .Top, em, maxed)
+	nest := View_Nest{vs = vs, sp = sp, zones = &zones, boxes = &boxes, em = em, content = content}
+	nest.top, nest.bottom = view_space_spans(sp)
+	// (around the centre: every zone with views, or, maximised, those it keeps; at the centre: the maximised stack's
+	// zone, else the main zone when it has views (section 6.1c), else the content)
+	rest: bit_set[View_Edge]
+	for e in ([]View_Edge{.Top, .Left, .Right, .Bottom}) {
+		if has(&zones[e]) && (!maxed || (e in mx.keep && e != maxed_e)) { rest += {e} }
 	}
-	mid_gone := maxed && (maxed_e == .Top || maxed_e == .Bottom)
-	next({width = fill(), height = mid_gone ? px(0) : fill(), axis = .X})
-	push_parent(build_box(mid_gone ? Box_Flags{.Clip} : Box_Flags{}, "###views_mid"))
-	if has(&zones[.Left]) && shows(.Left, maxed_e, maxed) {
-		boxes[.Left] = view_zone_box(sp, .Left, zones[.Left][0][0], em, maxed, stacks(&zones[.Left]))
-		handle(vs, sp, .Left, em, maxed)
+	if maxed {
+		nest.centre_edge = maxed_e
+	} else if has(&zones[.Center]) {
+		nest.centre_edge = View_Edge.Center
 	}
-	centre: ^Box
-	if !content && has(&zones[.Center]) && shows(.Center, maxed_e, maxed) {
-		centre = view_zone_box(sp, .Center, zones[.Center][0][0], em, maxed, stacks(&zones[.Center]))
-		boxes[.Center] = centre
-	} else {
-		// (maximised elsewhere: at no size, clipped; the same box, its content's state kept)
-		next({width = maxed ? px(0) : fill(), height = maxed ? px(0) : fill(), axis = .Y})
-		// (.Fits_Width: its width is what the zones leave, a split; least-width.md: else a wide content pushes the right
-		// zone out of the space)
-		centre = build_box(maxed ? Box_Flags{.Clip, .Fits_Width} : Box_Flags{.Fits_Width}, "###views_content")
-	}
-	sp.content = centre.key
-	if has(&zones[.Right]) && shows(.Right, maxed_e, maxed) {
-		handle(vs, sp, .Right, em, maxed)
-		boxes[.Right] = view_zone_box(sp, .Right, zones[.Right][0][0], em, maxed, stacks(&zones[.Right]))
-	}
-	pop_parent()   // mid
-	if has(&zones[.Bottom]) && shows(.Bottom, maxed_e, maxed) {
-		handle(vs, sp, .Bottom, em, maxed)
-		boxes[.Bottom] = view_zone_box(sp, .Bottom, zones[.Bottom][0][0], em, maxed, stacks(&zones[.Bottom]))
-	}
-	pop_parent()   // col
+	view_space_nest(&nest, rest, 0)
+	sp.laid_span[.Top], sp.laid_span[.Bottom] = nest.top, nest.bottom
+	sp.middle = nest.centre.rect
+	sp.content = nest.content_box != nil ? nest.content_box.key : 0
+	_, sp.content_hidden = nest.centre_edge.?
+	sp.content_hidden = sp.content_hidden && content
 	pop_parent()   // space
 
 	vs.building += 1
 	for e in View_Edge {
-		if boxes[e] != nil { view_zone_fill(vs, sp, e, &zones[e], boxes[e], em, maxed ? sp.max_stack : -1) }
+		if boxes[e] != nil { view_zone_fill(vs, sp, e, &zones[e], boxes[e], em, maxed && e == maxed_e ? mx.stack : -1) }
+	}
+	// (a focus left where nobody sees it any more, the content under a main view or a zone a maximise hides: to the
+	// first stop of what stands in the centre, section 6.1c, 6.1d)
+	if ce, ok := nest.centre_edge.?; ok && boxes[ce] != nil {
+		lost := sp.content_hidden && view_focus_inside(s, sp.content)
+		for e in View_Edge { if boxes[e] == nil && was_zones[e] != 0 && view_focus_inside(s, was_zones[e]) { lost = true } }
+		if lost { s.focus_key = view_first_stop(boxes[ce]) }
 	}
 	// (the frame's internal windows after its panels: a drop on a zone is built from the next frame, the window drawn in
 	// this one; children of the root, they draw over the whole frame)
@@ -264,8 +279,194 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	views_sweep(vs)
 
 	append(&s.views_space_stack, content)
-	if content { push_parent(centre) }
+	if content { push_parent(nest.content_box) }
 	return content
+}
+
+// What the nest of a space's zones reads and fills (view_space_nest).
+@(private = "file")
+View_Nest :: struct {
+	vs:          ^Views,
+	sp:          ^View_Space,
+	zones:       ^[View_Edge]View_Zone_Lists,
+	boxes:       ^[View_Edge]^Box,
+	em:          f32,
+	content:     bool,       // the space has the program's content
+	// the zone that stands at the centre: a maximised stack's (sized as the whole centre), the main zone (section 6.1c),
+	// the centre zone of a space without content; nil: the content
+	centre_edge: Maybe(View_Edge),
+	top, bottom: View_Span,  // the spans laid out (the top's may yield: view_space_peel)
+	centre:      ^Box,       // what stands at the centre
+	content_box: ^Box,       // the program's content (at no size when a zone stands there)
+}
+
+// The spans of a space's top and bottom zones: the person's (its memory), else the program's (View_Dock_Options),
+// else the toolkit's: .Content for the window's frame, .Full for a space of the program's (section 6.1b).
+@(private = "file")
+view_space_spans :: proc(sp: ^View_Space) -> (top, bottom: View_Span) {
+	kind := sp.name == "" ? View_Span.Content : View_Span.Full
+	top = sp.mem.span[.Top].? or_else (sp.defaults.top_span.? or_else kind)
+	bottom = sp.mem.span[.Bottom].? or_else (sp.defaults.bottom_span.? or_else kind)
+	return
+}
+
+// Which zone takes each corner: the top or the bottom zone (true), else the side zone there.
+@(private = "file")
+View_Corners :: struct { top_left, top_right, bottom_left, bottom_right: bool }
+
+@(private = "file")
+view_corners :: proc(top, bottom: View_Span) -> View_Corners {
+	return {
+		top_left     = top == .Left || top == .Full,
+		top_right    = top == .Right || top == .Full,
+		bottom_left  = bottom == .Left || bottom == .Full,
+		bottom_right = bottom == .Right || bottom == .Full,
+	}
+}
+
+// The zones of `rest` that take a whole side of what is left: each owns both of its corners, a corner whose other zone
+// is not in `rest` counting as its own. They are on one axis: two zones that meet cannot both own their corner.
+@(private = "file")
+view_space_peel :: proc(rest: bit_set[View_Edge], top, bottom: View_Span) -> (peel: bit_set[View_Edge]) {
+	c := view_corners(top, bottom)
+	l, r, t, b := .Left in rest, .Right in rest, .Top in rest, .Bottom in rest
+	if t && (c.top_left || !l) && (c.top_right || !r) { peel += {.Top} }
+	if b && (c.bottom_left || !l) && (c.bottom_right || !r) { peel += {.Bottom} }
+	if l && (!c.top_left || !t) && (!c.bottom_left || !b) { peel += {.Left} }
+	if r && (!c.top_right || !t) && (!c.bottom_right || !b) { peel += {.Right} }
+	return
+}
+
+// The zones of `rest` around the centre: those that take a whole side of it in a column (the top, the bottom) or a row
+// (the left, the right), what is left between them, nested the same way, down to the centre. A pinwheel (the top
+// .Left and the bottom .Right, or the mirror, the four zones there) has no zone to start with: the top gives way, laid
+// out as .Content. The content's box and the zones' take their keys from the space's (State.key_under): a nest that
+// changes keeps their state.
+@(private = "file")
+view_space_nest :: proc(n: ^View_Nest, rest: bit_set[View_Edge], depth: int) {
+	sp, em := n.sp, n.em
+	if rest == {} {
+		ce, zone := n.centre_edge.?
+		if zone {
+			// (a zone at the centre: the whole of it, its maximised stack alone when it is one; view_zone_box's maxed)
+			n.centre = view_zone_box(sp, ce, n.zones[ce][0][0], em, true, view_zone_stacks(&n.zones[ce]))
+			n.boxes[ce] = n.centre
+		}
+		if n.content || !zone {
+			// (under a zone: at no size, clipped; the same box, its content's state kept)
+			next({width = zone ? px(0) : fill(), height = zone ? px(0) : fill(), axis = .Y})
+			// (.Fits_Width: its width is what the zones leave, a split; least-width.md: else a wide content pushes the
+			// right zone out of the space)
+			gs().key_under = sp.key
+			n.content_box = build_box(zone ? Box_Flags{.Clip, .Fits_Width} : Box_Flags{.Fits_Width}, "###views_content")
+			if !zone { n.centre = n.content_box }
+		}
+		return
+	}
+	peel := view_space_peel(rest, n.top, n.bottom)
+	if peel == {} {
+		n.top = .Content
+		peel = view_space_peel(rest, n.top, n.bottom)
+	}
+	across := peel & {.Top, .Bottom} != {}
+	first, last := across ? View_Edge.Top : View_Edge.Left, across ? View_Edge.Bottom : View_Edge.Right
+	next({width = fill(), height = fill(), axis = across ? .Y : .X})
+	push_parent(build_box({}, fmt.tprintf("###views_nest_%d", depth)))
+	if first in peel {
+		n.boxes[first] = view_zone_box(sp, first, n.zones[first][0][0], em, false, view_zone_stacks(&n.zones[first]))
+		view_space_handle(n.vs, sp, first, em)
+	}
+	view_space_nest(n, rest - peel, depth + 1)
+	if last in peel {
+		view_space_handle(n.vs, sp, last, em)
+		n.boxes[last] = view_zone_box(sp, last, n.zones[last][0][0], em, false, view_zone_stacks(&n.zones[last]))
+	}
+	pop_parent()
+}
+
+// How many stacks a zone has (compact: its last rank with views, plus one).
+@(private = "file")
+view_zone_stacks :: proc(z: ^View_Zone_Lists) -> (n: int) {
+	for k in 0 ..< VIEW_STACKS_MAX { if len(z[k]) > 0 { n = k + 1 } }
+	return
+}
+
+// A zone's handle (a zone around the centre: one maximised stands at the centre and has none): not a top or bottom
+// zone minimised to its strips; a side zone's rail keeps it (its edge line, and the pull that opens it).
+@(private = "file")
+view_space_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
+	if !view_zone_collapsed(sp, e) || e == .Left || e == .Right { view_zone_handle(vs, sp, e, em) }
+}
+
+// The span of zone `e` along its edge as its space's last build laid it out, whether it is there or not: where its
+// corners' zones leave it room (the content's rect says where they end). The preview of a drop there, and its square.
+@(private = "file")
+view_edge_span :: proc(sp: ^View_Space, e: View_Edge) -> (lo, hi: f32) {
+	r, m := sp.rect, sp.middle
+	if m.max.x <= m.min.x || m.max.y <= m.min.y { m = r }
+	c := view_corners(sp.laid_span[.Top], sp.laid_span[.Bottom])
+	#partial switch e {
+	case .Top:    return c.top_left ? r.min.x : m.min.x, c.top_right ? r.max.x : m.max.x
+	case .Bottom: return c.bottom_left ? r.min.x : m.min.x, c.bottom_right ? r.max.x : m.max.x
+	case .Left:   return c.top_left ? m.min.y : r.min.y, c.bottom_left ? m.max.y : r.max.y
+	case .Right:  return c.top_right ? m.min.y : r.min.y, c.bottom_right ? m.max.y : r.max.y
+	}
+	return
+}
+
+// The span of the top or the bottom zone of the space `name` (`edge` .Top or .Bottom; section 6.1b): the person's
+// choice (`chosen`), else the program's (View_Dock_Options.top_span, bottom_span), else the toolkit's.
+views_space_span :: proc(vs: ^Views, name: string, edge: View_Edge) -> (span: View_Span, chosen: bool) {
+	views_ready(vs)
+	sp := view_space_of(vs, name)
+	top, bottom := view_space_spans(sp)
+	#partial switch edge {
+	case .Top:    _, chosen = sp.mem.span[.Top].?; return top, chosen
+	case .Bottom: _, chosen = sp.mem.span[.Bottom].?; return bottom, chosen
+	}
+	return .Content, false
+}
+
+// The person's span of the top or the bottom zone of the space `name`, remembered in its line (`bottom.span=content`);
+// nil forgets it: the program's again. The space is laid out so from its next build. Another edge: nothing.
+views_space_set_span :: proc(vs: ^Views, name: string, edge: View_Edge, span: Maybe(View_Span)) {
+	if edge != .Top && edge != .Bottom { return }
+	views_ready(vs)
+	sp := view_space_of(vs, name)
+	sp.mem.span[edge] = span
+	view_space_remember(vs, sp)
+	vs.version += 1
+	if sp.state != nil { sp.state.anim_busy = true }
+}
+
+// Opens the view `id` in the main zone of the window's frame, in place of the content (section 6.1c), or moves it there
+// when it is open elsewhere; its home stays its own. The content comes back when the last view there closes or leaves.
+view_show_main :: proc(vs: ^Views, id: string, data: ^$T, instance := "", owner: ^State = nil) {
+	view_open(vs, id, data, instance, owner)
+	view_present(vs, id, .Panel, View_Place{edge = .Center}, instance)
+}
+
+// The view the main zone of the space `space` shows (its first stack's tab shown): ok false while the content shows.
+views_main :: proc(vs: ^Views, space := "") -> (id, instance: string, ok: bool) {
+	sp, found := vs.spaces[space]
+	shown: ^View_Record
+	for r in vs.records {
+		p := view_panel_place(r.machine)
+		if !view_builds_panel(r.machine) || p.space != space || p.edge != .Center || p.stack != 0 { continue }
+		if found && r.modal_name == sp.active[.Center][0] { shown = r; break }
+		if shown == nil || r.dock_order > shown.dock_order { shown = r }
+	}
+	if shown == nil { return }
+	return shown.kind.id, shown.instance, true
+}
+
+// The zones the last build of the space `name` laid out (none: not built yet). A setting shows the top's span only
+// where there is a top zone.
+views_space_zones :: proc(vs: ^Views, name: string) -> (zones: bit_set[View_Edge]) {
+	sp, ok := vs.spaces[name]
+	if !ok { return }
+	for e in View_Edge { if sp.count[e] > 0 { zones += {e} } }
+	return
 }
 
 // The space `name` of `vs` (made at its first use, what is remembered of it from the memory).
@@ -305,7 +506,7 @@ views_space_reset :: proc(vs: ^Views, name: string) {
 	context.allocator = vs.allocator
 	sp := view_space_of(vs, name)
 	sp.mem = {}
-	sp.max_edge = nil
+	sp.max_seen = false
 	for e in View_Edge {
 		for &a in sp.active[e] { delete(a); a = "" }
 	}
@@ -435,7 +636,6 @@ views_build_late_panels :: proc(s: ^State) {
 			}
 			em := sp.em
 			at := view_target_preview(sp, place.edge, em)
-			if place.edge == .Center && sp.has_content { at = sp.rect }
 			push_parent(s.root)
 			next({fixed_x = at.min.x, fixed_y = at.min.y, width = px(max(at.max.x - at.min.x, 1)), height = px(max(at.max.y - at.min.y, 1)), axis = .Y, transparency = 1})
 			holder := build_box({}, fmt.tprintf("###view_late_%s", r.modal_name))
@@ -526,6 +726,8 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 	}
 	// (no background, no border of its own: a lone panel adds nothing, rule 1)
 	// (.Fits_Width: its width is its extent or the space's, a split, never its views'; least-width.md)
+	// (its key from the space's: the nest around it changes with the spans and the zones there, section 6.1b)
+	gs().key_under = sp.key
 	b := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_zone_%v", e))
 	sp.zone[e], sp.zone_key[e] = b.rect, b.key
 	return b
@@ -603,7 +805,7 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	pull := press_data(View_Zone_Pull, h.box.key)
 	if pull != nil && !pull.taken { pull^ = {extent = sp.mem.extent[e], frac = sp.mem.frac[e], taken = true} }
 	if h.fold_changed {
-		sp.max_edge = nil
+		view_zone_unmaximise(vs, sp, e)
 		view_stack_minimise(vs, sp, e, h.fold)
 	}
 	if h.dragging && h.fold && pull != nil {
@@ -681,8 +883,10 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		// (the shown view placed its zone's fold button in its last build: the strip says Minimise no second time)
 		folds := shown.fold_built != 0 && shown.fold_built + 1 >= s.build_index
 		if with_strip { view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !folds) }
-		// (a click on the strip did its act in this build: the strip goes in the next one)
-		if on_hover && s.clicked_key[.Left] != 0 && view_key_within(s, s.clicked_key[.Left], key_from_string(stack.key, "###view_tabs")) {
+		// (a click on the strip did its act in this build: the strip goes in the next one. Not a click on its free part:
+		// the first of a double click that maximises)
+		tabs_key := key_from_string(stack.key, "###view_tabs")
+		if on_hover && s.clicked_key[.Left] != 0 && s.clicked_key[.Left] != tabs_key && view_key_within(s, s.clicked_key[.Left], tabs_key) {
 			shown.hover = .Rest
 		}
 		if !minimised { view_panel_build(vs, sp, shown) }
@@ -711,9 +915,16 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 	minimised := view_zone_collapsed(sp, e) && !maxed
 	next({width = fill(), height = px(math.round(DOCK_TAB_EM * em)), axis = .X, cross = .Center})
 	bar: ^Box
-	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_tabs") }
+	// (clickable: a double click on its free part maximises the stack or restores it, as a window's title bar does; a
+	// right click there opens the shown view's menu. Its tabs and buttons take their own clicks)
+	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom, .Clickable}, "###view_tabs") }
 	push_parent(bar)
-	defer pop_parent()
+	defer {
+		pop_parent()
+		bs := signal(bar)
+		if bs.double_clicked { view_stack_maximise(vs, sp, e, k, !maxed) }
+		if bs.right_clicked { menu_open(view_menu_id(shown), mouse_pos(), bar.key) }
+	}
 	// the tabs, as every row of tabs of the toolkit (tab_box), on a strip: too many for the stack, they scroll with arrows
 	if strip("###view_tab_strip") {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
@@ -810,13 +1021,13 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 	if !ok { return }
 	switch clicked {
 	case .Minimize:
-		sp.max_edge = nil
+		view_zone_unmaximise(vs, sp, e)
 		view_stack_minimise(vs, sp, e, !minimised)
 	case .Maximize:
-		if maxed { sp.max_edge = nil } else { sp.max_edge, sp.max_stack = e, k }
+		view_stack_maximise(vs, sp, e, k, !maxed)
 	case .Close:
 		// (every view of the stack: the stack's button; one tab closes by Ctrl+W, its menu, the palette)
-		if maxed { sp.max_edge = nil }
+		if maxed { view_stack_maximise(vs, sp, e, k, false) }
 		for r in list { view_apply(vs, r, {kind = .User_Close}) }
 	}
 	s.anim_busy = true
@@ -879,7 +1090,7 @@ view_fold_button :: proc(v: ^View) -> Signal {
 	r.fold_built = gs().build_index
 	sig := side_fold_button("###view_fold", collapsed, e == .Right, labels.minimize, labels.restore, labels.menu_hint)
 	if sig.clicked {
-		sp.max_edge = nil
+		view_zone_unmaximise(vs, sp, e)
 		view_stack_minimise(vs, sp, e, !collapsed)
 	}
 	if sig.right_clicked && sig.box != nil { menu_open(view_menu_id(r), mouse_pos(), sig.box.key) }
@@ -895,8 +1106,7 @@ view_panel_menu_items :: proc(vs: ^Views, r: ^View_Record) {
 	place := view_panel_place(r.machine)
 	sp := view_space_of(vs, place.space)
 	if sp == nil { return }
-	e, maxed := sp.max_edge.?
-	maxed = maxed && e == place.edge && sp.max_stack == place.stack
+	maxed := view_stack_maxed(sp, place.edge, place.stack)
 	if place.edge != .Center && !maxed {
 		folded := view_zone_collapsed(sp, place.edge)
 		word, glyph := labels.minimize, lucide.MINUS
@@ -908,8 +1118,7 @@ view_panel_menu_items :: proc(vs: ^Views, r: ^View_Record) {
 	word, glyph := labels.maximize, lucide.MAXIMIZE_2
 	if maxed { word, glyph = labels.restore, lucide.MINIMIZE_2 }
 	if menu_item(fmt.tprintf("%s###vm_maximise", word), icon = glyph, icon_font = lucide_icons()).clicked {
-		if maxed { sp.max_edge = nil } else { sp.max_edge, sp.max_stack = place.edge, place.stack }
-		if sp.state != nil { sp.state.anim_busy = true }
+		view_stack_maximise(vs, sp, place.edge, place.stack, !maxed)
 	}
 }
 
@@ -978,8 +1187,59 @@ view_zone_rail :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 views_space_maximised :: proc(vs: ^Views, name: string) -> (edge: View_Edge, stack: int, ok: bool) {
 	sp, found := vs.spaces[name]
 	if !found { return }
-	edge, ok = sp.max_edge.?
-	return edge, sp.max_stack, ok
+	x: View_Space_Max
+	x, ok = sp.mem.max.?
+	return x.edge, x.stack, ok
+}
+
+// The zones the maximise of the space `name` keeps (none: not maximised, or the whole space).
+views_space_maximise_keeps :: proc(vs: ^Views, name: string) -> bit_set[View_Edge] {
+	sp, found := vs.spaces[name]
+	if !found { return {} }
+	x, ok := sp.mem.max.?
+	return ok ? x.keep : {}
+}
+
+// The program's Maximise of stack `stack` of zone `edge` of the space `name` (section 6.1d): it takes the space but
+// the zones of `keep` ({.Left}: a sidebar stays). Remembered with the layout; the person turns it off as any.
+views_space_maximise :: proc(vs: ^Views, name: string, edge: View_Edge, stack := 0, keep := bit_set[View_Edge]{}) {
+	views_ready(vs)
+	sp := view_space_of(vs, name)
+	view_space_max_set(vs, sp, View_Space_Max{edge = edge, stack = clamp(stack, 0, VIEW_STACKS_MAX - 1), keep = keep})
+}
+
+// The space `name` maximised no more: its zones and its content as before.
+views_space_restore :: proc(vs: ^Views, name: string) {
+	views_ready(vs)
+	sp := view_space_of(vs, name)
+	if _, ok := sp.mem.max.?; ok { view_space_max_set(vs, sp, nil) }
+}
+
+// Whether stack `k` of zone `e` is the one maximised (or waits to be: at a start, before its views reopen).
+@(private = "file")
+view_stack_maxed :: proc(sp: ^View_Space, e: View_Edge, k: int) -> bool {
+	x, ok := sp.mem.max.?
+	return ok && x.edge == e && x.stack == k
+}
+
+// The person's Maximise (`on`) of stack `k` of zone `e`, keeping View_Dock_Options.maximise_keeps, or its Restore.
+@(private = "file")
+view_stack_maximise :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, on: bool) {
+	view_space_max_set(vs, sp, on ? View_Space_Max{edge = e, stack = k, keep = sp.defaults.maximise_keeps} : nil)
+}
+
+// A zone folded or minimised ends a maximise of one of its stacks (a kept zone's fold keeps it).
+@(private = "file")
+view_zone_unmaximise :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge) {
+	if x, ok := sp.mem.max.?; ok && x.edge == e { view_space_max_set(vs, sp, nil) }
+}
+
+@(private = "file")
+view_space_max_set :: proc(vs: ^Views, sp: ^View_Space, x: Maybe(View_Space_Max)) {
+	sp.mem.max, sp.max_seen = x, false
+	view_space_remember(vs, sp)
+	vs.version += 1
+	if sp.state != nil { sp.state.anim_busy = true }
 }
 
 // The view as a panel: its body fills its stack (under the stack's strip, which holds its tabs and its controls:
@@ -1019,9 +1279,8 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 		} else if key_press(.Escape) {
 			// (an Escape it did not take: its stack maximised comes back to its size; else the focus goes back to the
 			// content, the panel stays)
-			if e, maxed := sp.max_edge.?; maxed && e == r.machine.place.edge && sp.max_stack == r.machine.place.stack {
-				sp.max_edge = nil
-				s.anim_busy = true
+			if view_stack_maxed(sp, r.machine.place.edge, r.machine.place.stack) {
+				view_space_max_set(vs, sp, nil)
 			} else {
 				s.focus_key = 0
 			}
@@ -1141,11 +1400,15 @@ view_space_squares :: proc(sp: ^View_Space, p: Vec2, out: ^[dynamic]View_Square)
 	c := (r.min + r.max) * 0.5
 	for e in View_Edge {
 		at: Vec2
+		// (at the middle of the zone's span along its edge: a bottom zone under the content alone has its square under
+		// the content's middle, section 6.1b)
+		lo, hi := view_edge_span(sp, e)
+		mid := math.round((lo + hi) * 0.5)
 		switch e {
-		case .Left:   at = {r.min.x + g + m * 0.5, c.y}
-		case .Right:  at = {r.max.x - g - m * 0.5, c.y}
-		case .Top:    at = {c.x, r.min.y + g + m * 0.5}
-		case .Bottom: at = {c.x, r.max.y - g - m * 0.5}
+		case .Left:   at = {r.min.x + g + m * 0.5, mid}
+		case .Right:  at = {r.max.x - g - m * 0.5, mid}
+		case .Top:    at = {mid, r.min.y + g + m * 0.5}
+		case .Bottom: at = {mid, r.max.y - g - m * 0.5}
 		case .Center:
 			if sp.has_content || sp.count[.Center] > 0 { continue }
 			at = c
@@ -1226,6 +1489,11 @@ view_target_drop :: proc(vs: ^Views, r: ^View_Record, t: View_Target) {
 		view_space_remember(vs, sp)
 		vs.version += 1
 	}
+	// (a drop into a zone a maximise hides ends it: the view shows where it went. A maximise still waiting for its views
+	// at a start ends at any drop: the person lays out the window, and a stale one would hide the content; section 6.1d)
+	if sp, known := vs.spaces[place.space]; known {
+		if x, maxed := sp.mem.max.?; maxed && (!sp.max_seen || (place.edge != x.edge && place.edge not_in x.keep)) { view_space_max_set(vs, sp, nil) }
+	}
 	view_apply(vs, r, {kind = .Drop, as = .Panel, place = place})
 	view_space_activate(vs, r)
 }
@@ -1236,14 +1504,17 @@ view_target_drop :: proc(vs: ^Views, r: ^View_Record, t: View_Target) {
 view_target_preview :: proc(sp: ^View_Space, e: View_Edge, em: f32) -> Rect {
 	if z := sp.zone[e]; z.max.x > z.min.x { return z }
 	r := sp.rect
-	if e == .Center { return r }
+	// (the centre: what the edges leave, the content's rect; a main zone's view opened late is built there)
+	if e == .Center { return sp.middle.max.x > sp.middle.min.x ? sp.middle : r }
 	length := e == .Left || e == .Right ? r.max.x - r.min.x : r.max.y - r.min.y
 	ext := min(view_zone_px(sp, e, em, length), length * 0.4)
+	// (along its edge, the span it would have: under the content alone in .Content, section 6.1b)
+	lo, hi := view_edge_span(sp, e)
 	#partial switch e {
-	case .Left:   return {r.min, {r.min.x + ext, r.max.y}}
-	case .Right:  return {{r.max.x - ext, r.min.y}, r.max}
-	case .Top:    return {r.min, {r.max.x, r.min.y + ext}}
-	case .Bottom: return {{r.min.x, r.max.y - ext}, r.max}
+	case .Left:   return {{r.min.x, lo}, {r.min.x + ext, hi}}
+	case .Right:  return {{r.max.x - ext, lo}, {r.max.x, hi}}
+	case .Top:    return {{lo, r.min.y}, {hi, r.min.y + ext}}
+	case .Bottom: return {{lo, r.max.y - ext}, {hi, r.max.y}}
 	}
 	return {}
 }
@@ -1315,7 +1586,8 @@ views_f6 :: proc(s: ^State, vs: ^Views, sp: ^View_Space) {
 	backward := !forward && key_press(.F6, {.Shift})
 	if !forward && !backward { return }
 	areas := make([dynamic]Key, 0, 8, context.temp_allocator)
-	if sp.content != 0 && sp.has_content { append(&areas, sp.content) }
+	// (the content under a main view or a maximise is not seen: not an area)
+	if sp.content != 0 && sp.has_content && !sp.content_hidden { append(&areas, sp.content) }
 	for e in View_Edge {
 		for k in 0 ..< sp.count[e] { if sp.stack_key[e][k] != 0 { append(&areas, sp.stack_key[e][k]) } }
 	}

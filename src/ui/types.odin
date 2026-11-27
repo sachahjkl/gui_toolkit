@@ -523,6 +523,7 @@ State :: struct {
 	// (views_window_build reads their style_root's); nil from begin_build until palette_keys
 	palette:      ^Command_Palette,
 	key_rooted:   bool,                  // the next build_box's key is its id's alone, not its parent's (a panel's body, built in two places)
+	key_under:    Key,                   // the next build_box's key comes from this key, not its parent's (0: its parent's; a dock space's content and zones, whose nest changes)
 	focus_field_next: bool,              // focus_next_field: the next field built in this build takes the keyboard
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
 	modals_built: [dynamic]Modal_Open,   // and of this one

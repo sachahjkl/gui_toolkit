@@ -31,6 +31,13 @@ VIEW_AS_NAMES := [View_Presentation]string{.Dialog = "dialog", .Panel = "panel",
 @(private = "file", rodata)
 VIEW_EDGE_NAMES := [View_Edge]string{.Right = "right", .Left = "left", .Bottom = "bottom", .Top = "top", .Center = "center"}
 
+// The edge of a name of VIEW_EDGE_NAMES.
+@(private = "file")
+view_edge_named :: proc(name: string) -> (e: View_Edge, ok: bool) {
+	for n, x in VIEW_EDGE_NAMES { if n == name { return x, true } }
+	return
+}
+
 // The version of the line's format: a line of another version is ignored.
 @(private = "file") VIEW_MEMORY_VERSION :: "v1"
 
@@ -143,11 +150,22 @@ View_Space_Memory :: struct {
 	// the zone's fold: collapsed (`.min`: a top or bottom zone's strips, a side zone's rail) and, at the sides, the side
 	// of its threshold seen last (`.narrow`; side-panels.md)
 	fold:   [View_Edge]Side_Fold,
+	// the person's span of the top and the bottom zones (`.span`; nil: the program's; views.md, section 6.1b)
+	span:   [View_Edge]Maybe(View_Span),
+	// the stack maximised and the zones it keeps (`max=bottom.0 max.keep=left`; views.md, section 6.1d)
+	max:    Maybe(View_Space_Max),
+}
+
+// A stack that takes its space but the zones it keeps (views.md, section 6.1d).
+View_Space_Max :: struct {
+	edge:  View_Edge,
+	stack: int,
+	keep:  bit_set[View_Edge],
 }
 
 // The line of a dock space (key `#<space>`): a zone of none absent, a share of 0 absent at the end of its list.
 //
-//   #mission	v1 left=18.0 left.axis=y left.shares=0.400,0.350 bottom.frac=0.250
+//   #mission	v1 left=18.0 left.axis=y left.shares=0.400,0.350 bottom.frac=0.250 bottom.span=content
 views_space_format :: proc(m: View_Space_Memory, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	strings.write_string(&b, VIEW_MEMORY_VERSION)
@@ -161,11 +179,25 @@ views_space_format :: proc(m: View_Space_Memory, allocator := context.temp_alloc
 		if a, ok := m.axis[e].?; ok { fmt.sbprintf(&b, " %s.axis=%s", name, a == .X ? "x" : "y") }
 		if m.fold[e].folded { fmt.sbprintf(&b, " %s.min=1", name) }
 		if m.fold[e].narrow { fmt.sbprintf(&b, " %s.narrow=1", name) }
+		if x, ok := m.span[e].?; ok && (e == .Top || e == .Bottom) { fmt.sbprintf(&b, " %s.span=%s", name, VIEW_SPAN_NAMES[x]) }
 		n := 0
 		for x, i in m.shares[e] { if x > 0 { n = i + 1 } }
 		if n == 0 { continue }
 		fmt.sbprintf(&b, " %s.shares=", name)
 		for i in 0 ..< n { fmt.sbprintf(&b, i == 0 ? "%.3f" : ",%.3f", m.shares[e][i]) }
+	}
+	if x, ok := m.max.?; ok {
+		fmt.sbprintf(&b, " max=%s.%d", VIEW_EDGE_NAMES[x.edge], x.stack)
+		if x.keep != {} {
+			strings.write_string(&b, " max.keep=")
+			first := true
+			for e in View_Edge {
+				if e not_in x.keep { continue }
+				if !first { strings.write_byte(&b, ',') }
+				strings.write_string(&b, VIEW_EDGE_NAMES[e])
+				first = false
+			}
+		}
 	}
 	return strings.to_string(b)
 }
@@ -183,6 +215,26 @@ views_space_parse :: proc(text: string) -> (m: View_Space_Memory, ok: bool) {
 		key, value := word[:eq], word[eq + 1:]
 		field := ""
 		if dot := strings.index_byte(key, '.'); dot > 0 { key, field = key[:dot], key[dot + 1:] }
+		if key == "max" {
+			x := m.max.? or_else View_Space_Max{}
+			switch field {
+			case "":
+				dot := strings.index_byte(value, '.')
+				if dot <= 0 { return {}, false }
+				e, eok := view_edge_named(value[:dot])
+				k, kok := strconv.parse_int(value[dot + 1:])
+				if !eok || !kok || k < 0 || k >= VIEW_STACKS_MAX { return {}, false }
+				x.edge, x.stack = e, k
+			case "keep":
+				for part in strings.split(value, ",", context.temp_allocator) {
+					e, eok := view_edge_named(part)
+					if !eok { return {}, false }
+					x.keep += {e}
+				}
+			}
+			m.max = x
+			continue
+		}
 		for n, e in VIEW_EDGE_NAMES {
 			if n != key { continue }
 			switch field {
@@ -202,6 +254,12 @@ views_space_parse :: proc(text: string) -> (m: View_Space_Memory, ok: bool) {
 				case:     return {}, false
 				}
 				if field == "min" { m.fold[e].folded = on } else { m.fold[e].narrow = on }
+			case "span":
+				found := false
+				for span_name, x in VIEW_SPAN_NAMES {
+					if span_name == value { m.span[e], found = x, true }
+				}
+				if !found { return {}, false }
 			case "axis":
 				switch value {
 				case "x": m.axis[e] = .X
