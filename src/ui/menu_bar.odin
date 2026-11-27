@@ -191,7 +191,8 @@ menu_bar_button :: proc(id: string) -> string {
 	open := menu_is_open(menu_id)
 	bar_active := menu_bar_open_index(s) >= 0
 	shown, mnemonic, at := menu_bar_mnemonic(id)
-	words := fmt.tprintf("%s###menu_bar_entry_%x", shown, u64(key))
+	// (the entry keeps the caller's name, what follows ### or its words: a test finds it by that)
+	words := fmt.tprintf("%s###%s", shown, hash_part(id))
 	lit := s.bar.focus == key_from_string(parent_box().key, words)
 
 	push_tags(open || lit ? "selected" : "ghost_button")
