@@ -103,13 +103,16 @@ press, so it ends with it (the release, the box held going, the user leaving the
 | `labels` | the menus' words (nil: `dock_default_labels`, the toolkit's, in the language in use) |
 | `size`, `tab_height`, `handle` | frame pixels (0: the defaults: `DOCK_TAB_EM`, the splitter's handle) |
 | `close_buttons` | a close button on the tabs of the panels that can be closed (on the shown tab and the one under the pointer; its room kept on the others, so no tab moves) |
+| `tab_style` | its stacks' tabs ([tab-styles.md](../src/md/features/tab-styles.md)); nil: `.Underline` |
+| `surface(user, panel)` | the ground and edge a panel's content is drawn on (an editor's, a terminal's): the dock paints its body with it, and its stack's strip and shown tab take it; nil or a zero ground: the page |
 
-A stack's tabs have the look of every row of tabs ([strip.md](strip.md), "The look of a row of tabs"): the shown tab
-rises out of the strip's bottom line as one shape with its panel, the first tab a few pixels from the stack's edge (the
-room of its left foot). The first tab's words start `ui.dock_content_inset()` from the stack's edge: a panel whose
-content starts there lines up with its tab. The shown tab is in
-the page's colour: a panel that paints its own ground in another colour builds its tab itself (`tab`) or sets the
-theme's `tab_on background`.
+A stack's tabs are an Underline by default ([tab-styles.md](../src/md/features/tab-styles.md)): the strip stands on its
+shown panel's surface with no line nor border before the panel, the shown tab's words over an accent bar, the first tab
+at the stack's edge. The first tab's words start `ui.dock_content_inset()` from the stack's edge (inside a `dock_panel`:
+its stack's style): a panel whose content starts there lines up with its tab. A panel that has a ground of its own
+names it in `surface`, and paints none itself: the dock paints its body, and its strip and tab take the same colour.
+`tab_style = .Folder` gives the stacks the documents' look: the shown tab rising out of the strip's line as one shape
+with its panel.
 
 ### What the user does
 

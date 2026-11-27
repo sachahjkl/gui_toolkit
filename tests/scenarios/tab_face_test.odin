@@ -2,7 +2,7 @@ package scenarios_test
 
 // A program's own tab strip (docs/widgets.md, "Your own tab strip"): its boxes with ui.tab_face, its content in
 // ui.tab_body, ui.tab_strip_start before the first tab and the line under the strip draw the same pixels as ui.tabs
-// for the same tabs; a mark lies along the chosen tab's top.
+// (a Folder, the style of a strip with no tabs_over around it) for the same tabs; a mark lies along the chosen tab's top.
 
 import "core:fmt"
 import "core:testing"

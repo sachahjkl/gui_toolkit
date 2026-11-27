@@ -131,6 +131,7 @@ View_Dock_Options :: struct {
 	// the zones the person's Maximise of a stack keeps (its strip's, its menu's, a double click on its strip; section
 	// 6.1d): {.Left} keeps a sidebar. {}: the stack takes the whole space
 	maximise_keeps: bit_set[View_Edge],
+	tab_style:      Maybe(Tab_Style),   // its stacks' tabs (nil: .Underline, the strip on the shown view's surface)
 }
 
 // How far a top or a bottom zone goes across its space: which zone takes each of its two corners (views.md, section
@@ -918,10 +919,13 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 	// click maximises the stack or restores it, as a window's title bar does; a right click opens the shown view's menu;
 	// its tabs and buttons take their own). A clickable box with the bar's face was drawn as a key in a finish with a
 	// relief: the bar's sheen raised the whole strip (Tower's bottom terminal, 0.366).
+	// (its tabs in the space's style, on the shown view's surface: View_Dock_Options.tab_style, View_Options.surface)
+	_ = tabs_over(sp.defaults.tab_style.? or_else .Underline, shown.kind.o.surface)
+	defer tabs_over_end()
 	next({width = fill(), height = px(math.round(DOCK_TAB_EM * em)), axis = .X, cross = .Center})
 	ground: ^Box
 	if tags("bar") { ground = build_box({.Draw_Background, .Custom_Ground}, "###view_strip") }
-	ground.custom = tab_strip_draw
+	ground.custom, ground.custom_user = tab_strip_draw, tab_strip_look(ground.bg)
 	push_parent(ground)
 	next({width = fill(), height = pct(1), axis = .X, cross = .Center})
 	bar := build_box({.Clickable}, "###view_tabs")
@@ -1267,6 +1271,11 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 	s.key_rooted = true
 	// (.Fits_Width: its width is its stack's, a split, never its content's; least-width.md)
 	body := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_panel_%s", r.modal_name))
+	// (a view with a surface of its own, a terminal's: its body painted with it, as its stack's strip and chosen tab are)
+	if g := k.o.surface.ground; g.a > 0 {
+		body.flags += {.Draw_Background}
+		body.bg, body.target_bg = g, g
+	}
 	r.panel = body.key
 	r.roots[.Panel] = body.key
 	r.pbuilt = s.build_index

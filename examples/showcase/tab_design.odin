@@ -1,9 +1,9 @@
 package showcase
 
-// The tabs' design proposals (src/md/features/tab-styles.md): a row of tabs over a card (a panel's switcher, as feuille's
-// signature) and over a terminal (its own ground, as ardoise), in the style --tabs= names. The editor's scene shows the
-// third context, a dock.
-//   build/showcase --tabs=folder --tab-demo=card        silhouette, folder, underline, segmented, header; card, terminal
+// Rows of tabs over the surface they frame (src/md/features/tab-styles.md): a card's switcher (a .Segmented, as feuille's
+// signature) and a terminal's tabs (an .Underline on its own ground, as ardoise), each its context's style unless --tabs=
+// names another. The editor's scene shows the third context, a dock.
+//   build/showcase --tab-demo=card [--tabs=folder]        folder, underline, segmented, header; card, terminal
 
 import "core:fmt"
 import "core:math"
@@ -12,7 +12,7 @@ import "gt:ui"
 
 Tab_Demo :: enum { None, Card, Terminal }
 TAB_DEMO_NAMES := [Tab_Demo]string{.None = "", .Card = "card", .Terminal = "terminal"}
-TAB_STYLE_NAMES := [ui.Tab_Style]string{.Silhouette = "silhouette", .Folder = "folder", .Underline = "underline", .Segmented = "segmented", .Header = "header"}
+TAB_STYLE_NAMES := [ui.Tab_Style]string{.Folder = "folder", .Underline = "underline", .Segmented = "segmented", .Header = "header"}
 
 Tab_Demo_State :: struct {
 	card_tab, term_tab: int,
@@ -40,14 +40,14 @@ tab_demo_build :: proc(app: ^App, em: f32) {
 	}
 	switch app.tab_demo {
 	case .None:
-	case .Card:     tab_demo_card(t, em)
-	case .Terminal: tab_demo_terminal(t, em)
+	case .Card:     tab_demo_card(t, app.tab_style.? or_else .Segmented, em)
+	case .Terminal: tab_demo_terminal(t, app.tab_style.? or_else .Underline, em)
 	}
 }
 
 // A dialog's panel with its switcher (feuille's signature: typed, drawn or imported).
 @(private = "file")
-tab_demo_card :: proc(t: ^Tab_Demo_State, em: f32) {
+tab_demo_card :: proc(t: ^Tab_Demo_State, style: ui.Tab_Style, em: f32) {
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
 	if ui.row(id = "###tab_card_page") {
 		ui.spacer(ui.px(math.round(em * 2)))
@@ -60,7 +60,7 @@ tab_demo_card :: proc(t: ^Tab_Demo_State, em: f32) {
 			surface: ui.Tab_Surface
 			if ui.tags("card") { surface = {ground = ui.color("background"), edge = ui.color("border")} }
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 19))})
-			if _, ok := ui.tab_panel("###sig_tabs", {"Type it", "Draw it", "Import"}, nil, &t.card_tab, {surface = surface}); ok {
+			if _, ok := ui.tab_panel("###sig_tabs", {"Type it", "Draw it", "Import"}, nil, &t.card_tab, {surface = surface, tabs = {style = style}}); ok {
 				ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.2))})
 				ui.line_edit("###sig_name", &t.name, {placeholder = "Your name"})
 				ui.spacer(ui.px(math.round(em * 0.8)))
@@ -99,7 +99,7 @@ TERMINAL_LINES := [?]string{
 
 // A terminal's window: its tabs and their "+" over the shell's own ground (ardoise).
 @(private = "file")
-tab_demo_terminal :: proc(t: ^Tab_Demo_State, em: f32) {
+tab_demo_terminal :: proc(t: ^Tab_Demo_State, style: ui.Tab_Style, em: f32) {
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
 	if ui.row(id = "###tab_term_page") {
 		ui.spacer(ui.px(math.round(em * 1)))
@@ -107,6 +107,7 @@ tab_demo_terminal :: proc(t: ^Tab_Demo_State, em: f32) {
 		if ui.column(id = "###tab_term_col") {
 			ui.spacer(ui.px(math.round(em * 1)))
 			opts := ui.Tab_Panel_Options{surface = terminal_surface(), pad = math.round(em * 0.75)}
+			opts.tabs.style = style
 			opts.tabs.after = proc(_: rawptr) {
 				em := ui.font_size()
 				ui.next({width = ui.px(math.round(em * 2)), height = ui.px(math.round(em * 2))})

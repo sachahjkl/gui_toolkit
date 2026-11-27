@@ -2,7 +2,9 @@
 
 The code is `src/ui/tab_face.odin` (`tab_box`, `tab_body`, `tab_draw`, `tab_line_draw`). Every row of tabs of the
 toolkit is built with it: `ui.tabs`, a dock's stack (`docking.odin`), a stack of views (`views_panels.odin`), a dense
-view's header (the debug window). How a row of tabs scrolls is the strip's ([strip.md](strip.md)). How a program uses
+view's header (the debug window). Each strip has a style and frames a surface ([tab-styles.md](tab-styles.md)): this
+file is the Folder's, the chosen tab joined to its page (`ui.tabs`, documents); a dock's and a view's stacks are
+Underlines. How a row of tabs scrolls is the strip's ([strip.md](strip.md)). How a program uses
 them is in [docs/strip.md](../../../docs/strip.md) and [docs/docking.md](../../../docs/docking.md).
 
 ## The fault
@@ -34,15 +36,15 @@ A tab is the label of the panel under it, and one shape with it.
   container under it. The box the tabs stand in draws it as its custom draw (`tab_line_draw`), before its children: a
   box's sides (`.Draw_Side_Bottom`) are drawn after its children, and the chosen tab could not cover it.
 - **The chosen tab rises out of the line.** Its outline leaves the line through a concave fillet, climbs, rounds over its
-  top and comes down through the other fillet into the line again (the Chrome tab's silhouette). Inside it is the page's
-  colour (`tab_on background`: a panel's content is drawn on the page) down past the line, so the tab and its panel are
-  one shape with no line between them.
-- **In the theme's finish.** With a finish that has a sheen, its face is a step lighter at its top; machined and edged,
-  a lit rim runs under its top edge. Flat: the colour alone. Its top corners take the theme's control radius
+  top and comes down through the other fillet into the line again (the Chrome tab's silhouette). Inside it is the
+  surface the strip frames (`Tab_Surface`; none: the page's, `tab_on background`) down past the line, and the line is
+  the surface's edge, so the tab and its panel are one shape with no line between them.
+- **No light of the finish.** The chosen tab is its panel's surface: a step lighter at its top, a lit rim, made it
+  another colour than the panel it joins (tab-styles.md). Its top corners take the theme's control radius
   (`shape_of(.Control)`): a dense scope's smaller em gives a tighter one, a square theme square tabs and no fillet.
-- **The other tabs have no face.** A faint rounded-top outline sits on the line (the border at 45 %, a little lower than
-  the chosen tab), inside the room the chosen tab's feet take. Under the pointer the same shape fills with the theme's
-  hover step (`tab hover_fill`), pressed its press step. No dividers: each tab's outline already separates it.
+- **The other tabs are words.** No outline (outlines read as boxes over ardoise's terminal); under the pointer a fill
+  in a chosen tab's shape, a little lower, with the theme's hover step (`tab hover_fill`), pressed its press step. No
+  dividers.
 - **Every tab has its whole silhouette, the first included.** Both feet curve out of the line, whatever its place.
 - **The first tab starts a small inset from the pane's edge** (`tab_strip_inset`): the room its left foot needs and a
   short run of the line (`TAB_LINE_LEAD_PX`, 3 px), so the line leaves the pane's edge, runs a few pixels and curves up
@@ -57,8 +59,8 @@ A tab is the label of the panel under it, and one shape with it.
 
 ## Subtle points
 
-- The chosen tab's feet reach beyond its box, over its neighbours' padding: an unchosen tab's outline keeps clear of
-  them (the foot and a pixel), so the shapes never touch.
+- The chosen tab's feet reach beyond its box, over its neighbours' padding: an unchosen tab's hover fill keeps clear of
+  them (half a foot in from its sides).
 - "An end of its strip" is the end of the outermost box on the tab's baseline that draws the line, not of the strip's
   view: the view is as wide as the tabs, and its last tab would always count as the last. `ui.tabs` draws a line under
   its own strip; a program's row around it (fidget, the debug window) draws the whole one, and decides.
@@ -81,15 +83,15 @@ A tab is the label of the panel under it, and one shape with it.
   box with it is drawn as a key's bevel. The views' strip took presses (a double click maximises, a right click opens
   the menu) since 0.366 and was drawn as one big button (Tower's bottom terminal); its presses now go to a box with no
   face inside the ground. The dock's strips have the same ground.
-- **An unchosen tab's outline flows into the line and never draws on it**: its small fillets (half the chosen tab's) are
-  cut at the line's top edge. The line is the strip's colour, the outline a fainter one: a stroke on the line would show.
+- **An unchosen tab draws nothing on the line**: its hover fill ends a pixel above it.
 - `tests/docking/dock_tab_look_test.odin` reads the columns round each foot at every scale (nothing below the line,
-  nothing beside the fillet, no line under the curve, the right foot the mirror of the left);
-  `tests/scenarios/tab_face_test.odin` checks every column of the line in a program's row.
+  nothing beside the fillet, no line under the curve, the right foot the mirror of the left) on a dock of Folders;
+  `tests/scenarios/tab_face_test.odin` checks every column of the line in a program's row;
+  `tests/scenarios/tab_styles_test.odin` the junction of each style in a `tab_panel`.
 - Every stroke of a tab is opaque, its colour mixed over what it lies on (`face_over`): a translucent `path_stroke` draws
-  through a layer of its own, a render target per unchosen tab in every frame that draws them.
-- The chosen tab's fill is the page's colour, not the content's. A panel that paints its own ground in another colour
-  shows a seam; such a program builds its tab with `Dock_Options.tab` or gives the theme its own `tab_on background`.
+  through a layer of its own.
+- The chosen tab's fill is the surface the strip frames (`tabs_over`, `Dock_Options.surface`, `tab_panel`): a panel
+  that paints its own ground names it there, and the seam between a page-coloured tab and a terminal is gone.
 - A strip that has its own line under it must not draw it as a side: the tab cannot cover a side. The debug window's
   row and fidget's draw `tab_line_draw` on the row they put `ui.tabs` in.
 - The shapes are paths (`draw.path_arc`, `path_fill`, `path_stroke`): antialiased at any scale.
@@ -109,11 +111,17 @@ A tab is the label of the panel under it, and one shape with it.
   path for the line and the outline replaced them.
 - Before all of them, the views had their own look: a block tinted with the accent for the shown tab and ghost buttons
   for the others. A tinted block reads as a selected row of a list.
+- The silhouette for every strip (0.366): unchosen tabs a faint outline on the line, the chosen tab the page's colour
+  with the finish's light. Over a terminal of its own ground it was a tab pasted on top, a double border, boxes for the
+  others ("the tabs do not integrate with what they frame"). Four styles were drawn and the owner chose per context
+  ([tab-styles.md](tab-styles.md)): this silhouette stays the Folder's, on the surface's colours, the others words.
 
 ## Refused
 
 - **A button's face for the chosen tab** (the plate): it is what made tabs read as buttons.
-- **An accent line on the chosen tab, dividers between the others**: the flat look; the silhouette says both.
+- **An accent line on the chosen tab, dividers between the others** for a document's tabs: the flat look; the
+  silhouette says both. (A dock's stacks took an accent bar later, on their panel's surface: tab-styles.md.)
 - **A margin round a pane, a padding before the first tab beyond its foot's room**: room lost for nothing.
 - **A straight side at the strip's ends**: the first tab glued to the pane's edge, its shape cut.
-- **A look per row of tabs** (dock, views, `ui.tabs`): one look in one file, so a program's tabs and the toolkit's agree.
+- **A look drawn by each row of tabs** (dock, views, `ui.tabs`): the styles are drawn in one place (`tab_face.odin`,
+  `tab_style.odin`) and a strip only names its style, so a program's tabs and the toolkit's agree.

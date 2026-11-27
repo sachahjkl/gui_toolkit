@@ -91,6 +91,7 @@ Dock_Options :: struct {
 	tab:         proc(user: rawptr, t: Dock_Tab),                // the content of a tab (nil: its title)
 	closable:    proc(user: rawptr, panel: u32) -> bool,         // nil: every panel can be closed
 	surface:     proc(user: rawptr, panel: u32) -> Tab_Surface,  // the ground and edge of a panel's content: its body is painted with it and its stack's tabs frame it (nil: the page's)
+	tab_style:   Maybe(Tab_Style),                               // its stacks' tabs (nil: .Underline, the strip on the panel's surface)
 	strip_begin: proc(user: rawptr, d: ^Dock, leaf: i32),        // boxes at the start of a stack's strip, before its tabs
 	strip_end:   proc(user: rawptr, d: ^Dock, leaf: i32),        // ... at its end, before its fold and menu buttons (a toolbar)
 	strip_last:  proc(user: rawptr, d: ^Dock, leaf: i32),        // ... after them: the strip's last control (a window's close button)
@@ -200,11 +201,13 @@ dock_panel :: proc(d: ^Dock, panel: u32) -> bool {
 	b := box_from_key(dock_body_key(d, panel))
 	if b == nil || b.last_build != gs().build_index { return false }
 	push_parent(b)
+	// (its content in its stack's tabs' style and surface: dock_content_inset, a strip of its own)
+	_ = tabs_over(dock_tab_style(d), dock_surface(d, panel))
 	return true
 }
 
 @(private)
-dock_panel_end :: proc(d: ^Dock, panel: u32, ok: bool) { if ok { pop_parent() } }
+dock_panel_end :: proc(d: ^Dock, panel: u32, ok: bool) { if ok { tabs_over_end(); pop_parent() } }
 
 // The end of the dock space: the drop targets and the preview over it while something is dragged, the menu, and the save.
 dock_end :: proc(d: ^Dock) -> (res: Dock_Result) {
@@ -497,25 +500,16 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	root := dock_root_of(d, leaf)
 	floating := root != d.main
 	sr := dock_strip_rect(d, leaf)
-	// (the panel shown tells its stack's strip and body the surface it is drawn on: tab_surface)
-	shown_surface: Tab_Surface
-	if d.opts.surface != nil && d.nodes[leaf].active != DOCK_NO_PANEL { shown_surface = d.opts.surface(d.opts.user, d.nodes[leaf].active) }
-	_ = tab_surface(shown_surface)
-	defer tab_surface_end()
+	// (the panel shown tells its stack's strip and body the surface it is drawn on)
+	shown_surface := dock_surface(d, d.nodes[leaf].active)
+	_ = tabs_over(dock_tab_style(d), shown_surface)
+	defer tabs_over_end()
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
 	bar: ^Box
-	// (a bar, never a key: its ground flat, its bottom edge a line, the stack's top border, out of which the shown tab
-	// rises: tab_strip_draw)
+	// (a bar, never a key: its ground flat, in its tabs' style: the panel's surface under an Underline, the bar's colour
+	// and the stack's top border, out of which the shown tab rises, under a Folder: tab_strip_draw)
 	if tags("bar") { bar = build_box({.Clip, .Draw_Background, .Custom_Ground}, dock_leaf_id(leaf)) }
-	bar.custom = tab_strip_draw
-	if tab_style() != .Silhouette {
-		bar.custom_user = tab_strip_look(bar.bg)
-	} else if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
-		focus, _ := dock_focus_leaf(d)
-		sd := frame_new(Dock_Strip_Draw)
-		sd^ = {bar = bar.bg, lit = focus == leaf}
-		bar.custom, bar.custom_user = dock_strip_draw, sd
-	}
+	bar.custom, bar.custom_user = tab_strip_draw, tab_strip_look(bar.bg)
 	a11y_set(bar, {role = .Tab_List, orientation = .X, name = dock_stack_label(d, leaf)})
 	if parent(bar) {
 		if d.opts.strip_begin != nil { d.opts.strip_begin(d.opts.user, d, leaf) }
@@ -570,9 +564,10 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	br := dock_body_rect(d, leaf)
 	next({fixed_x = br.min.x, fixed_y = br.min.y, width = px(br.max.x - br.min.x), height = px(br.max.y - br.min.y), axis = .Y})
 	body := build_box({.Clip}, dock_body_id(a))
-	if shown_surface.ground.a > 0 || tab_style() != .Silhouette {
+	// (a panel with a surface of its own: its body painted with it, the program paints no ground of its own under it)
+	if shown_surface.ground.a > 0 {
 		body.flags += {.Draw_Background}
-		body.bg, body.target_bg = tab_surface_now().ground, tab_surface_now().ground
+		body.bg, body.target_bg = shown_surface.ground, shown_surface.ground
 	}
 	a11y_set(body, {role = .Tab_Panel, name = dock_title(d, a), labelled_by = dock_tab_key(d, leaf, a)})
 }
@@ -642,8 +637,9 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	a11y_set(tb, info)
 }
 
-// Where the first tab's words start from the stack's left edge, in the size in use: the room before the first tab (its
-// left foot's) and the tab's own pad. A panel whose content starts there (its first column of text) lines up with it.
+// Where the first tab's words start from the stack's left edge, in the size in use: the room before the first tab (none
+// for an Underline, a Folder's left foot) and the tab's own pad. A panel whose content starts there (its first column of
+// text) lines up with it. Inside a dock_panel: its stack's style.
 dock_content_inset :: proc() -> f32 { return tab_strip_inset() + math.round(DOCK_TAB_PAD_EM * font_size()) }
 
 // (in the build: done by dock_end)
@@ -906,13 +902,13 @@ dock_to_items :: proc(d: ^Dock, p: u32) {
 	}
 }
 
+// The style of a dock's tabs (Dock_Options.tab_style; nil: .Underline).
 @(private)
-Dock_Strip_Draw :: struct { bar: Color, lit: bool }
+dock_tab_style :: proc(d: ^Dock) -> Tab_Style { return d.opts.tab_style.? or_else .Underline }
 
+// The surface a panel's content is drawn on (Dock_Options.surface; none: zero, the page's).
 @(private)
-dock_strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	d := (^Dock_Strip_Draw)(user)
-	caption_face(dc, b.rect, d.bar, d.bar, d.lit)
-	// (the line the caption covered: the stack's top border, out of which the shown tab rises)
-	tab_line_draw(b, nil, dc)
+dock_surface :: proc(d: ^Dock, panel: u32) -> Tab_Surface {
+	if d.opts.surface == nil || panel == DOCK_NO_PANEL { return {} }
+	return d.opts.surface(d.opts.user, panel)
 }

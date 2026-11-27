@@ -1852,8 +1852,13 @@ a_bottom_strip_is_a_bar_not_a_button :: proc(t: ^testing.T) {
 			q := session.pixel(img, x, y)
 			testing.expectf(t, session.near(q, ground, 3), "%s: the strip's free part at row %d is %v, its ground %v (a face, a frame)", when_, y, q, ground)
 		}
-		// (its first columns, down to above the line: the strip's ground, no frame nor rim; the first tab's outline starts
-		// past them)
+		// (an Underline: no line between the strip and its view, the strip's last row and the view's first its ground)
+		for y in ([]int{int(bar.rect.max.y) - 1, int(bar.rect.max.y)}) {
+			q := session.pixel(img, x, y)
+			testing.expectf(t, session.near(q, ground, 3), "%s: no line under the strip at row %d: %v, its ground %v", when_, y, q, ground)
+		}
+		// (its first columns, down to above its bottom: the strip's ground, no frame nor rim; the first tab, an Underline's,
+		// has its bar inset from its sides)
 		for dx in 0 ..< 3 {
 			for y in rows[1:] {
 				q := session.pixel(img, int(bar.rect.min.x) + dx, y)

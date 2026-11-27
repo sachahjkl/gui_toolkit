@@ -1,6 +1,8 @@
-// The look of a dock's tabs (src/md/features/tabs.md): the strip's line, out of which the chosen tab rises joined to its
-// panel; every tab with both feet, the first a foot's room and a short run of the line from the stack's edge; the other tabs with no face; the words in the middle of the shape; a tab's
-// close button hidden at rest on the others, its room kept.
+// The look of a dock's tabs (src/md/features/tab-styles.md, tabs.md). A dock's stack is an Underline: its strip on the
+// panel's surface, no line nor border between them, the shown tab's words over an accent bar, the first tab at the
+// stack's edge, a panel's content under its words. A dock asked for Folders: the line, out of which the chosen tab rises
+// joined to its panel, every foot flowing into it at every scale. A tab's close button hidden at rest on the others, its
+// room kept.
 //   odin test tests/docking -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package docking_test
 
@@ -14,12 +16,12 @@ import "gt:ui"
 @(private = "file") LOOK_TITLES := [?]string{"", "Alpha", "Beta", "Gamma"}
 
 @(private = "file")
-Look_App :: struct { dock: ui.Dock }
+Look_App :: struct { dock: ui.Dock, style: Maybe(ui.Tab_Style) }
 
 @(private = "file")
 look_build :: proc(s: ^session.Session) {
 	app := (^Look_App)(s.user)
-	ui.dock_begin(&app.dock, "###dock", {title = proc(user: rawptr, id: u32) -> string { return LOOK_TITLES[id] }, user = app, close_buttons = true})
+	ui.dock_begin(&app.dock, "###dock", {title = proc(user: rawptr, id: u32) -> string { return LOOK_TITLES[id] }, user = app, close_buttons = true, tab_style = app.style})
 	for p in u32(1) ..< len(LOOK_TITLES) {
 		if ui.dock_panel(&app.dock, p) {
 			ui.spacer(ui.px(40))   // (the body's top rows hold no letter)
@@ -52,7 +54,7 @@ tab :: proc(app: ^Look_App, p: u32) -> ^ui.Box {
 }
 
 @(test)
-the_chosen_tab_rises_out_of_the_line_joined_to_its_panel :: proc(t: ^testing.T) {
+an_underline_stack_is_one_surface_with_its_panel :: proc(t: ^testing.T) {
 	app: Look_App
 	defer ui.dock_destroy(&app.dock)
 	s := look_setup(t, &app)
@@ -60,60 +62,83 @@ the_chosen_tab_rises_out_of_the_line_joined_to_its_panel :: proc(t: ^testing.T) 
 	if !testing.expect(t, a != nil && b != nil, "the tabs") { return }
 	img := session.capture(s)
 	pal := ui.palette_of("Midnight")
-	page, line := rgba(pal.bg), rgba(pal.border)
+	page, line, accent := rgba(pal.bg), rgba(pal.border), rgba(pal.accent)
 	stack := app.dock.nodes[ui.dock_leaf_of(&app.dock, 1)].rect.min.x + app.dock.origin.x
-	// the first tab a small inset from the stack's edge: its left foot's room and the line's short run (tab_strip_inset)
-	testing.expect_value(t, a.rect.min.x - stack, look_inset(&app))
+	// the first tab at the stack's edge (no room for a foot), the strip's height
+	testing.expect_value(t, a.rect.min.x - stack, f32(0))
 	testing.expect_value(t, a.rect.max.y - a.rect.min.y, f32(app.dock.metrics.strip))
 	bottom := int(a.rect.max.y) - 1
-	strip := session.pixel(img, LOOK_SIZE.x - 60, int(session.center(a).y))
-	// the line under an unchosen tab and on the empty part of the strip; none under the chosen one
-	testing.expectf(t, session.near(session.pixel(img, int(session.center(b).x), bottom), line, 6), "the line under an unchosen tab: %v, the border %v", session.pixel(img, int(session.center(b).x), bottom), line)
-	testing.expectf(t, session.near(session.pixel(img, LOOK_SIZE.x / 2, bottom), line, 6), "the line along the strip: %v", session.pixel(img, LOOK_SIZE.x / 2, bottom))
-	for x in ([]int{int(a.rect.min.x) + 1, int(session.center(a).x), int(a.rect.max.x) - 2}) {
-		p := session.pixel(img, x, bottom)
-		testing.expectf(t, session.near(p, page, 4), "the chosen tab's last row is the page at x %d: %v, the page %v", x, p, page)
+	// no line: under an unchosen tab, along the strip's free part, the strip's last row and the panel's first are the page
+	for x in ([]int{int(session.center(b).x), LOOK_SIZE.x / 2}) {
+		for y in ([]int{bottom - 1, bottom, bottom + 1, bottom + 2}) {
+			q := session.pixel(img, x, y)
+			testing.expectf(t, session.near(q, page, 4) && !session.near(q, line, 4), "no border between the strip and its panel at %d,%d: %v, the page %v", x, y, q, page)
+		}
 	}
-	testing.expectf(t, session.near(session.pixel(img, int(session.center(a).x), bottom + 1), page, 4), "and the panel's first row")
-	// from the stack's edge the line runs a few pixels, then the first tab's left foot curves up out of it: just left of
-	// the tab, above the line, the foot (its fill and its outline), not the strip's ground; at the edge, the ground
-	x0 := int(stack) + 1
-	testing.expectf(t, session.near(session.pixel(img, x0, bottom), line, 6), "the line from the stack's edge: %v", session.pixel(img, x0, bottom))
-	testing.expectf(t, session.near(session.pixel(img, x0, bottom - 2), strip, 3), "the strip's ground over the line's run: %v", session.pixel(img, x0, bottom - 2))
-	foot := session.pixel(img, int(a.rect.min.x) - 1, bottom - 1)
-	testing.expectf(t, !session.near(foot, strip, 3), "the first tab's left foot, left of its box: %v, the strip %v", foot, strip)
-}
-
-// The room before the first tab (tab_strip_inset) in the session's theme and scale: its left foot's and the line's run.
-@(private = "file")
-look_inset :: proc(app: ^Look_App) -> f32 {
-	return math.round(app.dock.metrics.em * ui.SHAPE_DEFAULT[.Control] * 0.8) + 3
+	// the shown tab: an accent bar along its bottom, inside its sides
+	q := session.pixel(img, int(session.center(a).x), bottom)
+	testing.expectf(t, session.near(q, accent, 12), "the shown tab's bar: %v, the accent %v", q, accent)
+	testing.expectf(t, session.near(session.pixel(img, int(a.rect.min.x) + 1, bottom), page, 4), "the bar inside the tab's sides")
+	testing.expectf(t, session.near(session.pixel(img, int(session.center(a).x), bottom + 1), page, 4), "the panel's first row under the bar: the page")
 }
 
 @(test)
-an_unchosen_tab_has_no_face_and_the_words_sit_in_the_shape :: proc(t: ^testing.T) {
+an_unchosen_tab_has_no_face_and_the_words_sit_in_the_strip :: proc(t: ^testing.T) {
 	app: Look_App
 	defer ui.dock_destroy(&app.dock)
 	s := look_setup(t, &app)
 	a, c := tab(&app, 1), tab(&app, 3)
 	if !testing.expect(t, a != nil && c != nil, "the tabs") { return }
 	img := session.capture(s)
-	strip := session.pixel(img, LOOK_SIZE.x - 60, int(session.center(a).y))
-	// inside the third tab's outline, before its words: the strip's own colour from under its top to above the line
+	page := rgba(ui.palette_of("Midnight").bg)
+	// inside the third tab, before its words: the page at every row
 	title := session.get(s, "dock_title", c)
-	x := int(title.rect.min.x) - 1   // (between its outline's side and its words)
-	// (below its top corner's arc, down to above the line)
-	for y in int(c.rect.min.y + (c.rect.max.y - c.rect.min.y) * 0.6) ..< int(c.rect.max.y) - 3 {
+	x := int(title.rect.min.x) - 1
+	for y in int(c.rect.min.y) ..< int(c.rect.max.y) {
 		p := session.pixel(img, x, y)
-		if !session.near(p, strip, 3) { testing.expectf(t, false, "an unchosen tab has a face: %v at row %d, the strip %v", p, y, strip); break }
+		if !session.near(p, page, 3) { testing.expectf(t, false, "an unchosen tab has a face: %v at row %d, the page %v", p, y, page); break }
 	}
-	// the words in the middle of the visible shape, below the strip's ground over it
+	// the words in the middle of the strip
 	words := session.get(s, "dock_title", a)
 	mid := (words.rect.min.y + words.rect.max.y) * 0.5
-	testing.expectf(t, mid > (a.rect.min.y + a.rect.max.y) * 0.5, "the words sit lower than the strip's middle: %v in %v", mid, a.rect)
-	// a panel's content starts where the first tab's words start (dock_content_inset)
+	testing.expectf(t, abs(mid - (a.rect.min.y + a.rect.max.y) * 0.5) <= 1, "the words in the strip's middle: %v in %v", mid, a.rect)
+	// a panel's content starts where the first tab's words start (dock_content_inset): the tab's pad from the edge
 	stack := app.dock.nodes[ui.dock_leaf_of(&app.dock, 1)].rect.min.x + app.dock.origin.x
-	testing.expect_value(t, words.rect.min.x - stack, look_inset(&app) + math.round(ui.DOCK_TAB_PAD_EM * app.dock.metrics.em))
+	testing.expect_value(t, words.rect.min.x - stack, math.round(ui.DOCK_TAB_PAD_EM * app.dock.metrics.em))
+}
+
+// A panel that names its surface: its body painted with it, the strip on it, the shown tab's bar over it.
+@(test)
+a_panel_surface_paints_its_body_and_its_strip :: proc(t: ^testing.T) {
+	app: Look_App
+	defer ui.dock_destroy(&app.dock)
+	ui.dock_init(&app.dock)
+	testing.expect(t, ui.dock_parse(&app.dock, "dock1 [*a,b,c]", proc(user: rawptr, name: string) -> (u32, bool) {
+		for n, i in ([?]string{"", "a", "b", "c"}) { if i > 0 && n == name { return u32(i), true } }
+		return 0, false
+	}, nil))
+	build :: proc(s: ^session.Session) {
+		app := (^Look_App)(s.user)
+		ui.dock_begin(&app.dock, "###dock", {
+			title = proc(user: rawptr, id: u32) -> string { return LOOK_TITLES[id] }, user = app,
+			surface = proc(user: rawptr, id: u32) -> ui.Tab_Surface { return {ground = {0.02, 0.2, 0.05, 1}} },
+		})
+		for p in u32(1) ..< len(LOOK_TITLES) { if ui.dock_panel(&app.dock, p) { ui.spacer(ui.px(40)) } }
+		ui.dock_end(&app.dock)
+	}
+	s := session.start(t, {build = build, user = &app, size = LOOK_SIZE})
+	session.move(s, {f32(LOOK_SIZE.x) - 5, f32(LOOK_SIZE.y) - 5})
+	session.frames(s, 3)
+	b := tab(&app, 2)
+	if !testing.expect(t, b != nil, "the tabs") { return }
+	img := session.capture(s)
+	ground := session.pixel(img, LOOK_SIZE.x / 2, LOOK_SIZE.y - 20)
+	page := rgba(ui.palette_of("Midnight").bg)
+	testing.expectf(t, !session.near(ground, page, 6), "the body painted with its surface: %v, the page %v", ground, page)
+	for y in ([]int{int(b.rect.min.y) + 2, int(b.rect.max.y) - 1, int(b.rect.max.y)}) {
+		q := session.pixel(img, int(b.rect.max.x) + 30, y)
+		testing.expectf(t, session.near(q, ground, 4), "the strip on the panel's surface at row %d: %v, the surface %v", y, q, ground)
+	}
 }
 
 @(test)
@@ -143,9 +168,10 @@ an_unchosen_tab_shows_its_close_button_under_the_pointer_only :: proc(t: ^testin
 	testing.expect_value(t, b.rect.max.x - b.rect.min.x, w)
 }
 
-// One stack of three tabs, the first one shown, at `dpi` (`size`: physical pixels).
+// One stack of three Folder tabs, the first one shown, at `dpi` (`size`: physical pixels).
 @(private = "file")
 look_setup_at :: proc(t: ^testing.T, app: ^Look_App, dpi: f32) -> ^session.Session {
+	app.style = .Folder   // (the feet are a Folder's)
 	ui.dock_init(&app.dock)
 	testing.expect(t, ui.dock_parse(&app.dock, "dock1 [*a,b,c]", proc(user: rawptr, name: string) -> (u32, bool) {
 		for n, i in ([?]string{"", "a", "b", "c"}) { if i > 0 && n == name { return u32(i), true } }
@@ -172,9 +198,9 @@ nearer :: proc(c, a, b: session.Color) -> bool {
 	return da < db
 }
 
-// The chosen tab's feet at 100, 125, 150 and 200 %: around each foot nothing of the outline below the line's row nor
+// A dock of Folders: the chosen tab's feet at 100, 125, 150 and 200 %: around each foot nothing of the outline below the line's row nor
 // beside the fillet, the line unbroken from the strip's edge into the fillet, and the right foot the mirror of the left
-// (the reference profile: one shape, drawn the same on both sides). An unchosen tab's outline never draws on the line.
+// (the reference profile: one shape, drawn the same on both sides). An unchosen tab draws nothing on the line.
 @(test)
 the_feet_flow_into_the_line_at_every_scale :: proc(t: ^testing.T) {
 	pal := ui.palette_of("Midnight")
@@ -242,7 +268,7 @@ the_feet_flow_into_the_line_at_every_scale :: proc(t: ^testing.T) {
 				if !close_to(l, r, 10) { testing.expectf(t, false, "%.2f: the feet differ %d px out at row %d: left %v, right %v", dpi, k, y, l, r); break }
 			}
 		}
-		// an unchosen tab: its outline ends above the line, the line's rows under it the line's colour
+		// an unchosen tab: nothing of it on the line, the line's rows under it the line's colour
 		for x in int(c.rect.min.x) ..< int(c.rect.max.x) {
 			for y in line_row ..< bottom {
 				q := session.pixel(img, x, y)

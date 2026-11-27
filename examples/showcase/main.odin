@@ -103,7 +103,7 @@ App :: struct {
 	editor:         Editor,
 
 	// the tabs' design proposals (tab_design.odin): the style of every row of tabs, the context shown in place of a scene
-	tab_style:      ui.Tab_Style,
+	tab_style:      Maybe(ui.Tab_Style),   // --tabs=: the style of the scene's strips (nil: each one's own)
 	tab_demo:       Tab_Demo,
 	tab_demo_state: Tab_Demo_State,
 

@@ -71,7 +71,7 @@ editor_build :: proc(app: ^App, em: f32) {
 	}
 	ui.dock_begin(&e.dock, "###editor_dock", {
 		title = proc(user: rawptr, id: u32) -> string { return EDITOR_TITLES[id] },
-		user = app, close_buttons = true,
+		user = app, close_buttons = true, tab_style = app.tab_style,
 		// (the files of code on an editor's ground, off the page: what their tabs frame)
 		surface = proc(user: rawptr, id: u32) -> ui.Tab_Surface {
 			if id != EDITOR_WORDS && id != EDITOR_NOTES { return {} }

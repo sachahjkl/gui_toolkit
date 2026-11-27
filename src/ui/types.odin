@@ -375,9 +375,8 @@ State :: struct {
 	dense_depth:   int,           // dense_scope: how many are open where the build is
 	dense_saved:   f32,           // the density outside them
 	square_depth:  int,           // dense scopes and square views open where the build is: every box's corners square
-	tab_style:     Tab_Style,     // how every row of tabs looks (tab_style.odin)
-	tab_surfaces:  [TAB_SURFACE_DEPTH]Tab_Surface,   // tab_surface: what the rows of tabs built inside frame
-	tab_surface_depth: int,
+	tab_scopes:      [TAB_SCOPE_DEPTH]Tab_Scope,   // tabs_over: the style and the surface of the rows of tabs built inside
+	tab_scope_depth: int,
 	debug_hook:    Debug_Hook,    // the debug surface of gt:debug (debug_hook.odin)
 	arena:       virtual.Arena,
 	build_index: u64,

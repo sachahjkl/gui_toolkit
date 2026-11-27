@@ -306,54 +306,75 @@ scrolls in its own box, and the page does not scroll for it.
 
 ## Tabs over a surface of their own
 
-A row of tabs takes its colours from the content it frames, not from the page. Name that content's ground and edge
-once; the toolkit paints the chosen tab, the strip and the frame with them, and the content draws no border of its own:
+A row of tabs takes its colours from the content it frames, not from the page, and has a style chosen by its context
+([tab-styles.md](../src/md/features/tab-styles.md)):
+
+| Style | For | Default of |
+|---|---|---|
+| `.Folder` | documents: the chosen tab is the page's surface, one outline round both | `ui.tabs`, `ui.tab_panel`, a program's own strip |
+| `.Underline` | docks, editors, terminals: the strip on the surface, an accent bar under the chosen tab | a dock's and a stack of views' |
+| `.Segmented` | a small panel's modes: a switcher inside the panel's one frame | (asked) |
+| `.Header` | a panel with a header band: the chosen tab a hole in it | (asked) |
+
+Name the content's ground and edge once; the toolkit paints the chosen tab, the strip and the frame with them, and the
+content draws no border nor ground of its own:
 
 ```odin
-ui.set_tab_style(.Folder)   // .Folder, .Underline, .Segmented, .Header (.Silhouette: the 0.366 look)
 opts := ui.Tab_Panel_Options{surface = {ground = terminal_bg}}
+opts.tabs.style = .Underline
 opts.tabs.content = draw_my_tab                       // a tab's own content (nil: its icon and label)
 opts.tabs.after = new_tab_button                      // after the last tab: a "+"
 if r, ok := ui.tab_panel("###term", titles, nil, &shown, opts); ok {
 	terminal_view(app)
 	if r.menu >= 0 { ui.menu_open("###tab_menu", r.menu_at, 0) }   // a right click, the Menu key, Shift+F10
+	if r.closed >= 0 { close_tab(app, r.closed) }                   // a middle click
 }
 ```
 
 - `tab_panel(id, labels, icons, &selected, o)`: the strip and the page in one framed box, the page padded by `o.pad`
   (negative: none). It returns `ui.Tabs_Result`: `changed`, `menu` and `menu_at` (-1: none), `closed` (a middle click).
-- `tabs_ex(id, labels, icons, &selected, o)`: `ui.tabs` with `Tabs_Options` and the same result, for a strip a
-  program frames itself.
-- `tab_surface(sf)`: `if ui.tab_surface(sf) { ... }` gives the surface to the strips built inside (a program's own).
-  A dock asks it per panel: `Dock_Options.surface`, which also paints the panel's body.
+  Without a size from `next`, it fills its parent.
+- `tabs_ex(id, labels, icons, &selected, o)`: `ui.tabs` with `Tabs_Options` (`style`, `content`, `after`) and the same
+  result, for a strip a program frames itself. A Folder draws its line under the box around it; the other styles stand
+  on what is under them.
+- `tabs_over(style, sf)`: `if ui.tabs_over(.Underline, sf) { ... }` gives a style and a surface to the strips built
+  inside (a program's own, below). A dock asks the surface per panel (`Dock_Options.surface`) and paints the panel's
+  body with it; a view's kind gives its own (`View_Options.surface`).
 
 ## Your own tab strip
 
 A program whose tabs are its own boxes (a fixed width, a drag that moves or tears off, a drop zone, its own icon, title
-and close) gives them the toolkit's look with three calls; `ui.tabs`, a dock's stack and a stack of views use the same:
+and close) gives them the toolkit's look with a few calls; `ui.tabs`, a dock's stack and a stack of views use the same.
+With no `tabs_over` round it, a strip is a Folder on the page:
 
 ```odin
-if ui.strip("###tabs") {
-	ui.parent_box().parent.custom = ui.tab_line_draw    // the line under the strip (a bar of its own: ui.tab_strip_draw)
-	ui.tab_strip_start()                                 // the room before the first tab
-	for &tab, i in app.tabs {
-		ui.next({width = ui.px(tab_w), height = ui.pct(1)})
-		b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###tab_%d", tab.id))
-		ui.tab_face(b, i == app.shown, app.focused == i ? ui.color("accent") : {})
-		if ui.parent(b) { if ui.tab_body() { tab_content(app, &tab) } }   // icon, title (ui.tab_title_width), close
+if ui.tabs_over(.Underline, {ground = editor_bg}) {      // its style and the surface it frames (none: .Folder, the page)
+	if ui.strip("###tabs") {
+		bar := ui.parent_box().parent
+		bar.custom, bar.custom_user = ui.tab_strip_draw, ui.tab_strip_look(bar.bg)   // its ground (a Folder's: and its line)
+		ui.tab_strip_start()                                 // the room before the first tab
+		for &tab, i in app.tabs {
+			ui.next({width = ui.px(tab_w), height = ui.pct(1)})
+			b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###tab_%d", tab.id))
+			ui.tab_face(b, i == app.shown, app.focused == i ? ui.color("accent") : {})
+			if ui.parent(b) { if ui.tab_body() { tab_content(app, &tab) } }   // icon, title (ui.tab_title_width), close
+		}
 	}
 }
 ```
 
-- `tab_face(b, on, mark)`: the chosen tab (`on`) rises out of the line as one shape with its panel, the others a faint
-  outline; the tab's colours whatever tags `b` was built under; the focus ring round the visible shape; its children
-  in a row at its bottom. `mark`: an accent along the chosen tab's top (the panel that has the keyboard); zero: none.
-  Call it right after building the box. The box's size, presses and drags stay the program's.
-- `tab_body()`: `if ui.parent(tab) { if ui.tab_body() { ... } }`, the row the content goes in, as tall as the visible
-  shape: the words sit in its middle, not in the strip's.
-- `tab_strip_start()`: the room before the first tab (its foot and a short run of the line). `tab_line_draw` draws the
-  line along a box's bottom; `tab_strip_draw` the bar's ground and the line, for a box with `.Draw_Background` and
-  `.Custom_Ground`. `dock_content_inset()`: where the first tab's words start, for a panel lined up with them.
+- `tab_face(b, on, mark)`: the tab's face in the style in force: a Folder's chosen tab (`on`) rises out of the line as
+  one shape with its panel, an Underline's has its accent bar, a Segmented's its key, a Header's is a hole in the band;
+  the others are words. The tab's colours whatever tags `b` was built under; the focus ring round the visible shape;
+  its children in a row. `mark`: the panel that has the keyboard (a Folder's band along the top, an Underline's or a
+  Header's bar in that colour); zero: none. Call it right after building the box. The box's size, presses and drags
+  stay the program's.
+- `tab_body()`: `if ui.parent(tab) { if ui.tab_body() { ... } }`, the row the content goes in: a Folder's as tall as
+  the visible shape (the words in its middle, not the strip's), the others' the strip's height.
+- `tab_strip_start()`: the room before the first tab (a Folder's foot and a short run of the line, a track's pad,
+  nothing for the others). `tab_strip_look(bar)`: the strip's ground for its style (the surface, the band; a Folder's:
+  `bar` and the line), for `tab_strip_draw` (its ground and line) or `tab_line_draw` (the line alone; with no look: the
+  box's border colour). `dock_content_inset()`: where the first tab's words start, for a panel lined up with them.
 - `tab_title_width(words)`: the words' width, giving way down to `TAB_TITLE_LEAST_EM` before the strip scrolls.
 
 ## Tool bars (`src/ui/toolbar.odin`)

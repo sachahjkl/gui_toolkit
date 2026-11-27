@@ -81,10 +81,9 @@ window_build :: proc(v: ^ui.View, sf: ^Surface) {
 				if ui.view_header_tools(v) { in_head = true; tabs_build(sf, labels[:], at[:], &chosen, head, h) }
 			}
 			if !in_head {
-				// (its first tab at the edge, the line under the row from edge to edge: the chosen tab rises out of it)
+				// (its first tab at the edge, an Underline's: no line between the row and the panel)
 				ui.next({width = ui.fill(), height = ui.px(head), axis = .X, cross = .Center})
 				tab_row := ui.build_box({}, "###debug_tab_row")
-				tab_row.custom = ui.tab_line_draw
 				if ui.parent(tab_row) { tabs_build(sf, labels[:], at[:], &chosen, head, h) }
 			}
 			filter := filter_row(sf, "###debug_filter", gap, h)
@@ -98,7 +97,8 @@ window_build :: proc(v: ^ui.View, sf: ^Surface) {
 @(private)
 tabs_build :: proc(sf: ^Surface, labels: []string, at: []int, chosen: ^int, head, h: f32) {
 	ui.next({height = ui.px(head)})
-	if ui.tabs("###debug_tabs", labels, nil, chosen) { sf.tab = at[chosen^] }
+	// (an instrument's tabs: an Underline, tight in its dense scope)
+	if ui.tabs_ex("###debug_tabs", labels, nil, chosen, {style = .Underline}).changed { sf.tab = at[chosen^] }
 	ui.next({width = ui.px(h), height = ui.px(h)})
 	if ui.button("###debug_pin", icon = lucide.PIN, o = {icon_font = ui.lucide_icons(), face = .Ghost, tip = i18n.tr("Pin: this panel in a view of its own")}).clicked {
 		pin(sf, sf.panels[sf.tab])

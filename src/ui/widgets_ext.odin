@@ -1652,9 +1652,10 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 }
 
 
-// Row of tabs, the chosen one joined to what it shows (tab_box), on a strip (strip.odin): too many for the row, it scrolls with
-// arrows, never a bar; the chosen tab is brought into view when it changes. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
-// its tab list. `icons` may be nil. Returns true when the selection changed.
+// Row of tabs, the chosen one joined to the page under it (.Folder: tab_style.odin), on a strip (strip.odin): too many for
+// the row, it scrolls with arrows, never a bar; the chosen tab is brought into view when it changes. With no width given
+// (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is its tab list. `icons` may be
+// nil. Returns true when the selection changed. Another style, a tab's own content, its menu: tabs_ex.
 tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
 	return tabs_ex(id, labels, icons, selected).changed
 }
@@ -1670,10 +1671,11 @@ Tab_Content :: struct {
 
 // What a row of tabs does beyond choosing (tabs_ex).
 Tabs_Options :: struct {
+	style:   Maybe(Tab_Style),                      // nil: .Folder (a tab_panel's: its own)
 	content: proc(user: rawptr, t: Tab_Content),   // a tab's own content (nil: its icon and its label)
 	after:   proc(user: rawptr),                    // built after the last tab, on the strip (a "+")
 	user:    rawptr,
-	framed:  bool,   // the strip is a tab_panel's: the panel draws the line
+	framed:  bool,   // the strip is a tab_panel's: the panel draws the frame and its line
 }
 
 // What happened to a row of tabs this frame.
@@ -1684,18 +1686,23 @@ Tabs_Result :: struct {
 	closed:  int,    // the tab a middle click asked to close; -1: none
 }
 
-// ui.tabs with a tab's own content, a slot after the tabs, and the signals a program builds its menus on.
+// ui.tabs in a style (o.style), with a tab's own content, a slot after the tabs, and the signals a program builds its
+// menus on: a right click, the Menu key or Shift+F10 on a tab (menu, menu_at), a middle click (closed). The surface its
+// tabs frame: the tabs_over around it (a tab_panel's), else the page.
 tabs_ex :: proc(id: string, labels: []string, icons: []string, selected: ^int, o := Tabs_Options{}) -> (res: Tabs_Result) {
 	res.menu, res.closed = -1, -1
 	changed := false
 	defer res.changed = changed
 	em := font_size()
+	style := o.style.? or_else .Folder
+	_ = tabs_over(style, tab_scope_now().surface)
+	defer tabs_over_end()
 	if strip(id) {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
-		// (the row's bottom edge a line, out of which the chosen tab rises: tab_box; a tab_panel's frame draws its own)
-		if outer := parent_box().parent; outer != nil && !o.framed {
-			outer.custom = tab_line_draw
-			if tab_style() != .Silhouette { outer.custom_user = tab_strip_look({}) }
+		// (a Folder: the row's bottom edge a line, out of which the chosen tab rises; a tab_panel's frame draws its own.
+		// The other styles stand on what is under them: a line there was the double border)
+		if outer := parent_box().parent; outer != nil && !o.framed && style == .Folder {
+			outer.custom, outer.custom_user = tab_line_draw, tab_strip_look({})
 		}
 		tab_strip_start()
 		first_tab: ^Box
@@ -1747,11 +1754,10 @@ tabs_ex :: proc(id: string, labels: []string, icons: []string, selected: ^int, o
 			}
 		}
 		if o.after != nil {
-			// (across the tabs' words: under the strip's ground above an outlined tab, tab_body)
-			outlined := tab_style() == .Silhouette || tab_style() == .Folder
+			// (across the tabs' words: under the strip's ground above a Folder's tab, tab_body)
 			next({width = children_sum(0), height = pct(1), axis = .Y})
 			if column(id = "###tabs_after") {
-				if outlined { spacer(pct(TAB_TOP_SHARE)) }
+				if style == .Folder { spacer(pct(TAB_TOP_SHARE)) }
 				next({width = children_sum(0), height = fill(), axis = .X})
 				if row(.Center, id = "###tabs_after_row") { o.after(o.user) }
 			}

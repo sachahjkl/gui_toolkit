@@ -57,6 +57,9 @@ View_Options :: struct {
 	// view in it with View.rail: its compact form (a list of marks). 0: the zone becomes the toolkit's rail of icons
 	rail_em:        f32,
 	tabs_always:    bool,                       // its stack's tab strip shows even when it is alone there (a terminal)
+	// the ground and edge its panel's content is drawn on (a terminal's): its body is painted with it, and its stack's
+	// strip and chosen tab take it (tab-styles.md). Zero: the page's
+	surface:        Tab_Surface,
 	// the "+" after its stack's tabs, the band's menu and the palette: the program opens a new instance of this kind
 	// (view_open with a new name); `data` is the shown view's. Every instance of this kind opened during the call joins
 	// that stack, its tab last and shown. nil: no "+"
