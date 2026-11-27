@@ -210,6 +210,7 @@ STEPS := []Step{
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},
 	{name = "file_browser", one = true, oses = EVERYWHERE, text = true},
 	{name = "path_bar", one = true, oses = EVERYWHERE, text = true},
+	{name = "tree", one = true, oses = EVERYWHERE, text = true},
 	{name = "mark_editor", one = true, oses = EVERYWHERE, text = true},
 	{name = "font_picker", one = true, oses = EVERYWHERE, text = true},
 	{name = "diff", one = true, oses = EVERYWHERE, text = true},

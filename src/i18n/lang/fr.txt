@@ -2397,6 +2397,110 @@ fr Maj+Ctrl+N
 en Hidden files
 fr Fichiers cachés
 
+en New file
+fr Nouveau fichier
+
+en Duplicate
+fr Dupliquer
+
+en Cut
+fr Couper
+
+en Paste
+fr Coller
+
+en Show in the file manager
+fr Afficher dans le gestionnaire de fichiers
+
+en Open in a terminal
+fr Ouvrir dans un terminal
+
+en Expand all here
+fr Tout déplier ici
+
+en Collapse all
+fr Tout replier
+
+en Refresh
+fr Actualiser
+
+en copy
+fr copie
+
+en Not renamed
+fr Pas renommé
+
+en A name cannot be empty.
+fr Un nom ne peut pas être vide.
+
+en A name cannot be a dot or two dots.
+fr Un nom ne peut pas être un point ou deux points.
+
+en A name has no control character in it.
+fr Un nom ne contient pas de caractère de contrôle.
+
+en A name on Windows has no < > : | ? * or double quote in it.
+fr Sous Windows, un nom ne contient ni < > : | ? * ni guillemet droit.
+
+en A name on Windows does not end with a dot or a space.
+fr Sous Windows, un nom ne finit pas par un point ou une espace.
+
+en Windows keeps the name %s for a device.
+fr Windows réserve le nom %s à un périphérique.
+
+en an entry of that name is already there
+fr une entrée de ce nom existe déjà
+
+en it could not be moved to the trash
+fr impossible de le mettre à la corbeille
+
+en it could not be put back
+fr impossible de le remettre en place
+
+en a folder cannot go into itself
+fr un dossier ne peut pas aller dans lui-même
+
+en copied, but the original could not be removed
+fr copié, mais l'original n'a pas pu être supprimé
+
+en no terminal could be started
+fr aucun terminal n'a pu être lancé
+
+en The file was not made
+fr Le fichier n'a pas été créé
+
+en The folder was not made
+fr Le dossier n'a pas été créé
+
+en Not duplicated
+fr Pas dupliqué
+
+en Not moved to the trash
+fr Pas mis à la corbeille
+
+en Not put back
+fr Pas remis en place
+
+en Not copied
+fr Pas copié
+
+en Not moved
+fr Pas déplacé
+
+en No terminal
+fr Aucun terminal
+
+en %d+ found
+fr %d+ trouvés
+
+en %d found
+en+ %d found
+fr %d trouvé
+fr+ %d trouvés
+
+en Filter the files
+fr Filtrer les fichiers
+
 en Find
 fr Rechercher
 
@@ -2500,12 +2604,6 @@ fr Annuler
 
 en Redo
 fr Rétablir
-
-en Cut
-fr Couper
-
-en Paste
-fr Coller
 
 en Delete
 fr Supprimer

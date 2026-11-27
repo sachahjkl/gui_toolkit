@@ -24,6 +24,23 @@ fresh_dir :: proc(name: string) -> string {
 	return root
 }
 
+// Two paths of one entry are the same (a rename that only changes a name's case asks it); two entries, or one not
+// there, are not.
+@(test)
+same_entry_tells_one_entry_from_two :: proc(t: ^testing.T) {
+	root := fresh_dir(fmt.tprintf("gui_toolkit_fsx_same_%d", os.get_pid()))
+	defer fsx.remove_tree(root)
+	a := fmt.tprintf("%s/a.txt", root)
+	b := fmt.tprintf("%s/b.txt", root)
+	testing.expect(t, os.write_entire_file(a, transmute([]byte)string("a")) == nil)
+	testing.expect(t, os.write_entire_file(b, transmute([]byte)string("b")) == nil)
+	testing.expect(t, fsx.same_entry(a, a))
+	testing.expect(t, fsx.same_entry(a, fmt.tprintf("%s/./a.txt", root)))
+	testing.expect(t, !fsx.same_entry(a, b))
+	testing.expect(t, !fsx.same_entry(a, fmt.tprintf("%s/absent", root)))
+	testing.expect(t, fsx.same_volume(a, root))
+}
+
 @(test)
 remove_tree_removes_a_directory_with_everything_in_it :: proc(t: ^testing.T) {
 	root := fmt.tprintf("%s/gui_toolkit_fsx_remove_tree", fsx.temp_dir(context.temp_allocator))

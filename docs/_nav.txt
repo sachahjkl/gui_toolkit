@@ -64,6 +64,7 @@ Platform and system
   clipboard.md        Rich clipboard
   file-browser.md     The file browser
   path-bar.md         The path bar
+  tree.md             The tree view and the file tree
   font-picker.md      The font picker
   dialogs.md          The system's file dialogs
   printing.md         Printing a picture

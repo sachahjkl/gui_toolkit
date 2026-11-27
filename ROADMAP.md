@@ -12,6 +12,10 @@
   line (`gt:cli`), licence, install, diagnostics and update pages and its own updater, syntax colours, changelog and
   release tools. The smallest first; each session has the list with its files.
 
+- **The programs' trees on `ui.tree`.** plume's side tree becomes `ui.file_tree` (its hand-made rows and their
+  indent in steps of the spacing scale go); classeur's folders, galerie's albums, Wren's and Tower's outlines follow. A
+  person sees one explorer in every program. Intent: [src/md/features/tree-view.md](src/md/features/tree-view.md).
+
 ## Next
 
 - **The programs' own saves on `fsx.DOCUMENT`.** plume drops `write_keeping` and `keep_owner`, galerie `write_beside`,
@@ -20,6 +24,11 @@
 - **The programs' probes of their start on `base.start_steps`.** plume's probe of its start opens through `host_open` and
   reads the toolkit's steps, so it measures the start a person waits for, the device made early included. Intent:
   [src/md/infrastructure/fast-start.md](src/md/infrastructure/fast-start.md).
+- **Sticky parent rows in `ui.tree`.** While a tree scrolls, the rows of the branches the top row is in stay pinned
+  at its top, as a code editor's explorer does: a person in a long folder still sees where it is. Intent:
+  [src/md/features/tree-view.md](src/md/features/tree-view.md).
+- **The file tree's operations under way, shown.** A long copy or move of a file tree shows its progress in its row
+  and in the window's taskbar button, and can be stopped.
 - **A session test's leak count without the D-Bus connection.** `testkit/session` counts the process's D-Bus session
   connection (`dbus` `conn_linux.odin` hello, `call_linux.odin` `call_wait`) as 4 blocks not freed in the first session of
   a process. The bus connection is then opened and closed outside the test's count, or left out of it: a program's

@@ -410,6 +410,9 @@ Line_Edit_Options :: struct {
 	// The program builds its own menu on a right press (edit_menu); false: a right press opens edit_menu (Undo, Cut, Copy,
 	// Paste...).
 	own_menu:    bool,
+	// A short text inside the field's end, weak, before its cross or eye: what a search found ("12 found"). The text
+	// never runs under it.
+	suffix:      string,
 }
 
 // Single-line editor. Tags used: "input" (+ whatever the caller pushed, e.g. "bad" for an invalid value).
@@ -438,7 +441,10 @@ line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: 
 		before_hash := hash_bytes(f.buf[:])
 		c0, m0 := f.cursor, f.mark
 		pad := b.text_pad
-		end: f32 = revealable || clears ? math.round(b.font_size * REVEAL_EM) : 0
+		button: f32 = revealable || clears ? math.round(b.font_size * REVEAL_EM) : 0
+		// (the suffix's own width; with no button after it, the field's padding after it)
+		suffix_w: f32 = o.suffix != "" ? math.ceil(font.text_width(s.fonts, b.font, b.font_size, o.suffix)) : 0
+		end := button + suffix_w + (suffix_w > 0 && button == 0 ? pad : 0)
 
 		// a screen reader sets the text, types over the selection, or moves the caret
 		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
@@ -555,8 +561,19 @@ line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: 
 		} else {
 			a11y_default(b, {role = .Text_Input, placeholder = o.placeholder})
 		}
-		if revealable { reveal_button(b, o.reveal, end) }
-		if clears && clear_button(b, f, end) { res.changed = true }
+		if end > 0 {
+			b.layout_axis = .X
+			push_parent(b)
+			spacer(fill())
+			if suffix_w > 0 {
+				next({width = px(suffix_w), height = pct(1), text_pad = 0})
+				if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###suffix", text_shown(o.suffix))) }
+				if button == 0 { spacer(px(pad)) }
+			}
+			pop_parent()
+		}
+		if revealable { reveal_button(b, o.reveal, button) }
+		if clears && clear_button(b, f, button) { res.changed = true }
 		if !o.own_menu { edit_context_menu(b, f, shown_kind) }
 	}
 	return
@@ -667,10 +684,8 @@ edit_target_select_all :: proc(t: Edit_Target) {
 // The eye at the end of a secret field: the field's child, over its right end (the text stops before it).
 @(private)
 reveal_button :: proc(field: ^Box, reveal: ^bool, w: f32) {
-	field.layout_axis = .X
-	push_parent(field)
+	push_parent(field)   // (after line_edit's spacer)
 	defer pop_parent()
-	spacer(fill())
 	shown := reveal^
 	if !shown { push_tags("weak") }
 	next({width = px(w), height = pct(1), font = lucide_icons(), text_align = .Center, text_pad = 0})
@@ -685,10 +700,8 @@ reveal_button :: proc(field: ^Box, reveal: ^bool, w: f32) {
 // The cross at the end of a clearable field: its child, over its right end. True: it emptied the field.
 @(private)
 clear_button :: proc(field: ^Box, f: ^Line_Edit, w: f32) -> bool {
-	field.layout_axis = .X
-	push_parent(field)
+	push_parent(field)   // (after line_edit's spacer)
 	defer pop_parent()
-	spacer(fill())
 	next({width = px(w), height = pct(1), font = lucide_icons(), text_align = .Center, text_pad = 0})
 	push_tags("weak")
 	x := build_box({.Clickable, .Draw_Text, .No_Text_Trunc, .Draw_Hot_Effects}, fmt.tprintf("%s###clear", lucide.X))

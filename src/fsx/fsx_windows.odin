@@ -361,6 +361,20 @@ long_path :: proc(path: string) -> string {
 	return path
 }
 
+// The volume and the number of the entry `path` (a link itself, not followed): two paths with the same are one entry.
+// (Not core:os's lstat: its File_Info aliases the caller's path for a reparse point, see stat_follow.)
+entry_identity :: proc(path: string, loc := #caller_location) -> (volume, index: u64, ok: bool) {
+	base.blocking("fsx.entry_identity", loc)
+	if path == "" { return }
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	h := win.CreateFileW(wide(long_path(path)), win.FILE_READ_ATTRIBUTES, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_FLAG_BACKUP_SEMANTICS | win.FILE_FLAG_OPEN_REPARSE_POINT, nil)
+	if h == win.INVALID_HANDLE_VALUE { return }
+	defer win.CloseHandle(h)
+	info: win.BY_HANDLE_FILE_INFORMATION
+	if !win.GetFileInformationByHandle(h, &info) { return }
+	return u64(info.dwVolumeSerialNumber), u64(info.nFileIndexHigh) << 32 | u64(info.nFileIndexLow), true
+}
+
 path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {
 	base.blocking("fsx.path_kind", loc)
 	attrs := win.GetFileAttributesW(wide(path))

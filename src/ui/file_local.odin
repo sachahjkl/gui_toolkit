@@ -24,7 +24,7 @@ import "../platform"
 FILE_FIND_VISIT_MAX :: 200_000
 
 // The computer's own separator.
-@(private = "file")
+@(private)
 LOCAL_SEPARATOR :: filepath.SEPARATOR
 
 // The computer's files: all caps, its own separator.

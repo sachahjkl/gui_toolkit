@@ -250,6 +250,7 @@ rich_layout :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 
 	frags := make([dynamic]Rich_Frag, 0, len(runs) + 4, allocator)
 	ls := 0
 	bi := 0
+	one_line_cut := false
 	for {
 		if max_lines > 0 && len(lines) >= max_lines { l.truncated = ls < total; break }
 		for bi < len(breaks) && breaks[bi].at <= ls { bi += 1 }
@@ -257,7 +258,10 @@ rich_layout :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 
 		hard := total
 		for k := bi; k < len(breaks); k += 1 { if breaks[k].mandatory { hard = breaks[k].at; break } }
 		le := hard
-		if width > 0 && measure(c, runs, run_start, faces, sizes, ls, trim(full, ls, hard)) > width {
+		if width > 0 && max_lines == 1 && measure(c, runs, run_start, faces, sizes, ls, trim(full, ls, hard)) > width {
+			// (one line: cut between clusters by the ellipsis below, as a label's "…", never back at a word's start)
+			one_line_cut = true
+		} else if width > 0 && measure(c, runs, run_start, faces, sizes, ls, trim(full, ls, hard)) > width {
 			cut := -1
 			for k := bi; k < len(breaks) && breaks[k].at < hard; k += 1 {
 				if measure(c, runs, run_start, faces, sizes, ls, trim(full, ls, breaks[k].at)) > width { break }
@@ -322,6 +326,7 @@ rich_layout :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 
 			append(&lines, Rich_Line{height = math.ceil(m.line_height), baseline = math.round(m.line_gap * 0.5 + m.ascent)})
 		}
 	}
+	if one_line_cut { l.truncated = true }
 	// "…" on the last line when the text went on: pieces cut back until it fits
 	if l.truncated {
 		li := &lines[len(lines) - 1]

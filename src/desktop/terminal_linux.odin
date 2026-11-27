@@ -32,7 +32,7 @@ open_terminal_native :: proc(dir: string) -> bool {
 	if term == "" || !os.is_dir(dir) { return false }
 	// (started in the folder: a terminal opens its shell where it starts; $TERMINAL may hold arguments: "kitty -1")
 	args := make([dynamic]string, context.temp_allocator)
-	append(&args, "sh", "-c", `cd "$0" || exit 1; exec "$@"`, dir)
+	append(&args, "sh", "-c", `cd -- "$0" || exit 1; exec "$@"`, dir)
 	append(&args, ..strings.fields(term, context.temp_allocator))
 	return platform.launch_detached(args[:])
 }

@@ -180,6 +180,16 @@ rich_layout_limits_and_alignment :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(two.lines), 2)
 	testing.expect(t, two.truncated && two.lines[1].ellipsis_x > 0, "\"…\" on the last line")
 	testing.expectf(t, two.lines[1].width <= W + 0.01, "the line with its ellipsis fits (%v)", two.lines[1].width)
+	// one line (a matched name in a row): cut between clusters as a label is, never back at a break after "-"
+	name := []ui.Rich_Run{{text = "tree"}, {text = "-view.md"}}
+	whole := ui.rich_layout(name, ctx(f), 0)
+	defer ui.rich_layout_destroy(&whole)
+	one := ui.rich_layout(name, ctx(f), whole.size.x - 2, max_lines = 1)
+	defer ui.rich_layout_destroy(&one)
+	testing.expect_value(t, len(one.lines), 1)
+	testing.expect(t, one.truncated && one.lines[0].ellipsis_x > 0, "a name too wide by a little ends with an ellipsis")
+	testing.expectf(t, one.lines[0].end > len("tree-v"), "the line keeps what fits: %d bytes of %d", one.lines[0].end, len("tree-view.md"))
+	testing.expectf(t, one.lines[0].width <= whole.size.x - 2 + 0.01, "the line with its ellipsis fits (%v)", one.lines[0].width)
 	// a word wider than the line: cut between clusters, nothing lost
 	long := []ui.Rich_Run{{text = "Pneumonoultramicroscopicsilicovolcanoconiosis"}, {text = "AndMoreOfIt", style = {bold = true}}}
 	ll := ui.rich_layout(long, ctx(f), 120)

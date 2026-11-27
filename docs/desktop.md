@@ -450,7 +450,7 @@ The thumbnailers read are kept while no file or folder read has changed (a stat 
 | System | The terminal |
 |---|---|
 | Linux | `$TERMINAL` when it is set, else the first of `xdg-terminal-exec`, foot, kitty, alacritty, wezterm, ghostty, gnome-terminal, kgx, konsole, xfce4-terminal, tilix, terminator, lxterminal, mate-terminal, urxvt, st, xterm found on the `PATH`, started in the folder. |
-| Windows | Windows Terminal (`wt -d <dir>`), else the command prompt started in the folder. |
+| Windows | Windows Terminal (`wt -d .`, found on the `PATH`), else the command prompt of the system's folder, each started in the folder. The folder is never a word of the command line (Windows Terminal reads a `;` in it as another command), and a program is never looked for in the folder opened. |
 
 ## The scope of an install
 

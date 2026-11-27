@@ -108,6 +108,9 @@ ok := fsx.private_dir(dir)                        // the same, the directory its
 files := fsx.list_files(dir)                      // the plain files (no subdirectory, no link to one): name and size
 kind := fsx.path_kind(path)                       // .Absent / .File / .Directory / .Link (links never followed)
 target, size := fsx.stat_follow(path)             // .Absent / .File / .Directory and a file's size (links followed, no allocation)
+volume, index, ok := fsx.entry_identity(path)     // the volume and the number of an entry (a link itself)
+one := fsx.same_entry(a, b)                        // one entry by two paths (a case change on a disk that ignores case)
+same := fsx.same_volume(a, b)                      // a rename moves between them; else a move is a copy then a removal
 entries, err := fsx.read_folder(dir)               // every entry: name, size, modified, kind, hidden (os.Error on failure)
 fsx.folder_entries_delete(entries)                 // frees them (same allocator)
 ok := fsx.remove_tree(path)                        // a file, or a directory with everything in it, one entry at a time

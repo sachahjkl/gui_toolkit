@@ -124,6 +124,17 @@ task :: proc(s: ^State, work: tasks.Work, done: Post_Proc, data: rawptr, lost: t
 	if !tasks.add(chores(), task_run, t) { task_end(t, false) }
 }
 
+// From a thread of the program's own that holds a reference to `box` (a watching thread): `done(data, 0)` at the start of
+// its State's next build, on its interface's thread; `lost(data)` instead when that State is gone (nil: nothing). Any
+// thread.
+@(private)
+task_post :: proc(box: ^Task_Box, done: Post_Proc, data: rawptr, lost: tasks.Work = nil) {
+	sync.atomic_add(&box.refs, 1)
+	t := new(Task, runtime.heap_allocator())
+	t^ = {box, nil, done, lost, data}
+	task_run(t)
+}
+
 // `work(data)` on the chores, nothing posted back (the caller waits on its own condition, with a bound). False: the
 // chores refused it (a stop began meanwhile); `work` does not run.
 @(private)

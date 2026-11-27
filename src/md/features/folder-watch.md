@@ -58,6 +58,10 @@ files (themes.txt, the preferences) need the same thing. One watcher in `gt:fsx`
 
 - inotify gives one descriptor per inode: two paths to one folder share a watch. The last path set wins its reports.
 - An overflow of inotify's queue reports every folder: what was lost is read again.
+- A folder removed ends its watch (`IN_IGNORED`): its path is reported and forgotten, so a folder made again at that
+  path is watched again at the next `watch_set`. Kept, the dead watch made `watch_set` think it watched it already.
+- A report's paths are copies: a `watch_set` during the quiet time removes watches, and their paths, before the wait
+  ends.
 - Windows waits on 64 handles at most: the first 63 folders are watched (the 64th handle is the wake).
 - macOS has no watcher yet: `watch_open` fails, and the picker reads a folder again only on F5.
 - A file made before the waiting thread applied the folder is not told. The picker's follow is asked before the

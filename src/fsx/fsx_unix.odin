@@ -253,6 +253,16 @@ path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {
 	return posix.S_ISDIR(st.st_mode) ? .Directory : .File
 }
 
+// The volume and the number of the entry `path` (a link itself, not followed): two paths with the same are one entry.
+entry_identity :: proc(path: string, loc := #caller_location) -> (volume, index: u64, ok: bool) {
+	base.blocking("fsx.entry_identity", loc)
+	if path == "" { return }
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	st: posix.stat_t
+	if posix.lstat(cpath(path), &st) != .OK { return }
+	return u64(st.st_dev), u64(st.st_ino), true
+}
+
 // What `path` reaches, links followed: .Directory (size 0), .File (its size), or .Absent.
 stat_follow :: proc(path: string, loc := #caller_location) -> (kind: Path_Kind, size: i64) {
 	base.blocking("fsx.stat_follow", loc)

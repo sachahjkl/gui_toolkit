@@ -74,6 +74,12 @@ apply :: proc(w: ^Watch, wanted: []string) {
 	}
 }
 
+// A folder told, its path copied: the watch's own copy goes when its watch is removed, before the wait ends.
+@(private = "file")
+told :: proc(changed: ^map[string]bool, p: string) {
+	if p not_in changed^ { changed[strings.clone(p, context.temp_allocator)] = true }
+}
+
 // Reads the events waiting; the folders they are in go to `changed`.
 @(private = "file")
 drain :: proc(w: ^Watch, changed: ^map[string]bool) {
@@ -85,9 +91,15 @@ drain :: proc(w: ^Watch, changed: ^map[string]bool) {
 		for off := 0; off + size_of(linux.Inotify_Event) <= got; {
 			e := (^linux.Inotify_Event)(&buf[off])
 			if .Q_OVERFLOW in e.mask {
-				for _, p in n.paths { changed[p] = true }   // (events were lost: every folder is read again)
+				for _, p in n.paths { told(changed, p) }   // (events were lost: every folder is read again)
 			} else if p, ok := n.paths[e.wd]; ok {
-				changed[p] = true
+				told(changed, p)
+				// (the folder went, its watch with it: forgotten, so the next watch_set of its path, a folder made
+				// again there, watches it again instead of keeping a watch that is dead)
+				if .IGNORED in e.mask {
+					delete_key(&n.paths, e.wd)
+					delete(p, runtime.heap_allocator())
+				}
 			}
 			off += size_of(linux.Inotify_Event) + int(e.len)
 		}

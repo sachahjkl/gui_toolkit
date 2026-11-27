@@ -120,6 +120,16 @@ a_watched_folder_tells_its_changes :: proc(t: ^testing.T) {
 	other := []string{two}
 	fsx.watch_set(&s.w, other)
 	testing.expect(t, touch_until_told(s, two), "the folder set since is told")
+
+	// the folder removed (told), then made again at its path and set again: watched again, not kept as a dead watch
+	before = seen_count(s)
+	fsx.remove_tree(two)
+	start = time.tick_now()
+	for !seen_folder(s, before, two) && time.tick_since(start) < WATCH_BOUND { _ = sync.sema_wait_with_timeout(&s.sema, WATCH_RETRY) }
+	testing.expect(t, seen_folder(s, before, two), "the folder's removal is told")
+	fsx.make_dirs(two)
+	fsx.watch_set(&s.w, other)
+	testing.expect(t, touch_until_told(s, two), "the folder made again is watched again")
 }
 
 // A watch stopped before it was opened ends its first wait at once.

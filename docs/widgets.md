@@ -477,6 +477,8 @@ and what goes with it (getting-started.md).
 - **`reveal`** (`^bool`, with `.Secret`): an eye at its end shows the text and hides it again.
 - **`clearable`**: a cross at its end empties it while it holds text (not `.Read_Only`, nor beside the eye).
 - **`own_menu`**: the program builds its own menu on a right press; else the field opens `edit_menu`.
+- **`suffix`**: a short weak text inside the field's end, before its cross or eye (what a search found: "12 found"); the
+  text typed never runs under it.
 
 `Text_Edit_Options`: `placeholder`, `line_numbers`, `tab_indents` (Tab inserts spaces), `wrap`, `auto_height` with
 `min_lines` and `max_lines`, `highlight` (syntax colouring, text.md), `own_menu`, `enter_commits` (Enter is

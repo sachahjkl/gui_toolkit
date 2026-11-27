@@ -225,6 +225,21 @@ safe_file_name :: proc(name, fallback: string, allocator := context.temp_allocat
 	return strings.clone(out, allocator)
 }
 
+// Whether `a` and `b` are the same entry (a case change of a name on a disk that ignores case, a hard link). False
+// when either is not there.
+same_entry :: proc(a, b: string, loc := #caller_location) -> bool {
+	va, ia, oka := entry_identity(a, loc)
+	vb, ib, okb := entry_identity(b, loc)
+	return oka && okb && va == vb && ia == ib
+}
+
+// Whether `a` and `b` are on one volume: a rename moves between them, else a move is a copy then a removal.
+same_volume :: proc(a, b: string, loc := #caller_location) -> bool {
+	va, _, oka := entry_identity(a, loc)
+	vb, _, okb := entry_identity(b, loc)
+	return oka && okb && va == vb
+}
+
 // Removes a file, or a directory with everything in it, one entry at a time (what a program does when it cleans up
 // after itself, the test directories of the unit tests). os.remove_all asks the Windows shell (SHFileOperationW) to do
 // it for a directory that is not empty, and the shell does not survive being called from a process under

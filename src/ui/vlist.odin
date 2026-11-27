@@ -175,6 +175,12 @@ vlist_row_name :: proc(i: int, buf: []u8 = nil) -> string {
 
 @(deferred_out = vlist_end)
 vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil, selectable: []bool = nil, ids_version: u64 = 0) -> (rows: Vlist_Rows, ok: bool) {
+	return vlist_open(id, st, ids, labels, selectable, ids_version)
+}
+
+// vlist without its deferred end: a widget made on a vlist (ui.tree) calls vlist_end at the end of its own.
+@(private)
+vlist_open :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil, selectable: []bool = nil, ids_version: u64 = 0) -> (rows: Vlist_Rows, ok: bool) {
 	s := gs()
 	set_next_axis(.Y)
 	b := build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Focusable, .Clickable, .Text_Input}, id)
