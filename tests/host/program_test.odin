@@ -15,6 +15,7 @@ import "core:testing"
 import "core:time"
 import host "gt:host"
 import tk_log "gt:log"
+import "gt:render"
 import "gt:testkit"
 
 @(private = "file") PROGRAM_CHILD_ENV :: "GT_PROGRAM_TEST_CHILD"
@@ -38,6 +39,15 @@ program_child :: proc "contextless" () {
 	mode, is_child := os.lookup_env(PROGRAM_CHILD_ENV, context.temp_allocator)
 	if !is_child { return }
 	dir, _ := os.lookup_env(PROGRAM_DIR_ENV, context.temp_allocator)
+	if mode == "device" {
+		// (TOOLKIT_EARLY_DEVICE=1: asked in a test process too. Nothing before program_start asks)
+		before := render.device_preload_state()
+		p := host.program_start({name = PROGRAM_NAME, folder = PROGRAM_NAME, version = "1.2.3", dir = dir, quiet = true, no_session = true})
+		fmt.printf("%v %v", before, render.device_preload_state() != .Not_Started)
+		context.logger = {}
+		host.program_end(&p)
+		os.exit(0)
+	}
 	p := host.program_start({name = PROGRAM_NAME, folder = PROGRAM_NAME, version = "1.2.3", dir = dir, quiet = true})
 	context.logger = p.logger
 	if len(os.args) > 1 && os.args[1] == RESTARTED_ARG {
@@ -61,13 +71,17 @@ program_child :: proc "contextless" () {
 }
 
 @(private = "file")
-program_run :: proc(t: ^testing.T, mode, dir: string) -> string {
+program_run :: proc(t: ^testing.T, mode, dir: string, extra_env: []string = nil) -> string {
 	parent, _ := os.environ(context.temp_allocator)
 	env := make([dynamic]string, context.temp_allocator)
-	for e in parent {
-		if !strings.has_prefix(e, PROGRAM_CHILD_ENV + "=") && !strings.has_prefix(e, PROGRAM_DIR_ENV + "=") { append(&env, e) }
+	next: for e in parent {
+		if strings.has_prefix(e, PROGRAM_CHILD_ENV + "=") || strings.has_prefix(e, PROGRAM_DIR_ENV + "=") { continue }
+		// (one entry a name: the first one found is the one read)
+		for x in extra_env { if strings.has_prefix(e, x[:strings.index_byte(x, '=') + 1]) { continue next } }
+		append(&env, e)
 	}
 	append(&env, fmt.tprintf("%s=%s", PROGRAM_CHILD_ENV, mode), fmt.tprintf("%s=%s", PROGRAM_DIR_ENV, dir))
+	append(&env, ..extra_env)
 	_, stdout, _, err := os.process_exec({command = {os.args[0]}, env = env[:]}, context.temp_allocator)
 	testing.expectf(t, err == nil, "the child (%s) runs: %v", mode, err)
 	return string(stdout)
@@ -87,6 +101,15 @@ a_start_says_the_last_session_that_did_not_end_cleanly :: proc(t: ^testing.T) {
 	text, read := os.read_entire_file_from_path(log_file, context.temp_allocator)
 	testing.expect(t, read == nil, "the log is in its folder")
 	testing.expect(t, strings.contains(string(text), PROGRAM_LINE), "with the child's line")
+}
+
+// The graphics device is asked for by program_start, never before main: a process that opens no window (a command line's
+// answer, a plugin's child, a process tree's keeper, a headless run) never calls program_start and makes no device.
+@(test)
+the_device_is_asked_by_the_program_s_start_not_before :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "device")
+	testing.expect_value(t, program_run(t, "device", dir, {"TOOLKIT_EARLY_DEVICE=1"}), "Not_Started true")
+	testing.expect_value(t, program_run(t, "device", dir, {"TOOLKIT_EARLY_DEVICE=0"}), "Not_Started false")
 }
 
 // restart_after_exit: program_end starts the executable read at the start, with the last args asked, and only when

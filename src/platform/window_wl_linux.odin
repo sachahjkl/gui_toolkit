@@ -1693,13 +1693,15 @@ wl_show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bo
 	if st == nil || st.surface == nil || !st.acked || size.x <= 0 || size.y <= 0 { return false }
 	buffer := wl_shm_buffer(size, bgra, opaque)
 	if buffer == nil { return false }
-	wl_drop_pixels(w)
-	st.pixels = buffer
 	WL_SURFACE_DAMAGE :: 2
 	WL_DAMAGE_ALL :: max(i32)
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_ATTACH, nil, wl.proxy_get_version(st.surface), 0, buffer, i32(0), i32(0))
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_DAMAGE, nil, wl.proxy_get_version(st.surface), 0, i32(0), i32(0), WL_DAMAGE_ALL, WL_DAMAGE_ALL)
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
+	// (the last CPU picture's buffer goes once the new one is committed: destroyed while it was the surface's, the content
+	// would be undefined until then)
+	wl_drop_pixels(w)
+	st.pixels = buffer
 	// (a picture is on the surface: the window is mapped; an activation asked waits for that)
 	st.presented = true
 	st.drawn = w.size

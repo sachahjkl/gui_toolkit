@@ -17,12 +17,14 @@ package tk_host
 
 import "base:runtime"
 import "core:log"
+import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import base "../base"
 import crash "../crash"
 import tk_log "../log"
 import process "../process"
+import "../render"
 import setup "../setup"
 
 Program_Start_Options :: struct {
@@ -59,6 +61,8 @@ Program_Start :: struct {
 program_start :: proc(o: Program_Start_Options, allocator := context.allocator) -> (p: Program_Start) {
 	base.dll_search_restrict()   // (first: a library loaded by name after this never comes from the working folder or the PATH)
 	base.restrict_if_elevated()   // (a program with a window: elevated, it starts nothing that a user can change)
+	// (after the two above: the driver is a library loaded by name)
+	if early_device_wanted(os.get_env("TOOLKIT_EARLY_DEVICE", context.temp_allocator)) { render.preload_device() }
 	p.allocator = allocator
 	p.executable = strings.clone(process.executable_path(), allocator)
 	p.launch = o.launch
@@ -81,6 +85,20 @@ program_start :: proc(o: Program_Start_Options, allocator := context.allocator) 
 		log.warnf("the last session did not end cleanly: %s", path)
 	}
 	return
+}
+
+// The graphics device asked for by program_start (src/md/infrastructure/cpu-first-frames.md): its adapter answers while the
+// program reads its settings and opens its window, and the first frame on the CPU waits for that answer only. Here and not
+// before main: a process that opens no window never calls program_start (a command line's answer, a plugin's child, a
+// process tree's keeper, a headless run of pictures), and a device made for it would cost a driver, a hundred megabytes
+// and, for a headless window, the wait for a device of the other kind before its own. Off with
+// -define:TOOLKIT_EARLY_DEVICE=false or TOOLKIT_EARLY_DEVICE=0; in a test process only with TOOLKIT_EARLY_DEVICE=1.
+EARLY_DEVICE :: #config(TOOLKIT_EARLY_DEVICE, true)
+
+@(private = "file")
+early_device_wanted :: proc(env: string) -> bool {
+	if !EARLY_DEVICE || env == "0" { return false }
+	return !ODIN_TEST || env == "1"
 }
 
 // The clean end: the session's mark goes (the next start says no crash), then the program starts again when

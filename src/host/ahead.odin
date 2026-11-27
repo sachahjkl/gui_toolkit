@@ -20,7 +20,7 @@ ahead_due :: proc(a: ^Ahead, sh: ^Shared, wake: proc(user: rawptr) = nil, user: 
 	if sh.main == nil {
 		#partial switch render.device_preload_state() {
 		case .Not_Started: render.preload_device(done = wake, user = user); return false
-		// (asked at the process's start, early_device.odin: its end wakes the loop too)
+		// (asked by program_start already: its end wakes the loop too)
 		case .Creating:    render.preload_when_done(wake, user); return false
 		}
 	}

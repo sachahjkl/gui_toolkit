@@ -12,6 +12,7 @@ package gt_base
 //	          one) is kept. `gpu`: the machine's own driver, for a demo a person watches
 
 import "core:strings"
+import "../ascii"
 
 // The display a server of the test's or the tool's own serves: X11's DISPLAY value (":97"), or the path of the Wayland
 // socket (XDG_RUNTIME_DIR/WAYLAND_DISPLAY). Set by who starts the server (toolbox.sway_start, tk desktop_tests).
@@ -99,5 +100,5 @@ isolation_is_lavapipe :: proc(path: string) -> bool { return software_vulkan_is(
 isolation_is_mesa_egl :: proc(path: string) -> bool {
 	name := path
 	if i := strings.last_index_any(name, "/\\"); i >= 0 { name = name[i + 1:] }
-	return strings.contains(strings.to_lower(name, context.temp_allocator), "mesa") && strings.has_suffix(name, ".json")
+	return ascii.contains_fold(name, "mesa") && strings.has_suffix(name, ".json")
 }
