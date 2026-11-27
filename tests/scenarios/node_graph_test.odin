@@ -99,6 +99,21 @@ port_of :: proc(r: ^Run, i: int, side: flowgraph.Side, index: int) -> [2]f32 {
 	return ui.graph_to_screen(&r.view, ui.graph_port_pos(&r.view, &r.nodes[i], side, index))
 }
 
+// The graph's tooltips wait this long here, not the 500 ms of the default: the clock moves frame by frame, and a frame
+// takes half a second on a software GPU (WARP), so a rest of the default is 30 s of a test.
+@(private = "file") TIP_MS :: 100
+
+@(private = "file")
+short_tips :: proc(s: ^session.Session) {
+	f := ui.feel(s.state)
+	f.tooltip_delay_ms = TIP_MS
+	ui.set_feel(s.state, f)
+}
+
+// The pointer rests past the tooltip's delay: 9 frames.
+@(private = "file")
+rest :: proc(s: ^session.Session) { session.advance(s, TIP_MS + 3 * session.FRAME_MS) }
+
 @(private = "file")
 near :: proc(a, b: [2]f32, eps: f32 = 0.5) -> bool { return abs(a.x - b.x) <= eps && abs(a.y - b.y) <= eps }
 
@@ -357,19 +372,20 @@ a_long_title_wraps_to_two_lines_then_is_cut :: proc(t: ^testing.T) { unwatched.r
 	append(&r.nodes, ui.Graph_Node{id = 2, title = "Find the tests of the PNG decoder", pos = {280, 40}})
 	append(&r.nodes, ui.Graph_Node{id = 3, title = LONG, pos = {540, 40}})
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	short_tips(s)
 	height :: proc(r: ^Run, i: int) -> f32 { rect := ui.graph_node_rect(&r.view, &r.nodes[i]); return rect.max.y - rect.min.y }
 	line := r.view.em * 1.25
 	testing.expectf(t, abs(height(&r, 1) - height(&r, 0) - line) < 0.01, "two lines: one line taller (%v, %v)", height(&r, 0), height(&r, 1))
 	testing.expectf(t, abs(height(&r, 2) - height(&r, 1)) < 0.01, "never more than two lines (%v)", height(&r, 2))
 	// (a title that fits in two lines has no tooltip)
 	session.move(s, header_of(&r, 1))
-	session.advance(s, f64(ui.feel(s.state).tooltip_delay_ms) * 2)
+	rest(s)
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "tooltip") == nil, "no tooltip for a whole title")
 	session.move(s, header_of(&r, 2))
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "tooltip") == nil, "the tooltip waits for the pointer to rest")
-	session.advance(s, f64(ui.feel(s.state).tooltip_delay_ms) * 2)
+	rest(s)
 	session.frames(s, 2)
 	tip := session.find(s, "tooltip")
 	testing.expect(t, tip != nil, "a cut title shows whole in a tooltip")
@@ -467,8 +483,9 @@ a_cut_titles_tooltip_leaves_the_message_under_the_node :: proc(t: ^testing.T) { 
 	LONG :: "Read the image formats the loaders accept, and write down each one they refuse with its reason"
 	append(&r.nodes, ui.Graph_Node{id = 1, title = LONG, pos = {200, 40}, message = "Exit code 101", state = .Failed})
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	short_tips(s)
 	session.move(s, header_of(&r, 0))
-	session.advance(s, f64(ui.feel(s.state).tooltip_delay_ms) * 2)
+	rest(s)
 	session.frames(s, 2)
 	tip := session.find(s, "tooltip")
 	testing.expect(t, tip != nil, "a cut title shows whole in a tooltip")
@@ -504,6 +521,7 @@ ports_sit_on_the_edges_beside_the_body :: proc(t: ^testing.T) { unwatched.run(t,
 	append(&r.nodes, ui.Graph_Node{id = 2, title = "Mix", pos = {400, 40}})
 	r.o.body = tall_body
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	short_tips(s)
 	session.frames(s, 2)
 	with_ports, without := session.get(s, "body_one"), session.get(s, "body_two")
 	testing.expectf(t, abs(with_ports.rect.min.y - without.rect.min.y) < 0.5, "the body right under the header: %v, without ports %v", with_ports.rect.min.y, without.rect.min.y)
@@ -521,7 +539,7 @@ ports_sit_on_the_edges_beside_the_body :: proc(t: ^testing.T) { unwatched.run(t,
 	testing.expectf(t, abs(out.x - rect.max.x) < 0.01 && abs(out.y - (ys[1] + ys[2]) * 0.5) < 0.01, "the out port alone: the middle of the right edge: %v", out)
 	// (the body is in the way of a name: its tooltip)
 	session.move(s, port_of(&r, 0, .In, 2))
-	session.advance(s, f64(ui.feel(s.state).tooltip_delay_ms) * 2)
+	rest(s)
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "tooltip") != nil && session.find_text(s, "blue") != nil, "a hidden name in a tooltip")
 }) }
@@ -534,12 +552,13 @@ port_rows_keep_a_row_per_port_before_the_body :: proc(t: ^testing.T) { unwatched
 	defer run_destroy(&r)
 	append(&r.nodes, ui.Graph_Node{id = 1, title = "Mix", pos = {40, 40}, inputs = four_in, outputs = one_out})
 	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	short_tips(s)
 	session.frames(s, 2)
 	edge_rect := ui.graph_node_rect(&r.view, &r.nodes[0])
 	edge_in := ui.graph_port_pos(&r.view, &r.nodes[0], .In, 3)
 	// (a name drawn on the node has no tooltip)
 	session.move(s, port_of(&r, 0, .In, 3))
-	session.advance(s, f64(ui.feel(s.state).tooltip_delay_ms) * 2)
+	rest(s)
 	session.frames(s, 2)
 	testing.expect(t, session.find(s, "tooltip") == nil, "the name is on the node")
 	session.move(s, ui.graph_to_screen(&r.view, {700, 450}))
