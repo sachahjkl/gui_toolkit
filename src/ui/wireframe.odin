@@ -9,7 +9,7 @@ import "../draw"
 // innermost box under the pointer named. One sees how a page is built and where it leaves the scale.
 //
 //   ui.set_wireframe(s, true)              a program's own switch
-//   Ctrl+Alt+Shift+W                       in a build with the devtools (TOOLKIT_DEVTOOLS), any window
+//   Ctrl+Alt+Shift+W                       in a build with the debug window (DEBUG_WINDOW), any window
 //   Overlay.setShowDebugBorders            Chrome DevTools' Rendering panel, "Layer borders" (gt:devtools)
 
 set_wireframe :: proc(s: ^State, on: bool) {
@@ -18,9 +18,9 @@ set_wireframe :: proc(s: ^State, on: bool) {
 	s.anim_busy = true   // (a frame shows it, even a window at rest)
 }
 
-// The key, read at the start of a build in a build with the devtools: what is for a program's author, not its users.
+// The key, read at the start of a build in a build with the debug window (its View tab has the switch too).
 @(private)
-WIREFRAME_KEY :: #config(TOOLKIT_DEVTOOLS, ODIN_DEBUG || ODIN_TEST)
+WIREFRAME_KEY :: DEBUG_WINDOW
 
 @(private)
 wireframe_keys :: proc(s: ^State) {

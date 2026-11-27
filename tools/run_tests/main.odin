@@ -287,7 +287,9 @@ STEPS := []Step{
 	{name = "font_memory", oses = EVERYWHERE},
 	{name = "font_default", oses = EVERYWHERE},   // (built with no define: the backend each system gets by default)
 	{name = "lucide_subset", oses = EVERYWHERE, text = true},
+	// (a release's defaults: the debug window, no devtools' endpoint; then neither)
 	{name = "lean_build", oses = EVERYWHERE, defines = {"TOOLKIT_DEVTOOLS=false", "FONT_EMBED_FALLBACK=false"}, text = true},
+	{name = "lean_build_bare", path = "tests/lean_build", oses = EVERYWHERE, defines = {"TOOLKIT_DEVTOOLS=false", "TOOLKIT_DEBUG_WINDOW=false", "FONT_EMBED_FALLBACK=false"}, text = true},
 	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Native_Lib},
 	// what must keep compiling
 	{name = "uia_probe", path = "tools/uia_probe", kind = .Build},

@@ -170,8 +170,13 @@ For a test's pointer: `debug.curve_screen(s, path, {time, value})` is where that
 
 ## The window
 
-- **Ctrl+Alt+Shift+D** opens and closes it in a build with the devtools, as the wireframe's W and the exploded view's
-  E. `debug.open(s)`, `debug.close(s)`, `debug.shown(s)` and `debug.show_panel(s, name)` do the same from the program.
+- **Ctrl+Alt+Shift+D** opens and closes it in every build, a release too, as the wireframe's W and the exploded view's
+  E. Escape closes it while the focus is in it (the key puts it there). In its own window, the key closes it there.
+  `debug.open(s)`, `debug.close(s)`, `debug.shown(s)` and `debug.show_panel(s, name)` do the same from the program.
+- The key is read after the program's own keys: a shortcut of the program on the same chord keeps its press, and the
+  window does not open. Give the debug window the chord, or open it with `debug.open`.
+- Every window that `gt:host` opens has it. A window opened otherwise gets it with its first `debug.panel`, or
+  `debug.attach(s)`.
 - It is a view ([views.md](views.md)): it opens floating at the top right, docks at the right, goes to a window of its
   own, and the views remember where. Floating, its tabs are its title bar: drag its free part to move it.
 - Its tabs: **View** (the wireframe, the exploded view, the zoom, the density, the frame times, the boxes), then one tab
@@ -252,10 +257,11 @@ testing.expect_value(t, debug.set(&s, "Drone/speed", "2.5"), "")
 
 ## Cost
 
-- A release build (`TOOLKIT_DEVTOOLS` false): every call is empty or returns false (`debug.ENABLED`); the key is not read.
-  The curves' model (`curve_eval`, `playback_step`, `curve_text`...) stays: a release plays its curves.
-  A release that keeps its panels builds with `-define:TOOLKIT_DEVTOOLS=true`: the devtools come too, their server off
-  until `TOOLKIT_DEVTOOLS=<port>` asks it. The debug window's cost in a release is in the intent
-  ([debug-panel.md](../src/md/features/debug-panel.md), "Cost").
+- Every build has the window and its panels, a release too (`TOOLKIT_DEBUG_WINDOW`, default true): about 1.6 MB of
+  the executable. The devtools' endpoint is another define, `TOOLKIT_DEVTOOLS` ([devtools.md](devtools.md)): a release
+  has the window without the endpoint.
+- A build with `-define:TOOLKIT_DEBUG_WINDOW=false`: every call is empty or returns false (`debug.ENABLED`); no key is
+  read. The curves' model (`curve_eval`, `playback_step`, `curve_text`...) stays: it plays its curves.
+  The numbers and the decision are in the intent ([debug-panel.md](../src/md/features/debug-panel.md), "In every build").
 - The window closed: nothing runs.
 - The window open: the tab shown builds its rows, as any view.

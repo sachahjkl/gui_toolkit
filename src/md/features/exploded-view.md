@@ -87,7 +87,7 @@ frame's events before `process_events` sees them. What else comes (a resize, a c
 - The pointer on the planes counts as gone (`mouse_valid = false`): no box stays hot under it.
 
 The keys go to the view, not the panel: a focused slider takes no arrow, and the panel's Escape is the view's. The key is Ctrl+Alt+Shift+E in a build with
-the devtools (`TOOLKIT_DEVTOOLS`), as the wireframe's.
+the debug window (`TOOLKIT_DEBUG_WINDOW`, every build by default), as the wireframe's.
 
 ## Cost
 

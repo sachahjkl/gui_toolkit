@@ -43,6 +43,7 @@ whatsnew takes 20.4 s instead of 23.5 s, fidget 23.9 s instead of 26.9 s (one bu
 | Define | Default | What it leaves out | Who needs it |
 |---|---|---|---|
 | `TOOLKIT_DEVTOOLS` | `ODIN_DEBUG \|\| ODIN_TEST` | the CDP server of `devtools.start_from_env` ([devtools.md](devtools.md)) | a tool that drives a release build over CDP: `Feature.Devtools`; `tk build` gives it to the examples |
+| `TOOLKIT_DEBUG_WINDOW` | `true` | the debug window, its View tab, the curve editor and the program's panels (about 1.6 MB; [debug.md](debug.md)) | every program by default; `=false` leaves them out |
 | `LUCIDE_SUBSET` | `""`: the whole font | the Lucide icons the sources do not name ([lucide.md](lucide.md)) | every program: `Feature.Lucide_Subset` |
 | `FONT_EMBED_FALLBACK` | `true` | Roboto (159 KB) and Inconsolata (85 KB), `font.FALLBACK_UI_DATA` and `font.FALLBACK_MONO_DATA` | a program that loads its fonts itself: `Feature.No_Fallback_Fonts`. Not one that opens its windows with `host.host_open` on Linux, where Roboto is the interface font |
 | `FONT_BACKEND` | `dwrite` on Windows, `native` elsewhere | the native text library on Windows | ([font-backend.md](font-backend.md)) |

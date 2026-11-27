@@ -119,6 +119,39 @@ a_closed_window_runs_nothing :: proc(t: ^testing.T) {
 	testing.expect_value(t, soldier.builds, runs)
 }
 
+// A person who opens the debug window by chance closes it with Escape, as with the key: the key puts the focus in it.
+@(test)
+escape_closes_the_debug_window_the_key_opened :: proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, build = page})
+	_ = debug.attach(s.state)   // (as gt:host does for every window)
+	session.frames(s, 2)
+	session.key(s, .D, {.Ctrl, .Alt, .Shift})
+	testing.expect(t, debug.shown(s.state), "the key opens it")
+	session.frames(s, 3)
+	testing.expect(t, debug.shown(s.state), "it stays open")
+	session.key(s, .Escape)
+	session.frames(s, 3)
+	testing.expect(t, !debug.shown(s.state), "Escape closes it")
+}
+
+// A program whose own shortcut is the debug window's chord keeps it (four programs' "Compact rows" was
+// Ctrl+Alt+Shift+D): the key opens the debug window only when no reader of the build took the press.
+@(test)
+a_program_s_own_shortcut_on_the_debug_key_wins :: proc(t: ^testing.T) {
+	Mine :: struct { presses: int }
+	mine: Mine
+	s := session.start(t, {size = WINDOW, user = &mine, build = proc(s: ^session.Session) {
+		if ui.key_press(.D, {.Ctrl, .Alt, .Shift}) { (^Mine)(s.user).presses += 1 }
+		ui.label("The page###page")
+	}})
+	_ = debug.attach(s.state)
+	session.frames(s, 2)
+	session.key(s, .D, {.Ctrl, .Alt, .Shift})
+	session.frames(s, 2)
+	testing.expect_value(t, mine.presses, 1)
+	testing.expect(t, !debug.shown(s.state), "the program took the press: no debug window")
+}
+
 // A panel's test needs no window: a bare ui.State (no fonts, no theme, no session) runs the List and Apply passes,
 // as a release runner with no display nor offscreen renderer does (docs/debug.md, "A panel's test").
 @(test)

@@ -26,7 +26,9 @@ true: a `-debug` build and a test have it; a release build does not, unless it i
 `stop` do nothing: none of the server is linked (350 KB less, Linux, `-o:speed`; [builds.md](builds.md)). A tool that
 drives a release build over CDP builds it with the define: `tk build` does for the examples (`tk cdp`, `tk screenshots`),
 a program's tool with `toolbox.Feature.Devtools` in its `Project.features` ([toolbox.md](toolbox.md)). `start` and
-`start_local` are not gated: a program that calls them has the server. A program that goes on after the server ends says so with `stop(srv, &ui_state)`:
+`start_local` are not gated: a program that calls them has the server. The debug window ([debug.md](debug.md)) is not
+the endpoint's: it has its own define, `TOOLKIT_DEBUG_WINDOW`, true in every build, a release too. A release has the
+window and its key without the endpoint. A program that goes on after the server ends says so with `stop(srv, &ui_state)`:
 the clients' edits, highlight and accessibility tree end with it. What a client held down goes up when it goes, or at `stop`.
 
 ## Who can reach it

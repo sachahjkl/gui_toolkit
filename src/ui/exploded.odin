@@ -11,7 +11,7 @@ import "../platform"
 // page and its overlays reads at a glance.
 //
 //   ui.set_exploded(s, true)               a program's own switch
-//   Ctrl+Alt+Shift+E                       in a build with the devtools (TOOLKIT_DEVTOOLS), any window
+//   Ctrl+Alt+Shift+E                       in a build with the debug window (DEBUG_WINDOW), any window
 //   drag: turn; wheel: spread; Escape: off; its panel (a view, "exploded"): the mode, the angles, the spread, the zoom
 
 // How the boxes go to planes (Tab: the next one).
@@ -127,10 +127,10 @@ exploded_reset :: proc(v: ^Exploded_View) {
 @(private = "file") EXPLODED_TINT :: 0.10      // how much of its colour a plane's boxes wear (Depths)
 @(private = "file") EXPLODED_EDGE :: 0.9       // the outline's opacity
 
-// The key, read at the start of a build in a build with the devtools (as the wireframe's). While the view is on,
+// The key, read at the start of a build in a build with the debug window (as the wireframe's). While the view is on,
 // exploded_events takes the key itself.
 @(private)
-EXPLODED_KEY :: #config(TOOLKIT_DEVTOOLS, ODIN_DEBUG || ODIN_TEST)
+EXPLODED_KEY :: DEBUG_WINDOW
 
 @(private)
 exploded_keys :: proc(s: ^State) {

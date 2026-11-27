@@ -13,8 +13,8 @@
 //   debug.panel(&app.state, "Soldier", soldier_debug, &app.soldier)   // once, at start
 //
 // A panel's procedure runs when the panel is needed (its tab shown, a tool's list, set or press), on the interface
-// thread; it calls debug.* and the program's own code, nothing else of the interface. A release build
-// (TOOLKIT_DEVTOOLS false) compiles every call to nothing (ENABLED).
+// thread; it calls debug.* and the program's own code, nothing else of the interface. A build with
+// -define:TOOLKIT_DEBUG_WINDOW=false compiles every call to nothing (ENABLED).
 package debug
 
 import "base:runtime"
@@ -24,9 +24,10 @@ import "../ui"
 
 _ :: strings   // (a release build's calls are empty: the import is used by the others only)
 
-// Whether the surface is in this build: a -debug build and a test have it, a release build only with
-// -define:TOOLKIT_DEVTOOLS=true. Without it every call does nothing and returns false.
-ENABLED :: #config(TOOLKIT_DEVTOOLS, ODIN_DEBUG || ODIN_TEST)
+// Whether the surface is in this build: every build has it, a release too (ui.DEBUG_WINDOW), unless the program builds
+// with -define:TOOLKIT_DEBUG_WINDOW=false. Without it every call does nothing and returns false. The devtools' endpoint
+// (TOOLKIT_DEVTOOLS) is not needed: the window works without it.
+ENABLED :: ui.DEBUG_WINDOW
 
 // The debug window's view id (one instance per window), and a pinned panel's (its instance: the window's and the
 // panel's name).

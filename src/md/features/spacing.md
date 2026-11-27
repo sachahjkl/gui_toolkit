@@ -96,8 +96,8 @@ scale in red, and the innermost box under the pointer named with its size. A gap
 it on the spacer it makes (`Box.gap_step`); a spacer made by hand (`spacer(px(...))`) has none, and shows red: the
 places that still leave the scale are seen at a glance.
 
-It is the author's, not the users': Ctrl+Alt+Shift+W toggles it only in a build with the devtools
-(`TOOLKIT_DEVTOOLS`), and Chrome DevTools' Rendering panel turns it on with "Layer borders"
+It is the author's, not the users': Ctrl+Alt+Shift+W toggles it, in a build with the debug window
+(`TOOLKIT_DEBUG_WINDOW`, every build by default, debug-panel.md), and Chrome DevTools' Rendering panel turns it on with "Layer borders"
 (`Overlay.setShowDebugBorders`). A gap is drawn across its whole parent: it has no size across the parent's axis, and
 the room it makes is the parent's width (or height).
 

@@ -232,9 +232,9 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 	return true
 }
 
-// Every window gets the debug surface in a build that has it: its key, its View tab, the program's panels as tabs
-// (src/md/features/debug-panel.md, "Every window has it"). A program had to register a panel first, and most never
-// did: the key did nothing. A release build without the define compiles this to nothing.
+// Every window gets the debug surface in a build that has it (every build, unless TOOLKIT_DEBUG_WINDOW is false): its
+// key, its View tab, the program's panels as tabs (src/md/features/debug-panel.md, "Every window has it"). A program had
+// to register a panel first, and most never did: the key did nothing. With the define false this compiles to nothing.
 @(private = "file")
 debug_attach :: proc(h: ^Host) {
 	when debug.ENABLED { _ = debug.attach(&h.state) }

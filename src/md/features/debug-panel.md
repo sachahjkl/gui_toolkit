@@ -77,11 +77,16 @@ right. The views float it, dock it, send it to a window of its own, resize it an
   Docked, the stack's own strip names it and the tabs are the body's first row; in a window of its own the system's
   or the program's caption stays.
 - Its body scrolls inside the view.
-- The key is Ctrl+Alt+Shift+D, as the wireframe's W and the exploded view's E, in a build with the devtools.
+- The key is Ctrl+Alt+Shift+D, as the wireframe's W and the exploded view's E, in every build (`TOOLKIT_DEBUG_WINDOW`,
+  "In every build" below). It opens the window and closes it; Escape closes it too while the focus is in it, where the
+  key puts it. `ui` reads it at the end of the build, after every reader of keys: a program's own shortcut on the same
+  chord takes the press first and keeps it (plume's, galerie's, classeur's and feuille's "Compact rows" is
+  Ctrl+Alt+Shift+D; there the key is theirs until they move it). Read at the start, as before, it took their press in
+  every debug build.
 
 ### Every window has it
 
-Every window that `gt:host` opens has the surface from its open, in a build with the devtools: `host_open` (a
+Every window that `gt:host` opens has the surface from its open, in a build with the debug window: `host_open` (a
 program's windows, its dialogs that are windows, a view's own window) and `host_adopt` attach it. The key works in
 every program, with the View tab; each panel the program registers adds a tab. Each window has its own surface, its
 own window and its own key. A window opened without `gt:host` gets the surface when a panel is registered on its
@@ -103,8 +108,8 @@ Refused:
 - **An attach in each program's start**: one place to forget per program, and a dialog's window is missed.
 
 The cost: one `Surface` and its View panel per window (a few hundred bytes), made once at the open, freed with the
-State. Nothing per frame while the window is closed (`tests/debug`). A release build without the define compiles the
-attach to nothing (`tests/lean_build`).
+State. Nothing per frame while the window is closed (`tests/debug`). A build with `TOOLKIT_DEBUG_WINDOW=false` compiles
+the attach to nothing (`tests/lean_build`, step `lean_build_bare`).
 
 The surface is the debug package's, kept in the State's `debug_hook` (`ui.Debug_Hook`): `ui` reads the key, calls the hook, and
 destroys the surface with the State. `ui` cannot import `gt:debug` (that imports `ui`): the hook is the one link. The
@@ -222,30 +227,43 @@ snapshot.
 
 ## Cost
 
-- A release build (`TOOLKIT_DEVTOOLS` false): every `debug.*` call has an empty body or returns a constant false;
-  `debug.ENABLED` says it. The key is not read. `tests/lean_build` checks it. A release that keeps its panels builds
-  with `-define:TOOLKIT_DEVTOOLS=true`: the devtools come with them, their server still off until asked.
+- A release build has the window, the View tab, the curve editor and the program's panels, and no devtools' endpoint
+  (`tests/lean_build`). About 1.6 MB of the executable ("In every build" below).
+- A build with `-define:TOOLKIT_DEBUG_WINDOW=false`: every `debug.*` call has an empty body or returns a constant
+  false; `debug.ENABLED` (`ui.DEBUG_WINDOW`) says it. No key is read. `tests/lean_build`'s step `lean_build_bare`
+  checks it.
 - The window closed: no procedure runs and nothing is allocated; a build reads one key. `tests/debug` counts the
   allocations and bytes of 30 frames with a panel and without.
 - The window open: the tab shown builds its rows, as any view builds what it shows. A slice shows a bounded number of
   items.
 
-### In a release, by default? (proposed, not decided)
+### In every build
 
-The owner wants the debug window in the programs people use every day: a fault seen in a release is looked at where it
-is, not after a debug build. Measured on `examples/hello` (Linux, `-o:speed`, stripped; hello does not import the
-devtools, so the difference is the debug window, its View tab, the curve editor and the wireframe's and exploded view's
-keys): 34,492,224 bytes without, 36,121,224 with `-define:TOOLKIT_DEVTOOLS=true`: +1,629,000 bytes (+4.7 %). A program
-that imports `gt:devtools` adds its server too (about 350 KB, `src/devtools/devtools.odin`).
+Decided by the owner: the debug window ships in every build, a release included, behind its key. A fault seen in a
+release is looked at where it is, not after a debug build, and the View tab's exploded view is worth having there.
+Two defines:
 
-The default stays off in a release. The ways open:
+- `TOOLKIT_DEBUG_WINDOW` (`ui.DEBUG_WINDOW`, default true in every build): the window, its key, the View tab (the
+  wireframe, the exploded view, the frame times, and their keys W and E), the curve editor, the program's panels, and
+  `gt:host`'s attach. A program that does not want them builds with `-define:TOOLKIT_DEBUG_WINDOW=false`.
+- `TOOLKIT_DEVTOOLS` (default as before: a `-debug` build and a test, or a program's opt-in): the CDP endpoint and its
+  tools' commands. A release does not answer a variable of the person's environment.
 
-- **The define as it is, per program** (today): a program that wants the window in its release builds with
-  `TOOLKIT_DEVTOOLS=true`. It also compiles the devtools' endpoint in; the server stays off until
-  `TOOLKIT_DEVTOOLS=<port>` asks, but a release then answers a variable of the person's environment.
-- **A define of its own** (`TOOLKIT_DEBUG_WINDOW`, on by default in every build): the window and its key in every
-  release, the endpoint still the devtools' define. It costs the 1.6 MB above in every program, and a key that a
-  person can press by chance opens an instrument; it waits for the owner's choice of that cost.
+The cost, measured on `examples/hello` (Linux, `-o:speed`, stripped; hello does not import the devtools, so the
+difference is the debug window, its View tab, the curve editor and the wireframe's and exploded view's keys):
+34,492,224 bytes without, 36,121,224 with: +1,629,000 bytes (+4.7 %), in every program. A program that imports
+`gt:devtools` and opts in adds the server too (about 350 KB, `src/devtools/devtools.odin`). At run time, closed, it
+costs a surface per window and one key read per build.
+
+A person who presses the key by chance sees the window open, floating, with the focus in it: the key or Escape closes
+it. A program whose own shortcut is the chord keeps it (the key is read last).
+
+Refused:
+
+- **The window behind `TOOLKIT_DEVTOOLS`** (before): a release had neither, and a program that wanted the window in
+  its release took the endpoint with it.
+- **The debug key read first** (before): it took the press of a program's own shortcut on the same chord, four
+  programs' "Compact rows".
 
 ## Refused
 

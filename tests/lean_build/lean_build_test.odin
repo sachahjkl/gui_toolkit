@@ -1,5 +1,7 @@
-// A build with the toolkit's optional parts left out (run_tests passes the defines; docs/builds.md):
-//   odin test tests/lean_build -collection:gt=src -vet -define:TOOLKIT_DEVTOOLS=false -define:FONT_EMBED_FALLBACK=false
+// A build with the toolkit's optional parts left out (run_tests passes the defines; docs/builds.md). Two steps:
+//   lean_build       a release's defaults: no devtools' endpoint, the debug window kept
+//     odin test tests/lean_build -collection:gt=src -vet -define:TOOLKIT_DEVTOOLS=false -define:FONT_EMBED_FALLBACK=false
+//   lean_build_bare  the debug window left out too (-define:TOOLKIT_DEBUG_WINDOW=false): nothing of either
 package lean_build_test
 
 import "core:os"
@@ -22,11 +24,33 @@ no_devtools_without_the_define :: proc(t: ^testing.T) {
 	devtools.stop(srv)
 }
 
-// Without the endpoint, the debug panels are compiled out: a panel registers nothing (the State has no surface), its
-// calls return false, the tools' list is empty (src/md/features/debug-panel.md, "Cost").
+// A release keeps the debug window without the endpoint: a panel registers, the tools' list has it, the key opens the
+// window and closes it (src/md/features/debug-panel.md, "In every build").
+@(test)
+the_debug_window_without_the_devtools :: proc(t: ^testing.T) {
+	when ui.DEBUG_WINDOW {
+		testing.expect(t, debug.ENABLED, "the debug window is in a build without TOOLKIT_DEBUG_WINDOW=false")
+		Probe :: struct { speed: f32, runs: int }
+		probe: Probe
+		state: ui.State
+		ui.init(&state, nil, nil)
+		defer ui.destroy(&state)
+		debug.panel(&state, "Probe", proc(p: ^Probe) { p.runs += 1; debug.number("speed", &p.speed) }, &probe)
+		testing.expect(t, state.debug_hook.data != nil, "a panel attaches the surface")
+		sb := strings.builder_make(context.temp_allocator)
+		debug.list(&state, &sb)
+		testing.expect(t, strings.contains(strings.to_string(sb), `"path":"Probe/speed"`), strings.to_string(sb))
+		testing.expect_value(t, debug.set(&state, "Probe/speed", "2"), "")
+		testing.expect_value(t, probe.speed, 2)
+	}
+}
+
+// Built with -define:TOOLKIT_DEBUG_WINDOW=false, the debug panels are compiled out: a panel registers nothing (the
+// State has no surface), its calls return false, the tools' list is empty (src/md/features/debug-panel.md, "Cost").
 @(test)
 no_debug_panels_without_the_define :: proc(t: ^testing.T) {
-	testing.expect(t, !debug.ENABLED, "built with -define:TOOLKIT_DEVTOOLS=false")
+	when ui.DEBUG_WINDOW { return }
+	testing.expect(t, !debug.ENABLED, "built with -define:TOOLKIT_DEBUG_WINDOW=false")
 	Probe :: struct { speed: f32, runs: int }
 	probe: Probe
 	state: ui.State
@@ -43,8 +67,8 @@ no_debug_panels_without_the_define :: proc(t: ^testing.T) {
 	testing.expect_value(t, probe.runs, 0)
 }
 
-// Without the endpoint, the curve editor is compiled out, and a curve still plays: a release animates with it
-// (src/md/features/curve-editor.md).
+// Outside a panel (and compiled out without the debug window), the curve editor draws nothing, and a curve still
+// plays: a release animates with it (src/md/features/curve-editor.md).
 @(test)
 a_curve_plays_without_the_editor :: proc(t: ^testing.T) {
 	c: debug.Curve
