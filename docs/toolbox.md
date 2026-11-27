@@ -95,6 +95,12 @@ protocol ([cdp.md](cdp.md)), then ends it. `Program_Session` does the whole of i
   with `TOOLKIT_DEVTOOLS` on a free port and `o.env` over the desktop's environment. Its output goes to `o.log`
   (`""`: `<dir>/<program>.log`). It returns "" when the program runs, else why not. It does not connect: a program may
   show its window later.
+- The program draws with Vulkan on the CPU (Mesa's lavapipe), never the machine's GPU: `VK_DRIVER_FILES` names
+  lavapipe's manifest alone and the implicit layers are off (`VK_LOADER_LAYERS_DISABLE=~implicit~`). A
+  `VK_DRIVER_FILES` that already names lavapipe is kept (the CI's); else it is looked for in Vulkan's `icd.d` folders
+  (`XDG_DATA_DIRS`, `/run/opengl-driver/share`, `/etc`, `/usr/share`): `software_vulkan_driver()` gives its path, for a
+  tool that starts a program without the session. A machine without it does not start the
+  program. `o.gpu = true` keeps the environment's driver: a demo a person watches.
 - `program_session_connect(&s)` connects to the window, tried until it answers, at most `o.wait`
   (`PROGRAM_START_WAIT`, 60 s). It fails at once when the program ended, and when the program's log says that its
   DevTools server could not listen (another program took the port first). It returns the client, or why not. Connect

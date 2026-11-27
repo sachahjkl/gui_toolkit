@@ -35,6 +35,7 @@ Program_Options :: struct {
 	log:     string,           // its standard output and error ("": <dir>/<program>.log)
 	quit:    []string,         // a command run in the session that asks it to quit (nil: its window closed, Browser.close)
 	wait:    time.Duration,    // the bound on the window's first answer (0: PROGRAM_START_WAIT)
+	gpu:     bool,             // the machine's own graphics driver (a demo a person watches); false: Vulkan on the CPU (software_vulkan.odin)
 }
 
 Program_Session :: struct {
@@ -82,15 +83,34 @@ program_session_start :: proc(s: ^Program_Session, dir: string, o: Program_Optio
 		if err := os.make_directory_all(folder); err != nil && err != .Exist { return fmt.tprintf("%s cannot be made", folder) }
 		if os.write_entire_file(path, f.text) != nil { return fmt.tprintf("%s cannot be written", path) }
 	}
-	extra := make([dynamic]string, context.temp_allocator)
-	append(&extra, fmt.tprintf("TOOLKIT_DEVTOOLS=%d", port))
-	append(&extra, ..o.env)
-	s.env = clone_strings(env_merge(s.sway.env, nil, extra[:]))
+	// (a tool's program draws on lavapipe unless it asks for the GPU: the same picture on every machine, and a test never
+	// takes the person's graphics card. No lavapipe: no start, rather than the GPU)
+	icd: string
+	if !o.gpu {
+		found: bool
+		if icd, found = software_vulkan_driver(); !found { return "no software Vulkan driver (Mesa's lavapipe, lvp_icd.*.json) on this machine: install Mesa's Vulkan drivers, or set Program_Options.gpu" }
+	}
+	s.env = clone_strings(program_env(s.sway.env, port, o, icd))
 	s.command = clone_strings(o.command)
 	s.quit = clone_strings(o.quit)
 	name := filepath.stem(o.command[0])
 	s.log = strings.clone(o.log != "" ? o.log : fmt.tprintf("%s/%s.log", s.dir, name))
 	return program_launch(s)
+}
+
+// The program's whole environment (temp memory): the desktop's, its DevTools port, then `o.env`. Unless `o.gpu`, Vulkan's
+// drivers are lavapipe's manifest `icd` alone and its implicit layers are off (software_vulkan.odin).
+@(private)
+program_env :: proc(desktop: []string, port: int, o: Program_Options, icd: string) -> []string {
+	extra := make([dynamic]string, context.temp_allocator)
+	append(&extra, fmt.tprintf("TOOLKIT_DEVTOOLS=%d", port))
+	without: []string
+	if !o.gpu {
+		append(&extra, fmt.tprintf("%s=%s", SOFTWARE_VULKAN_DRIVER_ENV, icd), SOFTWARE_VULKAN_LAYERS_OFF)
+		without = {"VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES"}
+	}
+	append(&extra, ..o.env)
+	return env_merge(desktop, without, extra[:])
 }
 
 // A connection to the window, tried until it answers (at most the session's wait). why: "" when connected; else what

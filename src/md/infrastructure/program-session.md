@@ -34,6 +34,13 @@ connection (`cdp.connect_wait`) and the waits that let a tool drop its sleeps.
 - **`connect_wait` belongs to `gt:cdp`, the session to `gt:toolbox`.** opencode native starts its program without a
   desktop (Windows too): it needs the free port and the bounded connection, not sway. `connect_wait` takes the program's
   process, optional, so a program that ended at its start fails the wait at once and not at its bound.
+- **The program draws on lavapipe unless the tool asks for the GPU** (`Program_Options.gpu`, `software_vulkan.odin`).
+  The sway session renders with pixman, but its program chose its own Vulkan driver: on the owner's machine, the
+  NVIDIA card, which a test must never take, and whose pictures differ from the CI's. `VK_DRIVER_FILES` names lavapipe's
+  manifest alone, and the implicit layers are off: NVIDIA's (`VK_LAYER_NV_optimus`) loads its driver into every Vulkan
+  program. With no lavapipe on the machine the start fails and says so. Refused: falling back to the machine's driver
+  (a test would then take the GPU without a word); `forceFallbackAdapter` in the renderer (a program's choice, not its
+  tool's, and wgpu still loads every driver to enumerate them).
 - **Linux only through sway.** The session's file has no system suffix: `sway_start` already says why it does not run
   elsewhere, and the session returns that.
 
