@@ -1234,6 +1234,11 @@ is the terminal whose view has the focus.
   bottom out of the window. The root of that
   cut was also `form_row`'s label, 34 % of the row with no least: its words on one line are now its least, so the
   measure sees them and the widget gives way.
+  **A part that should grow with a resizable dialog** (a preview, a list): `dialog_body(id, stretch = true)` takes the
+  height the buttons leave, and the part is `fill_least(least)`. The measure of a dialog of no height counts a fill's
+  `least`: it has nothing in it to measure, and counted as 0 the dialog opened without it, the part cut under the
+  buttons. Refused: a fixed `height_em` for such a dialog: its parts change with what it shows (a signature typed or
+  drawn), and one height is wrong for one of them.
 - Several internal windows float at once. A press on one brings it to the front, before its boxes are built (in front
   this frame). The order is a stamp per view (`View_Record.z`), the topmost last.
 - Focus: when it shows, the focus goes to its first stop; what had the focus is kept, and gets it back when it closes,

@@ -533,7 +533,9 @@ home; Minimise is absent at the centre and while the stack is maximised. Its wor
 left empty is the toolkit's, in the language in use.
 
 `dialog_body("id")` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
-(`DIALOG_GAP_EM`). `dialog_buttons("id")` is its row of buttons at its right end, the main act last; buttons that do
+(`DIALOG_GAP_EM`). `dialog_body("id", stretch = true)` also takes the height its buttons leave: in a resizable dialog,
+a part built with `fill_least(least)` (a preview, a list) grows with the dialog, and the dialog opens as tall as the
+least heights of its parts. `dialog_buttons("id")` is its row of buttons at its right end, the main act last; buttons that do
 not fit go on more lines. `choice_row` is a row of a list to choose from (the accounts of a key, the passkeys of a
 site). `ranges` lights what a search found in the title (`fuzzy_score`'s ranges); `beside` puts the detail at the right
 of the title, on its line, weak: one line a row, for a list under a field (the path bar's).

@@ -112,14 +112,17 @@ CHOICE_ROW_TWO_EM :: f32(2.9)
 CHOICE_ROW_ONE_EM :: f32(2.2)
 
 // `if dialog_body("id") { ... }`: a dialog's body, between its header and its buttons: a column with the dialog's
-// margins on each side (DIALOG_MARGIN_EM) and above and below. What is in it fills its width.
+// margins on each side (DIALOG_MARGIN_EM) and above and below. What is in it fills its width. `stretch`: it also takes
+// the dialog's height that its buttons leave, so a part of it built with fill_least (a preview, a list) grows when the
+// person makes a resizable dialog taller; the dialog opens as tall as its parts' least heights.
 @(require_results, deferred_none = dialog_body_end)
-dialog_body :: proc(id: string) -> bool {
+dialog_body :: proc(id: string, stretch := false) -> bool {
 	em := font_size()
-	next({width = fill(), height = children_sum(), axis = .X})
+	tall := stretch ? fill() : children_sum()
+	next({width = fill(), height = tall, axis = .X})
 	push_parent(build_box({}, strings.concatenate({"###", id}, frame_allocator())))
 	spacer(px(em * DIALOG_MARGIN_EM))
-	next({width = fill(), height = children_sum(), axis = .Y})
+	next({width = fill(), height = tall, axis = .Y})
 	push_parent(build_box({}, "###col"))
 	spacer(px(em * DIALOG_GAP_EM))
 	return true

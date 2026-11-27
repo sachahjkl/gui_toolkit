@@ -466,7 +466,8 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 modal_key :: proc(s: ^State, id: string) -> Key { return key_from_string(s.root.key, fmt.tprintf("###modal_%s", id)) }
 
 // The height of what is in a dialog (as the last build laid it out), its border counted: what fills it (`fill()`) counts as
-// what it holds, a region that scrolls as all of its content. A resizable dialog of `height_em` 0 is that tall.
+// what it holds, a region that scrolls as all of its content, and no less than its least (`fill_least`). A resizable
+// dialog of `height_em` 0 is that tall.
 @(private)
 modal_content_height :: proc(panel: ^Box) -> f32 {
 	natural :: proc(b: ^Box) -> f32 {
@@ -478,7 +479,8 @@ modal_content_height :: proc(panel: ^Box) -> f32 {
 			h := natural(c)
 			if b.layout_axis == .Y { v += h } else { v = max(v, h) }
 		}
-		return v + 2 * border_inset(b)
+		// (a preview that fills has nothing in it to measure: its least is what it asks)
+		return max(v + 2 * border_inset(b), b.pref[.Y].least)
 	}
 	v: f32
 	for c := panel.first; c != nil; c = c.next {
