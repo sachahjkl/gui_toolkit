@@ -17,7 +17,7 @@ import "core:sys/linux"
 @(private = "file") STAT_BYTES :: 1024
 @(private = "file") TASK_LIST_BYTES :: 16 * 1024
 
-@(private = "file")
+@(private)
 linux_signal :: proc(sig: Signal) -> linux.Signal {
 	switch sig {
 	case .Terminate: return .SIGTERM

@@ -21,6 +21,10 @@
   `setup.adopt_earlier` at its start; its release publishes the earlier feed (`toolbox.update_earlier`), with versions
   above opencode native's. A person's install, settings and updates carry over. Intent:
   [src/md/features/identity-change.md](src/md/features/identity-change.md).
+- **A local terminal.** A program runs a command in a pseudo-terminal (Linux `openpty` and `forkpty`, Windows ConPTY)
+  and shows it in `gt:term`'s grid, with the keys and the size of the view sent to it: an agent that logs in through
+  a terminal (`gemini`, `claude`, `codex` before their ACP mode works) is logged in inside Tower. The child runs as a
+  `process.tree_start` tree, so it ends with the program.
 - **The update of an install for everyone.** The updater downloads and checks as now; "Restart to update" then starts
   the installed program elevated (`--system update <file>`), which checks the signature again with its own key and
   places the file, in one prompt per update. Until then such an install says that an administrator updates it. Intent:

@@ -29,9 +29,18 @@ reads the output.
 inheritable for the spawn only, then puts each back as it was. A pipe end is thus inheritable only while its own child
 starts. The plugins' `pipe_not_inherited` and the lock they held around their pipes are this, in one place.
 
-An end that the caller opened inheritable on purpose (toolbox's log file, `.Inheritable`) stays inheritable.
+An end that the caller opened inheritable on purpose (toolbox's log file, `.Inheritable`) stays inheritable, but
+reaches only the child it is given to: `CreateProcessW` gets a list of the three handles to inherit
+(`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, [process-trees.md](process-trees.md)), and no other handle passes.
 
 On Linux `os.pipe` sets close-on-exec, and the child gets only what is put in its places 0, 1 and 2.
+
+## The spawn itself
+
+`start` does not call `os.process_start` on Linux and Windows. It finds a bare name in `PATH` itself (never in the
+current folder), and spawns with its own fork and exec (Linux) or its own `CreateProcessW` (Windows: the application
+name given, no console window, a `.bat` or `.cmd` script quoted for cmd.exe). Why, and the rules:
+[process-trees.md](process-trees.md).
 
 ## `run`
 

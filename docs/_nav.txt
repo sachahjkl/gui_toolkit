@@ -90,6 +90,7 @@ Platform and system
   secrets.md          secrets: secrets sealed for the user
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
+  rpc.md              rpc: a JSON-RPC peer over a child's pipes
   crash.md            crash: crash reports
   crash_bar.md        crash_bar: the last crash, said at the start
   log.md              log: a program's log

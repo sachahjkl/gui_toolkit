@@ -138,3 +138,71 @@ a_command_that_does_not_start_says_why :: proc(t: ^testing.T) {
 	none := process.run({}, {}, context.temp_allocator)
 	testing.expect(t, !none.ok && none.code == -1 && none.stderr != "")
 }
+
+// A start keeps none of its temp memory: a worker that starts children for hours frees its temp memory never (the
+// environment's copy alone is kilobytes per start).
+@(test)
+a_start_keeps_no_temp_memory :: proc(t: ^testing.T) {
+	free_all(context.temp_allocator)
+	exe := process.executable_path()
+	before := runtime.global_default_temp_allocator_data.arena.total_used
+	children: [20]os.Process
+	started := 0
+	for &child in children {
+		err: os.Error
+		child, err = process.start({command = {exe}, env = {CHILD_ENV + "=echo"}})
+		// (no message built here: it would be temp memory of the count)
+		if !testing.expect(t, err == nil, "a child starts") { break }
+		started += 1
+	}
+	testing.expect_value(t, runtime.global_default_temp_allocator_data.arena.total_used, before)
+	// (after the count: os.process_wait with a limit keeps a few bytes of its own)
+	for child in children[:started] { _, _ = os.process_wait(child, WAIT_BOUND) }
+}
+
+// A handle that the program made inheritable reaches no child: its pipe's read end sees the end as soon as this
+// process closes the write end, while a child (a plain one, then a tree's) still runs. A child that held it would keep
+// the read waiting until its own end. (Windows: the handle list of CreateProcessW; Linux: close-on-exec on every
+// other descriptor.)
+@(test)
+a_child_holds_no_handle_it_was_not_given :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, BOUND)
+	for tree in ([]bool{false, true}) {
+		dir, derr := os.make_directory_temp("", "gt-inherit-*", context.temp_allocator)
+		if !testing.expect(t, derr == nil, "a folder") { return }
+		defer os.remove_all(dir)
+		flag := fmt.tprintf("%s/end", dir)
+		r, w, perr := os.pipe()
+		if !testing.expect(t, perr == nil, "a pipe") { return }
+		if !make_inheritable(w) {
+			os.close(r); os.close(w)
+			return
+		}
+		desc := os.Process_Desc{command = {process.executable_path()}, env = child_env(fmt.tprintf("wait:%s", flag))}
+		child: os.Process
+		t_: process.Tree
+		err: os.Error
+		if tree { t_, err = process.tree_start(desc); child = t_.process } else { child, err = process.start(desc) }
+		os.close(w)
+		if !testing.expect(t, err == nil, fmt.tprint(err)) { os.close(r); return }
+		buf: [16]u8
+		n, _ := os.read(r, buf[:])
+		os.close(r)
+		testing.expect_value(t, n, 0)
+		// (the end came while the child runs: no child held the write end)
+		if tree {
+			_, ended := process.tree_wait(&t_, 0)
+			testing.expect(t, !ended, "the tree's child still runs at the end of the pipe")
+		} else {
+			_, werr := os.process_wait(child, 0)
+			testing.expect(t, werr == os.General_Error.Timeout, "the child still runs at the end of the pipe")
+		}
+		_ = os.write_entire_file(flag, []u8{})
+		if tree {
+			_, _ = process.tree_wait(&t_, WAIT_BOUND)
+			process.tree_close(&t_)
+		} else {
+			_, _ = os.process_wait(child, WAIT_BOUND)
+		}
+	}
+}

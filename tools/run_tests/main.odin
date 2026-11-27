@@ -86,6 +86,7 @@ STEPS := []Step{
 	// (one at a time: several of its tests start children, and os.process_start is not safe from two threads at once,
 	// as the plugins' starts know; each_signal_is_its_own twice stopped on an illegal instruction beside another start)
 	{name = "process", path = "src/process", oses = EVERYWHERE, one = true},
+	{name = "rpc_pkg", path = "src/rpc", oses = EVERYWHERE},   // (framing, messages, the tail: pure)
 	{name = "http", path = "src/http", oses = EVERYWHERE},
 	{name = "secrets", path = "src/secrets", oses = EVERYWHERE},   // (Linux: the round trip only where a Secret Service answers)
 	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
@@ -146,6 +147,9 @@ STEPS := []Step{
 	// (gt:process's children: this test program started again; one at a time: a test counts the process's open handles,
 	// and the pipes of another test would be among them)
 	{name = "process_start", oses = EVERYWHERE, one = true},
+	// (gt:process's trees and gt:rpc's peer: the test program started again as the tree's child, the peer's child)
+	{name = "process_tree", oses = EVERYWHERE},
+	{name = "rpc", oses = EVERYWHERE},
 	{name = "hotkey", oses = EVERYWHERE},
 	{name = "overlay", oses = EVERYWHERE},   // (the pure parts: no window opens)
 	{name = "notify", one = true, oses = EVERYWHERE},   // (Linux: a bus and a notification server of its own)

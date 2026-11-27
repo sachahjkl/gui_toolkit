@@ -7,6 +7,7 @@ package tk_process
 // only around the spawn: a child that runs for minutes never holds up another start. The intent:
 // src/md/features/child-processes.md.
 
+import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:os"
@@ -14,7 +15,7 @@ import "core:sync"
 import "core:thread"
 import base "../base"
 
-@(private = "file") start_lock: sync.Mutex
+@(private) start_lock: sync.Mutex
 
 // What run gives a child besides its command.
 Run_Options :: struct {
@@ -33,21 +34,29 @@ Ran :: struct {
 }
 
 // Starts a child, the lock held around the spawn only. The ends of desc.stdin, stdout and stderr are inherited by this
-// child alone (Windows: they are inheritable during the spawn, then as they were). A blocking call: never on the
-// interface's thread.
+// child alone (Windows: they are inheritable during the spawn, then as they were). A bare name is found in the absolute
+// folders of PATH (Windows: with PATHEXT), never in the current folder; Windows runs a .bat or .cmd script through
+// cmd.exe with quoting it cannot misread, and gives the child no console window (process-trees.md). A blocking call:
+// never on the interface's thread.
 // A process with more rights than its user's files (base.restricted: elevated, or a machine copy) starts only a program
 // by its full path in a folder that only an administrator writes: else io.Error.Permission_Denied, and nothing runs.
 start :: proc(desc: os.Process_Desc, loc := #caller_location) -> (p: os.Process, err: os.Error) {
 	base.blocking("process.start", loc)
-	if len(desc.command) > 0 && !base.may_start(desc.command[0]) {
+	// (the spawn's copies of the command and of the environment: freed here, as os.process_start did. A worker that
+	// starts children for hours never frees its temp memory itself)
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	if len(desc.command) == 0 { return {}, os.General_Error.Invalid_Command }
+	if !base.may_start(desc.command[0]) {
 		fmt.eprintfln("process.start: %s refused: %s", desc.command[0], base.restricted_reason())
 		return {}, io.Error.Permission_Denied
 	}
+	resolved, found := resolve(desc.command[0], desc.env)
+	if !found { return {}, os.General_Error.Not_Exist }
 	ends := [3]^os.File{desc.stdin, desc.stdout, desc.stderr}
 	sync.lock(&start_lock)
 	defer sync.unlock(&start_lock)
 	before := ends_inherit(ends)
-	p, err = os.process_start(desc)
+	p, err = spawn(desc, resolved)
 	ends_restore(ends, before)
 	return
 }

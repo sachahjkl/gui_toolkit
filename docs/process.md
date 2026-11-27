@@ -34,7 +34,8 @@ every child; do not call `os.process_start`, `os.process_exec` or `os.pipe` for 
 
 | Procedure | |
 |---|---|
-| `start(desc) -> (os.Process, os.Error)` | starts a child. On Windows the ends in `desc.stdin`, `stdout` and `stderr` are inheritable during the spawn only, then as they were. In a restricted process (`base.restricted`: elevated) only a full path in an administrator's folder starts; else `io.Error.Permission_Denied` and nothing runs |
+| `start(desc) -> (os.Process, os.Error)` | starts a child. A bare name is found in the absolute folders of `PATH`, never in the current folder (`Not_Exist` otherwise). On Windows the ends in `desc.stdin`, `stdout` and `stderr` are inheritable during the spawn only, then as they were; the child has no console window and inherits no other handle of the program; a `.bat` or `.cmd` script runs through cmd.exe with quoting it cannot misread (an argument it cannot carry: `Invalid_Command`). In a restricted process (`base.restricted`: elevated) only a full path in an administrator's folder starts; else `io.Error.Permission_Denied` and nothing runs |
+| `tree_start(desc) -> (Tree, os.Error)` | starts a child as a process tree (below) |
 | `run(command, Run_Options{dir, env, input}, allocator) -> Ran` | starts it and waits for its end. Its standard output and error are read at once (neither blocks the other) and `input` is written on a thread of its own, then closed ("": the null device). `env` is its whole environment (nil: this process's) |
 | `ran_destroy(&r, allocator)` | frees `r.stdout` and `r.stderr` |
 | `pipe() -> (r, w: ^os.File, os.Error)` | a pipe whose ends no child inherits until `start` gives one to a child |
@@ -48,6 +49,75 @@ every child; do not call `os.process_start`, `os.process_exec` or `os.pipe` for 
 
 A child that ends before it read its input makes the write fail; `SIGPIPE` is ignored for that, unless the program set
 a handler of its own. For a time limit, use `start` and `os.process_wait(p, limit)`, then `os.process_kill`.
+
+### The command's file
+
+`start`, `run` and `tree_start` find a bare name before the spawn, in each absolute folder of `PATH` (the child's
+`PATH` when `desc.env` is given, else this process's). An empty or relative entry (`.`) is skipped: it names the
+current folder, where a planted `git` would run. On Windows each extension of `PATHEXT` is tried (`.COM;.EXE;.BAT;.CMD`
+when unset): `gemini` finds npm's `gemini.cmd`. A name with a folder in it is the caller's own path. argv[0] stays as the
+caller wrote it. The same rule as a pure procedure, for a program that shows what will run:
+
+```odin
+path, ok := process.resolve_command("gemini", path_env, pathext, windows = true, exists = my_exists, user = nil)
+```
+
+### Windows: command lines, scripts and BatBadBut
+
+A script (`.bat`, `.cmd`) runs through `<system folder>\cmd.exe /e:ON /v:OFF /d /c ""<script>" <args>"`, with the
+quoting of Rust's standard library since its fix of CVE-2024-24576: an argument with a character cmd.exe reads is
+quoted, `"` is doubled, `%` becomes `%%cd:~,%` (no variable expands). An argument with a line break, a script path with
+`"`, `^` or `%`, and a NUL anywhere are refused. A program gets the C runtime's quoting. Both lines are pure and
+tested on every system:
+
+```odin
+cl, err := process.windows_command_line(`C:\npm\gemini.cmd`, {"gemini", "--acp"}, `C:\Windows\System32`)
+// cl.application: C:\Windows\System32\cmd.exe
+// cl.line:        cmd.exe /e:ON /v:OFF /d /c ""C:\npm\gemini.cmd" --acp"
+// err:            .None, .Nul, .Program_Quote, .Script_Name, .Line_Break
+process.is_script(`C:\npm\gemini.cmd`)   // true; trailing dots and spaces dropped, as Windows does
+```
+
+## Process trees
+
+A child that starts children (an agent: node, its shells and tools) runs as a tree, which ends whole: at `tree_kill` or
+`tree_close`, when its child ends (what the child left running is killed), and when this program ends however it ends
+(a crash and a `SIGKILL` included). The design is in
+[src/md/features/process-trees.md](../src/md/features/process-trees.md).
+
+```odin
+in_r, in_w, _ := process.pipe()
+out_r, out_w, _ := process.pipe()
+tree, err := process.tree_start({command = {"gemini", "--acp"}, stdin = in_r, stdout = out_w})   // on a worker
+os.close(in_r); os.close(out_w)
+...
+process.tree_signal(&tree, .Terminate)        // to every process of the tree
+end, ended := process.tree_wait(&tree, 2 * time.Second)   // 0: only asks; negative: no limit
+if !ended { process.tree_kill(&tree) }
+process.tree_close(&tree)                     // kills what is left, waits TREE_CLOSE_BOUND at most, releases
+```
+
+| `Tree` | |
+|---|---|
+| `pid` | the child's own pid |
+| `process` | what ends with the child: Linux its keeper (below), Windows the child; its `handle` (a pidfd, a process handle) can be waited on with others |
+| `ended`, `end` | once `tree_wait` saw the end: `end.code` (the exit code, or the signal when `end.signaled`) |
+
+- **Linux.** `tree_start` starts the program's own executable again as the tree's *keeper* (`--gt-process-keeper`,
+  run by `gt:process`'s `@(init)` before `main`: nothing to ship). The keeper forks the child into a session (and a
+  process group) of its own with `PR_SET_PDEATHSIG(SIGKILL)`, so no terminal of the program's stops it, then waits
+  on the child and on a pipe whose other end only the program holds. The pipe closes when the program ends, however it ends: the keeper kills the group and ends. When the child
+  ends, the keeper kills what it left in the group and ends with the child's status. A tree started from a thread
+  outlives the thread (`PR_SET_PDEATHSIG` alone follows the forking thread). Not reached: a grandchild that left the
+  group by its own `setsid` (a daemon).
+- **Windows.** The child is created suspended, put in a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and no
+  breakaway, then resumed: every process it starts is in the job, and the job ends when the program does. `Terminate`
+  and `Kill` both end the job (Windows has no gentle signal for a process without a console); the other signals are
+  not sent (`tree_signal` returns false). `tree_wait` that sees the child's end ends the rest of the job.
+- **Elsewhere** the tree is the child alone.
+
+`tree_start` is a blocking call (`base.blocking`): run it on a worker. `gt:rpc` runs its child as a tree
+([rpc.md](rpc.md)).
 
 ## Other processes
 
