@@ -1,7 +1,7 @@
 # prefs_page: a settings page from the preferences
 
 `import prefs_page "gt:prefs_page"` (the package is named `tk_prefs_page`). It builds a program's settings from its
-preference registry ([config.md](config.md)), with no code per preference, in the look of opencode native's settings.
+preference registry ([config.md](config.md)), with no code per preference, in the look of Tower's settings.
 
 ```odin
 page: prefs_page.Page                         // kept between frames; prefs_page.destroy(&page) at the end

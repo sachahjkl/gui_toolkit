@@ -4,7 +4,7 @@ This folder follows <https://srcmd.org>: the reasons behind the toolkit's module
 points. The documentation for the programs that use the toolkit is in [docs/](../../docs/). Only Markdown is here: the
 tools that list the packages of `src/` skip a folder that holds no Odin file.
 
-The toolkit is the base of several programs (papier, classeur, inspecteur, cliche, atelier, opencode native, Wren). A need
+The toolkit is the base of several programs (papier, classeur, inspecteur, cliche, atelier, feuille, socle, plume, galerie, Tower, Wren). A need
 common to two programs has one API here, and none in the programs: no duplicate, no alias, no compatibility layer. The
 programs are the only users, so an API changes freely when the usage changes; each program is migrated in the same
 piece of work.

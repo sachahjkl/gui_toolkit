@@ -83,7 +83,7 @@ render.frame_end(&r, !at_once)
 render.paced_present(&pacer)
 ```
 
-It does not show input after a rest at once (`input = false`): measured in opencode native (RENDER_PROBE, a fast hand
+It does not show input after a rest at once (`input = false`): measured in Tower (RENDER_PROBE, a fast hand
 over a list, six runs each way), presenting that one frame without a wait for the refresh left the swap chain a frame
 deeper for the rest of the session: 45 to 60 ms from input to screen instead of 29 to 30. (`platform.input_pending`
 says whether input waits, for an application that measures otherwise.)

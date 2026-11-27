@@ -2,7 +2,7 @@
 
 `import "gt:term"`. The grid of a terminal as a widget: the cells of a screen, a selection made with the pointer, the keys
 and the mouse turned into bytes, the scrollback under the toolkit's scroll bar, a zoom (a zoom zone), a cursor. It emulates
-nothing: a `Source` gives it the screen and takes what it sends back. An emulator stands behind it (opencode native uses
+nothing: a `Source` gives it the screen and takes what it sends back. An emulator stands behind it (Tower uses
 libghostty-vt), or a program's own model of a screen (a command's output, a log with colours).
 
 ```odin

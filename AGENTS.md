@@ -3,8 +3,8 @@
 A native, immediate-mode GUI toolkit in Odin: Win32 and Direct3D 11 on Windows, X11 or Wayland and WebGPU over Vulkan on
 Linux. The library's packages are in `src/` (a program's collection points there: `-collection:gt=<toolkit>/src`); the
 examples, tests, tools and docs are beside it. The examples and the tests import the packages as a program does
-(`import "gt:ui"`, never `"../../src/ui"`); `run_tests` and `tk ci` pass them the collection. Seven programs use it as their
-`ext/gui_toolkit` submodule: papier, classeur, inspecteur, cliche, atelier, opencode native and Wren.
+(`import "gt:ui"`, never `"../../src/ui"`); `run_tests` and `tk ci` pass them the collection. Eleven programs use it as their
+`ext/gui_toolkit` submodule: papier, classeur, inspecteur, cliche, atelier, feuille, socle, plume, galerie, Tower and Wren.
 
 Read first: [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md) (a change, publishing a version),
 [docs/getting-started.md](docs/getting-started.md) (where state lives, the pitfalls), [docs/testing.md](docs/testing.md).

@@ -56,7 +56,7 @@ builds `native/text` into its library as a dependency (the `gt_*` functions stay
 `-define:FONT_NATIVE_LINK=false`: the `font` package then links nothing itself. An application that links its own Rust library
 adds the crate to it this way.
 
-The recipe, for an application with a crate of its own (opencode native does it for Linux):
+The recipe, for an application with a crate of its own (Tower does it for Linux):
 
 ```toml
 # your crate's Cargo.toml
@@ -71,7 +71,7 @@ and build the program with `-define:FONT_BACKEND=native -define:FONT_NATIVE_LINK
 
 **WebGPU's wgpu-native is a Rust static library too**, prebuilt: it cannot join your workspace. Its few unmangled symbols
 of Rust's standard library (`rust_eh_personality`) collide with yours. On Linux they are the same code: link with
-`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (`tk build`, opencode native's ocntools). On Windows the
+`-extra-linker-flags:"-Wl,--allow-multiple-definition"` (`tk build`, Tower's ocntools). On Windows the
 linker refuses the duplicate: use Direct3D 11 there (the default backend), or build wgpu-native from source in your
 workspace.
 

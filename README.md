@@ -33,7 +33,7 @@ On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the
 Needs the Odin compiler (`dev-2026-11a`, pinned) and, on Windows 10+, MSVC (Visual Studio or its Build Tools). **Linux**
 (X11 and Wayland, Vulkan through wgpu-native, text by the native backend: Fontations, HarfRust, ICU4X, fonts from
 fontconfig): `odin run tools/tk -- fetch_wgpu` puts wgpu-native beside Odin, `tk ci` checks every package and tool, builds the
-examples and runs the windowless tests; [opencode native](https://github.com/sachahjkl/opencode_native) ships a Linux build.
+examples and runs the windowless tests; [Tower](https://github.com/sachahjkl/tower) ships a Linux build.
 **New project? Start with [docs/getting-started.md](docs/getting-started.md)**: the toolkit as a submodule, a window in a
 few lines (`examples/hello`), the backends and options, the tests, the versions, and the pitfalls.
 
@@ -192,7 +192,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Idle = 0 % CPU**: the loop blocks on the message queue; timed wakes only for the caret blink and tooltip delay.
 - **Low input latency**: one frame in flight (waitable swap chain, `SetMaximumFrameLatency(1)`), and the loop waits for
   the GPU *before* reading input (`platform.wait_event` -> `render.wait_for_frame` -> `platform.poll_events`).
-  Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms with this wait, and 34 ms from a key to the screen in opencode native (`-define:RENDER_PROBE=true` prints
+  Measured input-to-scan-out at 60 Hz: ~80 ms with DXGI's default queue, ~47 ms with this wait, and 34 ms from a key to the screen in Tower (`-define:RENDER_PROBE=true` prints
   it; `-define:LOW_LATENCY=false` restores the old behaviour for comparison). Live resize presents once per step (WM_PAINT).
   `render.wait_frame_slot(&r, w)` waits the same way while taking input as it arrives (time-stamped:
   `Event.stamp`).

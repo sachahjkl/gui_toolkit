@@ -5,7 +5,7 @@ code, no GPU, any target. The same calls make the same bytes on every system.
 
 The package draws pictures that a program makes ahead of time: a logo, the sizes of an icon, a check sheet. It does not
 draw a window: `draw` and `render` do that. `tk make_logo` and `tk make_icon` use it, and so do the logo commands of Wren
-(`wrentool logo`) and opencode native (`ocntools logo`).
+(`wrentool logo`) and Tower (`ocntools logo`).
 
 ## A picture
 
@@ -86,5 +86,5 @@ each source pixel once and keeps nothing else, for a thumbnail of a large pictur
 Pictures that GDI+ drew with antialiasing and its default pixel offset mode sit `GDIPLUS_OFFSET` (0.625) pixels lower and
 to the right of this package's. A picture made to match one of them starts its transform with
 `paint.translate(paint.IDENTITY, paint.GDIPLUS_OFFSET, paint.GDIPLUS_OFFSET)`. With that offset, the three logos that GDI+
-used to draw (the toolkit's, Wren's, opencode native's) differ from their committed pictures by less than 1.5 of 255 per
+used to draw (the toolkit's, Wren's, Tower's) differ from their committed pictures by less than 1.5 of 255 per
 channel on average, at every size from 16 to 512 pixels.

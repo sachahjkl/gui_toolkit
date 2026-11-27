@@ -5,8 +5,8 @@
 - **Wren on the toolkit's licence card.** Wren shows `ui.licence_card` and the shop's thank-you page, as every other
   program does since this toolkit version, and drops its `about_card*.odin` and its card shaders: one card. Intent:
   [src/md/features/licence-card.md](src/md/features/licence-card.md).
-- **opencode native and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
-  that the toolkit has goes. opencode native: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
+- **Tower and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
+  that the toolkit has goes. Tower: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
   spinner, time words, segmented control, model picker (the palette's `#` source). Wren: its re-exporting `config` and
   `i18n` packages, header parsing, size and duration words, JSON quoters and writer, crash bar and crash marker, command
   line (`gt:cli`), licence, install, diagnostics and update pages and its own updater, syntax colours, changelog and
@@ -48,8 +48,8 @@
   root: no process of the user's session takes requests from root by design, and `sudo -u` would trust the user's
   environment and files from root, so a root program keeps refusing. Intent:
   [src/md/features/elevated-process.md](src/md/features/elevated-process.md).
-- **cliche and opencode native draw with `ui.Mark_Editor`.** cliche drops its editor's model, painter and canvas for
-  the toolkit's and keeps its window, its words and its outputs; opencode native opens the editor on a picture of its
+- **cliche and Tower draw with `ui.Mark_Editor`.** cliche drops its editor's model, painter and canvas for
+  the toolkit's and keeps its window, its words and its outputs; Tower opens the editor on a picture of its
   viewer or of its composer, and the result replaces the attachment. Intent:
   [src/md/features/mark-editor.md](src/md/features/mark-editor.md).
 - **The rest of cliche's marks in `gt:marks`.** Speech balloons, step numbers, the magnifier, stickers, shadows and the
@@ -69,13 +69,13 @@
 - **X11's vblank timing seen on a real screen.** The Present extension's answers are read, but the virtual desktop's
   software renderer draws with PutImage and never answers: run the desktop test on an X11 session with a GPU to see
   frames start just in time there too. Intent: [src/md/infrastructure/vblank.md](src/md/infrastructure/vblank.md).
-- **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
+- **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and Tower
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
-- **Every program on the spacing scale.** Atelier (its own scale in `view.odin`), opencode native and Wren stop
+- **Every program on the spacing scale.** Atelier (its own scale in `view.odin`), Tower and Wren stop
   keeping values or scales of their own, as papier, classeur, inspecteur and cliche already do. Intent:
   [src/md/features/spacing.md](src/md/features/spacing.md).
-- **Wren answers --quit.** As papier, classeur, inspecteur, cliche and opencode native do, it gives
+- **Wren answers --quit.** As papier, classeur, inspecteur, cliche and Tower do, it gives
   `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it
   installs it, in place of ending its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
 - **What's new in Wren.** As the other programs do, it gives its changelog to the settings (`Page_Options.changelog`)
@@ -83,23 +83,23 @@
 - **The last settings that Wren copies.** Wren drops its `browser.frame.*` for the toolkit's `rendering.frame_rate`
   (`Standard_Targets.pacer`, since 0.269), and its own text backend, emoji and renderer settings. (The
   desktop's and the motion's are the standard `Session` and `Appearance` sets; the window's place and the rows' look are
-  the toolkit's since 0.265; an FPS display is opencode native's alone, so it stays its own.)
+  the toolkit's since 0.265; an FPS display is Tower's alone, so it stays its own.)
 - **Wren's devtools fold by the toolkit's rule.** Wren's Network split becomes a `ui.Side_Panel`: it folds to a rail
   when the content would get less than its least, as papier's list, the settings and the views do. Intent:
   [src/md/features/side-panels.md](src/md/features/side-panels.md).
-- **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
+- **Tower on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
   (`ui.paste_answer`: its menu's Paste attaches an image as Ctrl+V does), kept zooms (`store.Kept`), context menus
   (`ui.context_take`), window place and standard folders in place of its own; it waits for its merge and release.
-- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate. The
+- **One image decoder.** Tower decodes pictures with the toolkit's `gt:image` instead of its Rust crate. The
   switch is written (`ocn-views/build/gt-image-only.patch`), and WebP is now inside the toolkit's native library on
-  every system: it waits only for opencode native to move up from toolkit 0.266. Intent:
+  every system: it waits only for Tower to move up from toolkit 0.266. Intent:
   [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
   `font.SYSTEM_RASTERIZER`); papier, classeur, inspecteur and cliche check theirs for macOS. What is left: opencode
   native and Wren check theirs. (The native library's links stay beside their `foreign` blocks, in
   `font/backend_native.odin` and `mermaid.odin`: a `foreign import` is its file's.)
-- **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
+- **Colours by intent in Tower.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
 - **No test that crashes by chance on Linux.** Two CI runs stopped on an illegal instruction (an assertion or a bounds
   check) that no local run made again: once in `plugins`, twice in `process` (`each_signal_is_its_own`, each time
@@ -115,7 +115,7 @@
 - **The programs on the shared second start, files, Mermaid, "Open with" and watcher.** Each program drops its own
   copy: `instance.Launch` and `host.instance_serve` for its second start (seven programs),
   `prefs_page.program_files` and `prefs_open` for its settings' start (six), `gt:markdown`'s Mermaid (papier,
-  opencode native), `ui.Open_With` for its file menu (papier, classeur, feuille) and `fsx.Watch` for its folders
+  Tower), `ui.Open_With` for its file menu (papier, classeur, feuille) and `fsx.Watch` for its folders
   (classeur, feuille). Intent: [src/md/features/second-start.md](src/md/features/second-start.md),
   [src/md/features/program-files.md](src/md/features/program-files.md).
 - **classeur moves to the trash with `platform.move_to_trash`.** Its `fs/trash_linux.odin` repeats the toolkit's
@@ -125,10 +125,10 @@
   the same in every program.
 - **A free file name.** A saved or downloaded file never overwrites another, and its number looks the same in every
   program. A procedure of `gt:fsx` creates the file with the next free number in one step (`O_EXCL`, `CREATE_NEW`); classeur, cliche,
-  opencode native, Wren and the toolkit's trash drop their three styles.
+  Tower, Wren and the toolkit's trash drop their three styles.
 - **One report for the live tests.** (Developer) `toolbox.Checks` and `check` give every program's live test the
-  same report and exit code; papier, inspecteur, atelier and opencode native drop their own.
-- **A trackpad swipe reader.** A two-finger swipe goes back and forward in any program, as it does in opencode native.
+  same report and exit code; papier, inspecteur, atelier and Tower drop their own.
+- **A trackpad swipe reader.** A two-finger swipe goes back and forward in any program, as it does in Tower.
 - **`ui.preview` leaves Shift+wheel to the program.** A program that scrolls sideways with Shift+wheel over a picture
   keeps it.
 - **A middle click on a link opens it in a scroll area.** A clickable box (a link) wins the middle click over the
@@ -175,7 +175,7 @@
 - **An application catalog.** The programs found from the desktop's menu entries, with their icons, and a process tied
   to its application. inspecteur's reader moves to `gt:desktop` (`apps`, `app_of`); the launcher uses it.
 - **A picture view.** A picture or a diagram opens in a view fitted to the window, zoomed, panned, copied or saved.
-  A view of `ui` over `ui.preview_image`; opencode native, papier, cliche and classeur drop their own wrappers.
+  A view of `ui` over `ui.preview_image`; Tower, papier, cliche and classeur drop their own wrappers.
 - **A log view.** Entries with their time, level and source, a filter by level with counts, follow, search and copy.
   One view of `ui` for inspecteur's journal, Wren's console, socle's apply log and the toolkit's Diagnostics.
 - **Name patterns.** A file name made from a pattern ({name}, {ext}, {n:3}, {date}, {time}) the same way in cliche's
@@ -204,7 +204,7 @@
   dropped in the void) is the toolkit's already.
 
 - **Personal keys and aliases in Wren.** A person sets a key or an alias for a command the same way in every program:
-  papier, classeur, inspecteur, cliche and opencode native read the toolkit's keymap; Wren moves to it last (its
+  papier, classeur, inspecteur, cliche and Tower read the toolkit's keymap; Wren moves to it last (its
   `Command.name` becomes `ui.Command.id`). Intent: [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
 - **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
   what they granted and never slows the window. Done: commands and toasts, views, settings (API level 3), `gt-runtime`
@@ -214,7 +214,7 @@
   sandbox on Linux, rich views (API level 6: icons by name, tones, badges, highlights), a program's own module
   (`from "app"`: the mechanism, its calls, events, permissions and generated `app.d.ts`), palette sources, menu and
   tool bar entries and a manifest's languages (API level 7), a plugin's settings' titles that follow the language
-  without a reload, a lazy list's active row and its `onActivate` (API level 8). Next: opencode native turns plugins
+  without a reload, a lazy list's active row and its `onActivate` (API level 8). Next: Tower turns plugins
   on and writes its module (sessions, messages, the composer) in its own repository. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
 - **A plugin's process sandboxed by the system on Windows and macOS.** On Linux a plugin's process opens no file and no
