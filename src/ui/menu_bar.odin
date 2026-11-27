@@ -17,7 +17,6 @@ package ui
 
 import "core:fmt"
 import "core:strings"
-import "core:unicode"
 import "core:unicode/utf8"
 import "../platform"
 
@@ -48,7 +47,7 @@ menu_bar_mnemonic :: proc(id: string) -> (shown: string, mnemonic: rune, at: int
 	at = -1
 	if strings.index_byte(words, '&') < 0 {
 		for r, i in words {
-			if unicode.is_letter(r) || unicode.is_digit(r) { return words, unicode.to_lower(r), i }
+			if k := menu_bar_access(r); k != 0 { return words, k, i }
 		}
 		return words, 0, -1
 	}
@@ -60,13 +59,24 @@ menu_bar_mnemonic :: proc(id: string) -> (shown: string, mnemonic: rune, at: int
 			if words[i + 1] == '&' { strings.write_byte(&b, '&'); i += 1; continue }
 			if !marked {
 				r, _ := utf8.decode_rune_in_string(words[i + 1:])
-				mnemonic, at, marked = unicode.to_lower(r), strings.builder_len(b), true
+				mnemonic, at, marked = menu_bar_access(r), strings.builder_len(b), true
 			}
 			continue
 		}
 		strings.write_byte(&b, c)
 	}
 	return strings.to_string(b), mnemonic, at
+}
+
+// `r` as an access letter: an ASCII letter in lower case or a digit, what a key of platform.Key types (0: none; a
+// letter of another script has no key to match it).
+@(private = "file")
+menu_bar_access :: proc(r: rune) -> rune {
+	switch r {
+	case 'a' ..= 'z', '0' ..= '9': return r
+	case 'A' ..= 'Z':             return r - 'A' + 'a'
+	}
+	return 0
 }
 
 // The letter a key types, in lower case, for an access letter (0: none).
