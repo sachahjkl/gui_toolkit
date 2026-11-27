@@ -355,6 +355,20 @@ d3d_read_frame_raw :: proc(r: ^Renderer, allocator := context.allocator) -> []u8
 	return d3d_read_texture(r, r.offscreen, allocator)
 }
 
+@(private = "file") DXGI_ERROR_SDK_COMPONENT_MISSING :: transmute(win.HRESULT)u32(0x887A002D)   // Graphics Tools optional feature absent
+
+// True when the Direct3D 11 SDK layers DLL (Graphics Tools optional feature) is present in System32.
+// Checked before passing .DEBUG to D3D11CreateDevice: when absent, d3d11.dll throws an internal C++ SEH exception
+// before returning DXGI_ERROR_SDK_COMPONENT_MISSING, which Odin's test runner VEH intercepts first-chance and stops
+// the test thread while holding d3d11's internal lock.
+@(private = "file")
+d3d_debug_layer_present :: proc() -> bool {
+	lib := win.LoadLibraryExW(win.L("D3D11_3SDKLayers.dll"), nil, {.LOAD_LIBRARY_AS_DATAFILE, .LOAD_LIBRARY_SEARCH_SYSTEM32})
+	if lib == nil { return false }
+	win.FreeLibrary(lib)
+	return true
+}
+
 @(private)
 create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
 	if fault_hit(.D3D_Device) { return false }
@@ -363,11 +377,23 @@ create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
 	base_ctx: ^d3d11.IDeviceContext
 	// VIDEO_SUPPORT: hardware decoders (Media Foundation / DXVA) work on this device and hand their pictures to it as textures
 	flags := d3d11.CREATE_DEVICE_FLAGS{.BGRA_SUPPORT, .VIDEO_SUPPORT}
-	when D3D_DEBUG { flags += {.DEBUG} }
+	when D3D_DEBUG {
+		if d3d_debug_layer_present() { flags += {.DEBUG} }
+	}
 	hr := d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
+	if hr == DXGI_ERROR_SDK_COMPONENT_MISSING && .DEBUG in flags {
+		// (retry without .DEBUG before dropping .VIDEO_SUPPORT so hardware devices keep video support without Graphics Tools)
+		flags -= {.DEBUG}
+		hr = d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
+	}
 	if win.FAILED(hr) && .VIDEO_SUPPORT in flags {
 		// (the software rasterizer has no video support: no hardware decoding there anyway)
 		flags -= {.VIDEO_SUPPORT}
+		hr = d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
+	}
+	if hr == DXGI_ERROR_SDK_COMPONENT_MISSING && .DEBUG in flags {
+		// (WARP can reject .VIDEO_SUPPORT before checking for the debug layer)
+		flags -= {.DEBUG}
 		hr = d3d11.CreateDevice(nil, driver, nil, flags, &feature_levels[0], len(feature_levels), d3d11.SDK_VERSION, &base_device, nil, &base_ctx)
 	}
 	if win.FAILED(hr) {
