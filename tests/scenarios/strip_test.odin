@@ -71,6 +71,26 @@ off :: proc(s: ^session.Session, a: ui.Axis) -> f32 { return session.get(s, "str
 @(private = "file")
 strip_gap :: proc(view: ^ui.Box) -> f32 { return math.round(view.font_size * ui.STRIP_GAP_EM) }
 
+// The band the end side of axis `a` holds clear: its arrow and the gap, with the fade beyond; or, over a choice that
+// would show less than STRIP_SLIVER_EM before it, up to that choice's start, with no fade.
+@(private = "file")
+expect_end_band :: proc(t: ^testing.T, s: ^session.Session, a: ui.Axis, loc := #caller_location) -> (sliver: bool) {
+	i := int(a)
+	view, arrow := session.get(s, "strip_view"), session.get(s, end_arrow(a))
+	band := arrow.rect.max[i] - arrow.rect.min[i] + strip_gap(view)
+	at := view.rect.max[i] - band
+	for k in 0 ..< STRIP_MANY {
+		c := session.find(s, fmt.tprintf("it%d", k))
+		if c == nil { break }
+		if c.rect.min[i] < at && c.rect.max[i] > at && at - c.rect.min[i] < math.round(view.font_size * ui.STRIP_SLIVER_EM) {
+			band, sliver = view.rect.max[i] - c.rect.min[i], true
+		}
+	}
+	testing.expect_value(t, view.edge_hold[i + 2], band, loc = loc)
+	if sliver { testing.expect_value(t, view.edge_fade[i + 2], 0, loc = loc) } else { testing.expect(t, view.edge_fade[i + 2] > 0, "a fade beyond the arrow", loc = loc) }
+	return
+}
+
 // Never a bar on a strip, nor its room.
 @(private = "file")
 expect_no_bar :: proc(t: ^testing.T, s: ^session.Session, loc := #caller_location) {
@@ -125,8 +145,7 @@ an_overflowing_strip_shows_the_end_arrow_at_its_start :: proc(t: ^testing.T) { u
 		// (nothing of the content shows under the arrow nor in the gap beyond it: that band is held clear, the fade is
 		// beyond it)
 		view := session.get(s, "strip_view")
-		testing.expect_value(t, view.edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i] + strip_gap(view))
-		testing.expect(t, view.edge_fade[i + 2] > 0, "a fade beyond the arrow")
+		expect_end_band(t, s, a)
 		testing.expect_value(t, view.edge_hold[i], 0)
 
 		// it grows past its room and back while it is built: the arrow comes and goes without an input
@@ -335,9 +354,23 @@ the_first_frame_has_the_least_size_and_the_arrow :: proc(t: ^testing.T) { unwatc
 			testing.expectf(t, length == want, "%v, %v beside: the strip %v long in the first frame, want %v", a, beside, length, want)
 			testing.expect_value(t, arrow.rect.max[i], strip.rect.max[i])
 			testing.expectf(t, session.find(s, start_arrow(a)) == nil, "%v: no start arrow", a)
-			view := session.get(s, "strip_view")
-			testing.expect_value(t, view.edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i] + strip_gap(view))
+			expect_end_band(t, s, a)
 		}
+	}
+}) }
+
+// A choice the end arrow's band cuts shows its start when there is room for it (the band and its fade), and is held
+// whole when it would show a sliver: its rim and none of its words.
+@(test)
+a_sliver_beside_an_arrow_is_held :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for a in ui.Axis {
+		// (beside a "+" of 60 px the band cuts it2 half way; beside 30 px, it3 a pixel in)
+		r := Strip_Run{items = STRIP_MANY, axis = a, beside = 60}
+		s := strip_start(t, &r)
+		testing.expectf(t, !expect_end_band(t, s, a), "%v: it2 shows half of itself: no sliver", a)
+		r.beside = STRIP_PLUS
+		session.wait_idle(s)
+		testing.expectf(t, expect_end_band(t, s, a), "%v: it3 a pixel in: held whole", a)
 	}
 }) }
 

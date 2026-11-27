@@ -583,8 +583,9 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 			if !active { push_tags("weak") }
 			spacer(px(math.round(DOCK_TAB_PAD_EM * em)))
 			// (its words start at the pad: where a panel's content starts, dock_content_inset)
-			next({width = text_size(), height = pct(1), text_pad = 0})
-			build_box({.Draw_Text}, fmt.tprintf("%s###dock_title", title))
+			words := fmt.tprintf("%s###dock_title", title)
+			next({width = tab_title_width(words, 0, 0), height = pct(1), text_pad = 0})
+			build_box({.Draw_Text}, words)
 			spacer(px(math.round(DOCK_TAB_PAD_EM * em)))
 			if !active { pop_tags() }
 		}

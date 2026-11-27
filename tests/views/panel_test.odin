@@ -49,6 +49,7 @@ Dock :: struct {
 	bare:       bool,              // build the space "bare", without content (a centre zone)
 	title_bar:  bool,              // a bar of TITLE_BAR_PX above the frame (a program's title bar)
 	inset:      bool,              // the frame INSET_PX in from every edge of the window (a face at an edge has no rim)
+	long_titles: bool,             // a terminal opened by name has a long title of its own
 }
 
 @(private = "file") TITLE_BAR_PX :: 30
@@ -153,6 +154,7 @@ striped_view :: proc(v: ^ui.View, r: ^Dock) {
 // A terminal: tabs always, a "+" that opens the next one (as ocn's: the program names the instance).
 @(private = "file")
 term_view :: proc(v: ^ui.View, r: ^Dock) {
+	if r.long_titles && v.instance != "" { ui.view_title(v, fmt.tprintf("The build of %s on the server", v.instance)) }
 	ui.label(fmt.tprintf("The shell %s###term_words", v.instance))
 }
 
@@ -1476,6 +1478,57 @@ the_strip_of_a_terminal :: proc(t: ^testing.T) {
 	if found >= 0 {
 		ui.views_command_run(&r.views, acts[found])
 		wait_built(s, "view_panel_view_term/t2")
+	}
+}
+
+// A stack's strip as the window narrows (strip.md, tabs.md): its tabs give way first, their words cut down to their
+// least, before the strip scrolls; scrolled, the chosen tab stays in view, no tab shows only a sliver of its outline
+// beside an arrow, and the stack's buttons stay inside the window.
+@(test)
+the_strip_of_a_narrow_stack :: proc(t: ^testing.T) {
+	r := Dock{long_titles = true}
+	defer dock_end(&r)
+	s := dock_start(t, &r, "term")
+	if wait_built(s, "view_panel_view_term") == nil { return }
+	for i in 1 ..= 3 {
+		ui.view_open(&r.views, "term", &r, fmt.tprintf("t%d", i))
+		if wait_built(s, fmt.tprintf("view_panel_view_term/t%d", i)) == nil { return }
+	}
+	tabs := [?]string{"view_tab_view_term", "view_tab_view_term/t1", "view_tab_view_term/t2", "view_tab_view_term/t3"}
+	natural: [len(tabs)]f32
+	session.resize(s, {1400, 400})
+	session.wait_idle(s)
+	for name, i in tabs {
+		b := built(s, name)
+		if b == nil { testing.expectf(t, false, "%s built", name); return }
+		natural[i] = b.rect.max.x - b.rect.min.x
+	}
+	for w in ([]int{900, 420, 300}) {
+		session.resize(s, {w, 400})
+		session.wait_idle(s)
+		session.save_png(s, fmt.tprintf("narrow_%d.png", w))
+		close := built(s, "view_stack_close")
+		testing.expectf(t, close != nil && close.rect.max.x <= f32(w) + 0.5, "at %d px the stack's Close is inside the window: %v", w, close != nil ? close.rect : ui.Rect{})
+		chosen := built(s, "view_tab_view_term/t3")
+		view := built(s, "strip_view")
+		if chosen == nil || view == nil { testing.expectf(t, false, "at %d px the chosen tab and the strip", w); continue }
+		testing.expectf(t, chosen.rect.min.x >= view.rect.min.x - 0.5 && chosen.rect.max.x <= view.rect.max.x + 0.5, "at %d px the chosen tab in view: %v in %v", w, chosen.rect, view.rect)
+		right := session.find(s, "strip_right")
+		scrolls := right != nil && right.transparency < 1
+		if w == 900 {
+			testing.expect(t, !scrolls, "at 900 px the tabs fit, narrower: no arrow")
+			for name, i in tabs {
+				b := built(s, name)
+				testing.expectf(t, b != nil && b.rect.max.x - b.rect.min.x < natural[i] - 1, "at 900 px %s gave way", name)
+			}
+		}
+		// (a tab cut by an arrow's band shows its words, or nothing of it shows)
+		band := view.rect.max.x - view.edge_hold[2]
+		for name in tabs {
+			b := built(s, name)
+			if b == nil || b.rect.min.x >= band || b.rect.max.x <= band { continue }
+			testing.expectf(t, band - b.rect.min.x >= 1.5 * r.em - 1, "at %d px %s shows more than a sliver: %v, the band at %v", w, name, b.rect, band)
+		}
 	}
 }
 

@@ -1677,7 +1677,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 				if !on { push_tags("weak") }
 				spacer(px(em))
 				if i < len(icons) { icon(icons[i], em * 1.6) }
-				next({width = text_size(), height = pct(1)})
+				next({width = tab_title_width(label), height = pct(1)})
 				build_box({.Draw_Text}, label)
 				spacer(px(em))
 				if !on { pop_tags() }

@@ -51,8 +51,11 @@ bevel, a glow), never touches it.
 
 Along an axis it scrolls, with no size given (`next`), a strip is as long as its choices, and it is the first to give
 way in a parent that is short: what is built after it (a "+") follows the last choice while they fit, and stays at the
-strip's end when they do not. It never gives way under its largest choice and one arrow (a size in `px` excepts it): in
-a parent too short for that, what comes after the strip is cut. A size given (`fill()`, `px`) is kept. Across, a strip
+strip's end when they do not. Its choices give way first, each by what it may give (its strictness, never under the
+width its content keeps: a tab's words cut with an ellipsis down to `ui.TAB_TITLE_LEAST_EM`, `ui.tab_title_width`), and
+only then does the strip scroll; a choice of a fixed size gives nothing. It never gives way under its largest choice (as
+small as it may be) and one arrow (a size in `px` excepts it): in a parent too short for that, what comes after the
+strip is cut. When its room changes (a window resized), its chosen choice comes into view again. A size given (`fill()`, `px`) is kept. Across, a strip
 is as large as its parent (`pct(1)`), and its choices are often `pct(1)` of it: give the row (the column) a size of its
 own, never `children_sum`.
 
@@ -71,6 +74,8 @@ column of rows, unless `next` gives another axis.
 | `.Scrollbar_None` | The box flag a strip's view has: no bar, no room for one ([scroll-bar.md](scroll-bar.md)). |
 | `Box.edge_hold` | Beside `edge_fade`: a band at each edge of a `.Clip` box where its content does not show at all, before the fade (`draw.mask_edge_fade`'s `hold`). A strip sets both: the hold is its arrow and the gap beyond it. |
 | `ui.STRIP_GAP_EM` | The clear gap between an arrow and the first pixel of the content, ems. |
+| `ui.STRIP_SLIVER_EM` | A choice cut by an arrow's band that would show less than this before it is held whole, with no fade: a sliver showed its rim and none of its words. |
+| `ui.tab_title_width(text, pad, text_pad)` | The width of a tab's words: their own, giving way down to `ui.TAB_TITLE_LEAST_EM` (3) ems, cut with an ellipsis, in a strip too short for its tabs. |
 
 The boxes a test finds by name: `strip_left`, `strip_right`, `strip_up`, `strip_down` (the arrows, inside the strip),
 `strip_view`. Every arrow is built at every build; one whose side hides nothing has no place after the layout (nor a

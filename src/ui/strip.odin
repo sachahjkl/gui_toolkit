@@ -37,6 +37,9 @@ STRIP_FADE_EM :: 1.0
 // (a raised plate's tail, its glyph) never looks glued to it, the fade only begins past this gap.
 STRIP_GAP_EM :: 0.3
 @(private = "file") STRIP_HIDDEN_PX :: 0.5        // an offset this close to an end is that end
+// A choice cut by an arrow's band that shows less than this (ems) before it is held whole: its sliver would show its
+// outline and none of its words.
+STRIP_SLIVER_EM :: 1.5
 
 // A strip in the build, from strip to strips_settle. A side is [axis][0]: its start (left, up), [axis][1]: its end.
 @(private)
@@ -142,21 +145,46 @@ strip_choices_of :: proc(view: ^Box) -> []^Box {
 // lands beside the strip. Its view and its strip keep that least in the very layout that first lays them out (the last
 // layout's measures are none at a strip's first build: it gave way to nearly nothing for a frame). A size in pixels is
 // the caller's.
+// A choice that gives way (a tab's words cut down to their least, strip_give) counts at what it keeps.
 @(private)
 strip_least :: proc(view: ^Box, a: Axis) {
 	outer := view.parent
 	if outer == nil || outer.pref[a].kind == .Pixels { return }
 	i := int(a)
 	largest, content: f32
-	for c in strip_choices_of(view) { largest = max(largest, c.size[i]) }
+	for c in strip_choices_of(view) { largest = max(largest, c.size[i] - shrinkable(c, a)) }
 	for c := view.first; c != nil; c = c.next {
 		if is_floating(c, a) { continue }
-		if view.layout_axis == a { content += c.size[i] } else { content = max(content, c.size[i]) }
+		keep := c.size[i] - shrinkable(c, a)
+		if view.layout_axis == a { content += keep } else { content = max(content, keep) }
 	}
 	least := min(content, largest + view.strip_arrow)
 	for b in ([2]^Box{view, outer}) {
 		b.pref[a].least = max(b.pref[a].least, least)
 		b.size[i] = max(b.size[i], least)
+	}
+}
+
+// The layout (layout_violations, along the view's own axis): choices too long for the view give way first, each by
+// what it may give (shrinkable: a tab's words down to their least, cut with an ellipsis), in proportion to it; what
+// is still too long scrolls. A strip of tabs then shows every tab, narrower, before an arrow hides any; a choice that
+// keeps its size (a chip, a button's words) gives nothing.
+@(private)
+strip_give :: proc(view: ^Box, a: Axis) {
+	i := int(a)
+	avail := view.size[i] - content_pad(view, a) - stack_gaps(view, a)
+	total, budget: f32
+	for c := view.first; c != nil; c = c.next {
+		if is_floating(c, a) { continue }
+		total += c.size[i]
+		budget += shrinkable(c, a)
+	}
+	violation := total - avail
+	if violation <= STRIP_HIDDEN_PX || budget <= 0 { return }
+	take := min(violation, budget)
+	for c := view.first; c != nil; c = c.next {
+		if is_floating(c, a) { continue }
+		c.size[i] -= take * shrinkable(c, a) / budget
 	}
 }
 
@@ -258,13 +286,15 @@ strip_step :: proc(sb: Strip_Build, view: ^Box, choices: []^Box, a: Axis, dir: i
 // person sees first, or a choice made elsewhere (a command, the "+"), is where it is.
 @(private = "file")
 strip_bring :: proc(s: ^State, sb: Strip_Build, view: ^Box) {
-	if sb.reveal == 0 || sb.reveal == view.strip_chosen { return }
+	// (a strip whose room changed, a window or a zone resized, shows its chosen choice again: narrowed, it was left
+	// behind an arrow)
+	if sb.reveal == 0 || (sb.reveal == view.strip_chosen && view.size == view.strip_room) { return }
 	c := s.boxes[sb.reveal]
 	if c == nil || c.last_build != s.build_index { return }
 	inside := false
 	for p := c.parent; p != nil; p = p.parent { if p == view { inside = true; break } }
 	if !inside { return }   // (not a choice of this strip: nothing to show)
-	view.strip_chosen = sb.reveal
+	view.strip_chosen, view.strip_room = sb.reveal, view.size
 	for a in sb.axes {
 		i := int(a)
 		off := view.view_off[i]
@@ -306,7 +336,10 @@ strips_place :: proc(s: ^State) {
 				side := i + 2 * end   // (edge_hold and edge_fade: left, top, right, bottom)
 				view.edge_hold[side], view.edge_fade[side] = 0, 0
 				// (the band held clear: the arrow and the gap beyond it; the fade begins past them)
-				if sb.shown[a][end] { view.edge_hold[side], view.edge_fade[side] = sb.arrow + sb.gap, sb.fade }
+				if sb.shown[a][end] {
+					view.edge_hold[side], view.edge_fade[side] = sb.arrow + sb.gap, sb.fade
+					if hold, cut := strip_sliver(view, sb, a, end); cut { view.edge_hold[side], view.edge_fade[side] = hold, 0 }
+				}
 				b := s.boxes[sb.arrows[a][end]] if sb.arrows[a][end] != 0 else nil
 				if b == nil { continue }
 				q := strip_arrow_rect(sb, outer.rect, a, end)
@@ -321,6 +354,30 @@ strips_place :: proc(s: ^State) {
 			}
 		}
 	}
+}
+
+// The band a side holds clear when a choice cut by its arrow would show only a sliver before it (less than
+// STRIP_SLIVER_EM): the band reaches over that choice whole, with no fade (its sliver, all in the fade, showed an
+// empty outline: a tab's rim and none of its words).
+@(private = "file")
+strip_sliver :: proc(view: ^Box, sb: Strip_Build, a: Axis, end: int) -> (hold: f32, cut: bool) {
+	i := int(a)
+	band := sb.arrow + sb.gap
+	least := math.round(font_size() * STRIP_SLIVER_EM)
+	for c in strip_choices_of(view) {
+		if end == 1 {
+			at := view.rect.max[i] - band
+			if c.rect.min[i] < at && c.rect.max[i] > at && at - c.rect.min[i] < least {
+				return view.rect.max[i] - c.rect.min[i], true
+			}
+		} else {
+			at := view.rect.min[i] + band
+			if c.rect.min[i] < at && c.rect.max[i] > at && c.rect.max[i] - at < least {
+				return c.rect.max[i] - view.rect.min[i], true
+			}
+		}
+	}
+	return
 }
 
 // After the scroll step: one more build when the offset the next build lays out makes a side's arrow come or go.

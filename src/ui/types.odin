@@ -195,6 +195,7 @@ Box :: struct {
 	view_target: Vec2,           // scroll offset target
 	view_top_held: [2]bool,      // the target is the content's start as asked (view_top), not where a move stopped (view_shift)
 	strip_chosen: Key,           // a strip's view: the chosen choice it last brought into view (strip_reveal)
+	strip_room:   Vec2,          // ... and its size then: a strip that grows or shrinks brings it into view again
 	strip_arrow: f32,            // a strip's view (0: none): its arrow's length; the layout keeps it, and its strip, at least its largest choice and this along each axis it scrolls (strip_least)
 	view_bounds: Vec2,           // extent of the children (for clamping)
 	view_anim:   [2]Scroll_Anim, // smooth scrolling toward view_target (scroll_anim.odin)

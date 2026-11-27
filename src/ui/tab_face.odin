@@ -53,12 +53,13 @@ tab_strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 tab_foot :: proc() -> f32 { return math.round(font_size() * shape_of(.Control) * TAB_FOOT_SHARE) }
 
 // One tab, as wide as what the caller builds in it (`if parent(b)`): a Tab stop the strip's whole height. The caller
-// pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own.
+// pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own. In a strip too short for its tabs
+// it gives way down to what its content keeps (its words sized by tab_title_width), before the strip scrolls.
 @(private)
 tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
 	s := gs()
 	set_next_axis(.X, .End)   // (its content in tab_body, at its bottom: the visible part of its shape)
-	s.next_mod.width = children_sum()
+	s.next_mod.width = children_sum(0)
 	s.next_mod.height = pct(1)
 	s.next_mod.radius = 0
 	push_tags(on ? "tab_on" : "tab")
@@ -78,10 +79,22 @@ tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
 // not of the strip.
 @(private, require_results, deferred_none = pop_parent)
 tab_body :: proc() -> bool {
-	next({width = children_sum(), height = pct(1 - TAB_TOP_SHARE)})
+	next({width = children_sum(0), height = pct(1 - TAB_TOP_SHARE)})
 	set_next_axis(.X, .Center)
 	push_parent(build_box({}, "###tab_body"))
 	return true
+}
+
+// A tab's words keep at least this much (ems) of their width when the strip is short; a shorter text keeps all of it.
+TAB_TITLE_LEAST_EM :: 3
+
+// The width of a tab's words `text` (an id's words: what shows of it), with `pad` on each side beyond the box's text
+// pad, as text_size: their own, and in a strip too short for its tabs they give way, cut with an ellipsis, down to
+// TAB_TITLE_LEAST_EM of text. `text_pad`: the one the caller gives the box in `next` (negative: the style's).
+tab_title_width :: proc(text: string, pad: f32 = 0, text_pad: f32 = -1) -> Size {
+	whole := font_text_width(text)
+	sides := 2 * (pad + (text_pad >= 0 ? text_pad : top_style().text_pad))
+	return {kind = .Text, value = pad, strictness = 0, least = math.ceil(min(whole, font_size() * TAB_TITLE_LEAST_EM) + sides)}
 }
 
 @(private)

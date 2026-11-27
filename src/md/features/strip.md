@@ -91,6 +91,18 @@ the axis, a side is an axis and an end. Refused: a vertical strip as a second wi
 - **A strip hugs its choices unless told otherwise.** With no size given along an axis it scrolls, a strip is as long
   as its choices and gives way first (`children_sum(0)`): a "+" built after it stays right after the last tab while
   they fit, and at the strip's end when they do not. A size given (`fill()`, `px`) is kept.
+- **Its choices give way before it scrolls** (`strip_give`, in the layout's violations of the view). A row of tabs too
+  long for its stack showed some tabs whole and the rest behind an arrow, while every tab cut a little would all have
+  shown (galerie's panels; Chrome and the systems' tab bars shrink their tabs first). Each choice gives what its
+  strictness lets it, never under the width its content keeps (`least_x`); a tab's words keep `TAB_TITLE_LEAST_EM`
+  (`tab_title_width`: a short title keeps all of it, `Size.least` would grow it). A chip or a button of a fixed size
+  gives nothing: those strips scroll as before. The strip's own least counts each choice at what it keeps.
+- **A sliver is held whole** (`STRIP_SLIVER_EM`). A choice cut by an arrow's band that showed under 1.5 em before it
+  showed its rim in the fade and none of its words: an empty outline beside the arrow. The band then reaches over that
+  choice, with no fade (a fade there would dim the whole choice before it).
+- **A change of room shows the chosen choice again.** A window narrowed left the chosen tab behind the arrow (it had
+  been brought into view at a wider size). The reveal keeps the room it was made in (`Box.strip_room`) and is made
+  again when it changes.
 - **It gives way, but not to nothing.** Along each axis it scrolls, a strip is never shorter than its largest choice
   and one arrow (by the last layout), nor longer than its choices: a stack of views in a side zone of 180 px gave its
   tabs 21 px to its strict buttons, and the press meant for a tab landed beside it. A size in pixels is the caller's.

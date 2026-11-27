@@ -944,8 +944,9 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 			if on { strip_reveal(tb) }   // (a tab its "+" opened at the end, or one a command showed, comes into view)
 			if parent(tb) { if tab_body() {
 				if !on { push_tags("weak") }
-				next({width = text_size(em * DOCK_TAB_PAD_EM * 2), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
-				build_box({.Draw_Text}, fmt.tprintf("%s###view_tab_title", title))
+				words := fmt.tprintf("%s###view_tab_title", title)
+				next({width = tab_title_width(words, em * DOCK_TAB_PAD_EM * 2, em * DOCK_TAB_PAD_EM), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
+				build_box({.Draw_Text}, words)
 				if !on { pop_tags() }
 			} }
 			a11y_default(tb, {role = .Tab, selected = on, name = title})
@@ -976,8 +977,10 @@ view_stack_tab_input :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, 
 	if sig.dragging { view_panel_drag(vs, r, tb.key, sig, em) }
 }
 
-// The least room a stack's strip keeps for its tabs beside the shown view's moves and the stack's own buttons (em).
-@(private = "file") VIEW_STRIP_TABS_LEAST_EM :: 3
+// The least room a stack's strip keeps for its tabs beside the shown view's moves and the stack's own buttons (em): a
+// tab cut to its least (its words' TAB_TITLE_LEAST_EM and its pads), an arrow of its strip and the "+". Less, the
+// moves and the window-sized buttons pushed the tabs' strip past the stack, and its Close past the window's edge.
+@(private = "file") VIEW_STRIP_TABS_LEAST_EM :: TAB_TITLE_LEAST_EM + 6 * DOCK_TAB_PAD_EM + 1.6 + VIEW_DETACH_EM
 
 // The rest of a stack's strip after its tabs and its "+": the shown view's moves, the slot of its program's tools, the
 // stack's own buttons at the right end.

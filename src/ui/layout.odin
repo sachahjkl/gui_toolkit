@@ -255,6 +255,8 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 			}
 		}
 	}
+	// (a strip's choices give way first, down to what they keep, then it scrolls: strip_give)
+	if b.strip_arrow > 0 && box_scrolls(b, axis) && axis == b.layout_axis { strip_give(b, axis) }
 	if !overflow {
 		avail := b.size[ai] - content_pad(b, axis) - stack_gaps(b, axis)
 		if .Wrap in b.flags {
@@ -371,7 +373,7 @@ layout_wrap_shares :: proc(b: ^Box, avail: f32) {
 
 // How much of its size a box gives up when its parent is too small: (1 - strictness) of it, never going under its least.
 // A box that scrolls that way gives all of it down to its least, whatever its strictness: it scrolls to what it hides.
-@(private = "file")
+@(private)
 shrinkable :: proc(c: ^Box, axis: Axis) -> f32 {
 	ai := int(axis)
 	p := c.pref[axis]

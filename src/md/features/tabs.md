@@ -15,6 +15,12 @@ room before its first tab ("and the void? wtf").
 
 ## The rule
 
+- **A tab gives way before its strip scrolls.** Its box and body are `children_sum(0)`; its words are sized by
+  `tab_title_width`: their own width, cut with an ellipsis down to `TAB_TITLE_LEAST_EM` of text. The strip gives the
+  room ([strip.md](strip.md)). A stack of views counts a tab cut to that least, an arrow and its "+" before it shows the
+  view's moves and its window-sized buttons (`VIEW_STRIP_TABS_LEAST_EM`): with 3 em it showed them, and its Close ran
+  past the window's edge.
+
 A tab is the label of the panel under it, and one shape with it.
 
 - **One line.** The strip's bottom edge is a line in the border's colour, from edge to edge: the top border of the
