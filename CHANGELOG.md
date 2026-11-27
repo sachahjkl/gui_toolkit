@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.363.1] - 2026-11-27 10:02
+
+### Fixed
+- **An open find bar no longer takes Shift+Enter from other fields.** While a view's find bar was open, Shift+Enter typed in
+any field built after it (a message composer, a multi-line field) did nothing: the bar took the key even without the
+focus. The bar now asks for it only while its own field has the focus. A parts field's open list and a card stack no
+longer take Escape, Left or Right they do not use.
+
 ## [0.363.0] - 2026-11-27 07:51
 
 ### Added
@@ -5091,6 +5099,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.363.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.1
 [0.363.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.0
 [0.362.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.362.0
 [0.361.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.361.0
