@@ -79,7 +79,8 @@ file: classeur made them first (its `thumbs.odin`); the toolkit's file browser a
   this build nor in the last `THUMB_KEEP_FRAMES`, never one asked and not answered.
 - **A texture is made at its first draw.** The build has no renderer; the draw callback has it (as the preview's
   picture). The pixels go once the texture is made. A thumbnail drawn is fitted in its box, centred, never larger than
-  it is.
+  it is. Its box is what `next` says, a side left unset filled: `thumb_picture` merges into `next`. Replacing it
+  dropped a place given without a size (galerie's cells, placed by `fixed_x` and `fixed_y`, all drew at the corner).
 - **The cache outlives the dialog.** A thumbnail closed with a dialog would be made again at the next one; the budget
   bounds what it holds meanwhile. A draw may still read an entry in the frame a dialog closes: the cache frees entries
   only in its own `thumb_cache_frame`, after the build that used them.

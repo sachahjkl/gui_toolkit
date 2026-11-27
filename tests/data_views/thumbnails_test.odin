@@ -111,6 +111,22 @@ a_card_that_grows_asks_a_larger_thumbnail :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.ready, 1)
 }
 
+// A place given in `next` without a size stays: the sides left unset fill the room, the place is not dropped.
+@(test)
+a_thumbnail_keeps_the_place_next_gives :: proc(t: ^testing.T) {
+	Placed :: struct { thumb: ui.Thumb }
+	app := Placed{thumb = {state = .Ready, size = {2, 2}, side = 128}}
+	s := session.start(t, {size = {400, 300}, no_renderer = true, user = &app, build = proc(s: ^session.Session) {
+		app := (^Placed)(s.user)
+		ui.next({fixed_x = 30, fixed_y = 40})
+		ui.thumb_picture("###placed", &app.thumb)
+	}})
+	session.frames(s, 2)
+	b := session.get(s, "placed")
+	testing.expect_value(t, b.rect.min, [2]f32{30, 40})
+	testing.expect(t, b.rect.max.x > 30 && b.rect.max.y > 40, "the sides left unset take the room")
+}
+
 @(test)
 the_cards_built_ask_the_newest_first_a_few_at_a_time :: proc(t: ^testing.T) {
 	app := Thumbs_App{first = 0, last = 10}

@@ -327,7 +327,7 @@ The picker keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any v
 | `thumb_cache_frame(c, ask, user)` | after the cards: the waiting asks sent newest first while fewer than `asks` are out (a card not built for `THUMB_STALE_FRAMES` builds is dropped instead); over the budget, the least used go, never one used in the last `THUMB_KEEP_FRAMES` builds |
 | `thumb_cache_answer(c, ticket, rgba, w, h)`, `thumb_cache_failed(c, ticket)` | the answer of an ask (an unknown ticket is ignored) |
 | `thumb_cache_clear(c)` | every thumbnail made (`Ready`, `Failed`) forgotten: the cards shown ask again. The asks out stay and their answers land. Safe in a build: the entries go once no draw reads them |
-| `thumb_picture(id, t, radius)` | a `Ready` entry in the box `next` gives: fitted, centred, never enlarged; its texture made at its first draw |
+| `thumb_picture(id, t, radius)` | a `Ready` entry in the box `next` gives: fitted, centred, never enlarged; its texture made at its first draw. A side `next` leaves unset fills the room; what `next` says else (a place: `fixed_x`, `fixed_y`) stays |
 
 The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_clean`,
 `file_path_parts`, `file_path_within`, and joined by `fsx.path_join` (docs/fsx.md); `file_entry_hidden`, `file_entry_look` and `file_look_icon`

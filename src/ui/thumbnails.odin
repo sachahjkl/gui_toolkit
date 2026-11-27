@@ -307,14 +307,15 @@ Thumb_Draw :: struct {
 	radius: f32,
 }
 
-// A Ready thumbnail in the box `next` gives (else all the room): fitted, centred; larger than its pixels only when they
-// filled the side asked (a small picture keeps its size); `radius`:
-// its corners.
+// A Ready thumbnail in the box `next` gives (a side it leaves unset: all the room): fitted, centred; larger than its
+// pixels only when they filled the side asked (a small picture keeps its size); `radius`: its corners.
 thumb_picture :: proc(id: string, t: ^Thumb, radius: f32 = 0) -> ^Box {
 	d := frame_new(Thumb_Draw)
 	d^ = {t, radius}
 	s := gs()
-	if !s.has_next || s.next_mod.width == nil { next({width = fill(), height = fill()}) }
+	// (merged, never replaced: a place given in `next`, fixed_x and fixed_y, stays)
+	if !s.has_next || s.next_mod.width == nil { next_merge({width = fill()}) }
+	if s.next_mod.height == nil { next_merge({height = fill()}) }
 	return custom(id, thumb_draw, d)
 }
 
