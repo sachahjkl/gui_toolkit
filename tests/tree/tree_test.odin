@@ -548,8 +548,9 @@ a_case_rename_never_replaces_another_file :: proc(t: ^testing.T) {
 	write(dir, "a.txt", "lower")
 	lower := strings.concatenate({dir, "/a.txt"}, context.temp_allocator)
 	upper := strings.concatenate({dir, "/A.txt"}, context.temp_allocator)
-	data, _ := os.read_entire_file(lower, context.temp_allocator)
-	if string(data) != "lower" { return }   // (a disk that ignores case: one file, nothing to test)
+	// (a disk that ignores case wrote both into one file, which reads "lower" by either name: nothing to test)
+	data, _ := os.read_entire_file(upper, context.temp_allocator)
+	if string(data) != "upper" { return }
 	f: Files
 	defer files_destroy(&f)
 	ui.file_tree_set_root(&f.t, dir)
