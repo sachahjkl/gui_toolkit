@@ -48,8 +48,8 @@ card_stack :: proc(id: string, st: ^Card_Stack, count: int, o := Card_Stack_Opti
 	if count > 0 && !o.no_keys {
 		// (read before the card is built: the frame shows where the key went)
 		switch {
-		case key_press(.Left) && st.at > 0:          st.at -= 1; st.act = .Previous
-		case key_press(.Right) && st.at < count - 1: st.at += 1; st.act = .Next
+		case st.at > 0 && key_press(.Left):          st.at -= 1; st.act = .Previous
+		case st.at < count - 1 && key_press(.Right): st.at += 1; st.act = .Next
 		case key_press(.A):                          st.act = .Settle
 		}
 	}

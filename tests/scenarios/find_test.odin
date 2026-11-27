@@ -110,8 +110,10 @@ find_view :: proc(s: ^session.Session, r: ^Find_Run, id: string) {
 }
 
 @(private = "file")
-find_build :: proc(s: ^session.Session) {
-	r := (^Find_Run)(s.user)
+find_build :: proc(s: ^session.Session) { find_build_of(s, (^Find_Run)(s.user)) }
+
+@(private = "file")
+find_build_of :: proc(s: ^session.Session, r: ^Find_Run) {
 	if r.marks_on && ui.scroll_marks_stale(&r.marks, 1) {
 		given := make([]ui.Scroll_Mark, r.count / 10, context.temp_allocator)
 		for &m, i in given { m = {id = fmt.tprintf("m%d", i), text = fmt.tprintf("mark %d", i)} }
@@ -516,4 +518,37 @@ a_jump_over_estimated_rows_ends_on_its_match :: proc(t: ^testing.T) { unwatched.
 	session.frames(s, 10)
 	testing.expect(t, find_current_match_in_view(s), "still inside once the heights settled")
 	testing.expect(t, strings.contains(find_lit_current().text, "row 40"), "on row 40")
+}) }
+
+
+// A bar open over its view never takes Shift+Enter from a field built after it (a composer below a conversation):
+// key_press consumes the key, so the bar asks for it only while its own field has the focus.
+@(private = "file")
+Composer_Run :: struct { find: Find_Run, edit: ui.Text_Edit }
+
+@(private = "file")
+composer_build :: proc(s: ^session.Session) {
+	r := (^Composer_Run)(s.user)
+	find_build_of(s, &r.find)
+	ui.next({width = ui.px(300), height = ui.px(60)})
+	ui.text_edit("###composer", &r.edit, {enter_commits = true})
+}
+
+@(test)
+an_open_bar_leaves_shift_enter_to_the_field_with_the_focus :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Composer_Run{find = {folded = -1, count = FIND_ROWS, hits = FIND_HITS[:]}}
+	defer ui.text_edit_destroy(&r.edit)
+	s := session.start(t, {user = &r, build = composer_build, no_renderer = true, size = {2 * FIND_VIEW_W + 100, 500}})
+	session.frames(s, 2)
+	ui.find_open(s.state, session.get(s, "view").key)
+	session.frames(s, 2)
+	testing.expect_value(t, session.focused_name(s), "field")
+	session.click(s, "composer")
+	session.frames(s, 2)
+	testing.expect_value(t, session.focused_name(s), "composer")
+	session.type_text(s, "a")
+	session.key(s, .Return, {.Shift})
+	session.type_text(s, "b")
+	session.frames(s, 2)
+	testing.expect_value(t, ui.text_edit_string(&r.edit), "a\nb")
 }) }

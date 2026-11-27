@@ -172,7 +172,7 @@ parts_field :: proc(id: string, parts: []Field_Part, values: []int, o := Parts_F
 			if !m.open && (key_press(.Down, {.Alt}) || key_press(.F4)) { m.open = true }
 			else if m.open && (key_press(.Up, {.Alt}) || key_press(.F4) || key_press(.Return)) { m.open = false }
 		}
-		if m.open && key_press(.Escape) && (sig.focused || popover_focused(popover_id)) { m.open = false }
+		if m.open && (sig.focused || popover_focused(popover_id)) && key_press(.Escape) { m.open = false }
 		if m.open && pressed_outside(b, popover_id) { m.open = false }
 	} else {
 		m.open = false

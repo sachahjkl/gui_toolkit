@@ -158,7 +158,8 @@ find_bar :: proc(view: ^Box, o := Find_Options{}) -> (res: Find_Result) {
 			append(&focusables, field.box.key)
 			field_key = field.box.key
 			if f.focus_field { s.focus_key = field.box.key; f.focus_field = false }
-			if key_press(.Return, {.Shift}) && s.focus_key == field.box.key { f.step = -1 } else if field.committed { f.step = 1 }
+			// (the focus first: key_press consumes the key, and this bar is built before the views that hold the focus)
+			if s.focus_key == field.box.key && key_press(.Return, {.Shift}) { f.step = -1 } else if field.committed { f.step = 1 }
 			if field.cancelled { find_close(s) }
 
 			// the count: of the last build's needle
