@@ -31,6 +31,11 @@ file: classeur made them first (its `thumbs.odin`); the toolkit's file browser a
   its path, its size and its date: a file changed gets a new one. A picture `gt:image` fails to decode (a WebP in a
   program built without `IMAGE_WEBP`, a damaged file) asks the system's thumbnailer too: listing WebP by the build
   was refused, a damaged file needs the same way out.
+- **A thumbnail stands as the picture was held, and a drawing is drawn.** The decode asks for the EXIF orientation
+  (`Decode_Options.orient`): classeur showed a phone's photos sideways, while the system's thumbnailers turn them. A
+  JPEG is decoded at the least of 1/2, 1/4, 1/8 that covers the side (`need_side`) when the program has the native
+  decoder. An SVG is drawn by `gt:svg` at the side asked, its texts left out (a worker has no fonts): the system's
+  thumbnailer is often missing for SVG. `File_Thumbnail.picture` is the size shown (turned), not the scaled decode's.
 - **The local work is public: `file_thumbnail_make(path, side, system, allocator)`.** The local source calls it on the
   chores; a program with its own pool of workers (classeur) calls it there, so the rules above are written once.
   `system` false never reads nor writes the system's cache and never runs its thumbnailer: a test, or a program

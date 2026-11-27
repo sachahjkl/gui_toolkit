@@ -25,6 +25,10 @@
   and shows it in `gt:term`'s grid, with the keys and the size of the view sent to it: an agent that logs in through
   a terminal (`gemini`, `claude`, `codex` before their ACP mode works) is logged in inside Tower. The child runs as a
   `process.tree_start` tree, so it ends with the program.
+- **A picture's upload off the interface's thread.** A large picture's premultiplication and copy run on the decode's
+  worker: Direct3D 11 makes the texture with its pixels there (a free-threaded device), wgpu writes it from there
+  (`QueueWriteTexture`); the interface's thread only registers it. The staged upload's 2 ms a frame goes too. Intent:
+  [src/md/features/staged-upload.md](src/md/features/staged-upload.md).
 - **The update of an install for everyone.** The updater downloads and checks as now; "Restart to update" then starts
   the installed program elevated (`--system update <file>`), which checks the signature again with its own key and
   places the file, in one prompt per update. Until then such an install says that an administrator updates it. Intent:

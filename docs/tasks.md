@@ -26,8 +26,8 @@ ui.task(&app.ui, save_work, save_done, new_clone(Save{path = path, text = text})
 | Procedure | |
 |---|---|
 | `task(s, work, done, data, lost = nil)` | `work(data)` on the chores, then `done(data, 0)` on `s`'s thread at its next build (ui.post; the window wakes). Called on the interface's thread. When `s` is destroyed by then, `done` never runs and `lost(data)` does, on the thread that found it out. `done` nil: nothing comes back |
-| `chores()` | the program's pool for that: `CHORES_THREADS` threads, up to `CHORES_GROW` more while some hang; started at its first use |
-| `chores_stop(bound = CHORES_STOP_BOUND)` | at the program's end, before `ui.destroy`: the work waiting runs (its results are posted), then the threads are joined, within `bound` (2 s; 0: no bound). False: a chore that hangs was left to the process's end |
+| `chores()` | the program's pool for that: `CHORES_THREADS` threads, up to `CHORES_GROW` more while some hang; started at its first use, and again at the first use after `chores_stop` |
+| `chores_stop(bound = CHORES_STOP_BOUND)` | at the program's end, before `ui.destroy`: the work waiting runs (its results are posted), then the threads are joined, within `bound` (2 s; 0: no bound). False: a chore that hangs was left to the process's end. While the stop drains, an ask (a chore asking for one more) is refused, as after the end; once it is over, a later task starts the chores again: a second app in the same process (a test after a test) gets its answers |
 
 The data of a task is the caller's until `done` or `lost` runs: allocate it with an allocator other threads may use
 (the heap), not the frame's temporary memory.
@@ -87,4 +87,5 @@ by `Pool_Options.clock` (`poke(p)` after the test moves it): a test drives it in
 
 Tests: `src/tasks/tasks_test.odin` (order, urgent and newest first, the test's clock, a job's merged asks, a held pool
 that grows then shrinks, a stop that hands back what waits), `tests/post/task_test.odin` (a task's result on the
-interface's thread; a task that ends after its State is destroyed).
+interface's thread; a task that ends after its State is destroyed; two apps in turn, each stops the chores, the
+second's task answers; a chore that asks for more during the stop is refused).

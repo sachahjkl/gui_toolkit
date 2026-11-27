@@ -7,10 +7,15 @@ import "base:runtime"
 import "core:encoding/base64"
 import "core:sync"
 import "core:testing"
+import "core:time"
 import image "gt:image"
 import pictures "gt:pictures"
 import png "gt:png"
+import "gt:draw"
+import "gt:render"
+import "gt:tasks"
 import "gt:testkit/session"
+import "gt:ui"
 
 // A PNG file of one colour, w x h.
 @(private = "file")
@@ -156,4 +161,90 @@ prepare_makes_the_file_on_the_chores :: proc(t: ^testing.T) {
 	testing.expect(t, on != 0 && on != sync.current_thread_id(), "prepared on a thread of the chores")
 	testing.expect_value(t, no.state, pictures.Picture_State.Failed)
 	testing.expect_value(t, no.why, pictures.Failure.Unknown_Format)
+}
+
+// A large picture (whole, 1600 x 1200: 7.3 MiB, its mips a third more) is uploaded over several frames when the cache's
+// threshold is under it: Pending through them, then Ready and drawn whole, every band in its place.
+@(test)
+a_large_picture_is_uploaded_over_several_frames :: proc(t: ^testing.T) {
+	Staged :: struct { c: pictures.Cache, ready: bool, p: ^pictures.Picture, frames: int, file: []u8 }
+	st := new(Staged)
+	defer free(st)
+	w, h := 1600, 1200
+	img := image.create(w, h, image.Color{200, 30, 30, 255}, context.temp_allocator)
+	image.fill_rect(img, {0, h / 2, w, h / 2}, image.Color{30, 30, 200, 255})   // (its lower half blue: the last bands)
+	st.file = png.encode(img.pixels, w, h, allocator = context.temp_allocator)
+	build :: proc(s: ^session.Session) {
+		st := (^Staged)(s.user)
+		if !st.ready { return }   // (the session's first frames come before the cache, which needs its renderer)
+		pictures.frame(&st.c)
+		st.p = pictures.get(&st.c, 9, st.file, 0)
+		if st.p != nil && st.p.state == .Pending && st.p.texture != 0 { st.frames += 1 }
+		ui.next({width = ui.px(160), height = ui.px(120)})
+		ui.custom("###picture", proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+			p := (^Staged)(user).p
+			if p != nil && p.state == .Ready { draw.image(dc, p.texture, b.rect) }
+		}, st)
+	}
+	s := session.start(t, {build = build, user = st, size = {320, 240}})
+	// (a band a step: 1600 * 4 bytes a row, 163 rows a band, 8 bands; a budget of nothing writes one a frame)
+	pictures.cache_init(&st.c, s.renderer, s.state, {staged_from_bytes = 1 << 20, upload_budget = 1})
+	defer pictures.cache_destroy(&st.c)
+	st.ready = true
+	session.frame(s)
+	session.wait_until(s, st, proc(s: ^session.Session, st: ^Staged) -> bool { return st.p != nil && st.p.state != .Pending }, "the staged upload")
+	testing.expectf(t, st.p.state == .Ready, "ready: %v %v", st.p.state, st.p.why)
+	// (8 bands, one a frame: the first written when the decode answers, the last at the build that makes it Ready)
+	testing.expectf(t, st.frames >= 4, "uploaded over %d frames", st.frames)
+	testing.expect_value(t, st.p.size, [2]int{w, h})
+	testing.expect_value(t, pictures.held_bytes(&st.c), w * h * 4 + w * h * 4 / 3)
+	session.frame(s)
+	shot := session.capture(s)
+	b := session.get(s, "picture")
+	top := session.pixel(shot, int(b.rect.min.x) + 80, int(b.rect.min.y) + 20)
+	bottom := session.pixel(shot, int(b.rect.min.x) + 80, int(b.rect.min.y) + 100)
+	testing.expectf(t, session.near(top, {200, 30, 30, 255}, 6), "red on top: %v", top)
+	testing.expectf(t, session.near(bottom, {30, 30, 200, 255}, 6), "blue below: %v", bottom)
+}
+
+// Two large pictures whose decodes answer at the same build share that frame's budget: a budget of nothing writes one
+// band in all, not one per answer and one more. A device recovered while they upload (its textures back empty) starts
+// the bands written again from the top; both end Ready.
+@(test)
+large_answers_of_one_build_share_its_upload_budget :: proc(t: ^testing.T) {
+	Two :: struct { c: pictures.Cache, ready: bool, p: [2]^pictures.Picture, file: []u8 }
+	st := new(Two)
+	defer free(st)
+	w, h := 1600, 1200
+	img := image.create(w, h, image.Color{200, 30, 30, 255}, context.temp_allocator)
+	st.file = png.encode(img.pixels, w, h, allocator = context.temp_allocator)
+	build :: proc(s: ^session.Session) {
+		st := (^Two)(s.user)
+		if !st.ready { return }   // (the session's first frames come before the cache, which needs its renderer)
+		pictures.frame(&st.c)
+		st.p[0] = pictures.get(&st.c, 1, st.file, 0)
+		st.p[1] = pictures.get(&st.c, 2, st.file, 0)
+	}
+	s := session.start(t, {build = build, user = st, size = {320, 240}})
+	pictures.cache_init(&st.c, s.renderer, s.state, {staged_from_bytes = 1 << 20, upload_budget = 1})
+	defer pictures.cache_destroy(&st.c)
+	st.ready = true
+	session.frame(s)   // (both asked)
+	// (both decodes answer before the next build: the chores at rest, their answers posted)
+	testing.expect(t, tasks.wait_rest(ui.chores(), 10 * time.Second), "the decodes end")
+	session.frame(s)
+	band := render.UPLOAD_BAND_BYTES / (w * 4)
+	testing.expect(t, st.p[0].state == .Pending && st.p[1].state == .Pending, "both upload in steps")
+	rows := st.p[0].upload.row + st.p[1].upload.row
+	testing.expectf(t, rows == band, "one band at that build for both: %d rows (a band %d)", rows, band)
+
+	session.frame(s)
+	testing.expect_value(t, st.p[0].upload.row, 2 * band)
+	s.renderer.device_generation += 1   // (as a recovered device: its textures came back empty)
+	session.frame(s)
+	testing.expectf(t, st.p[0].upload.row == band, "again from the top: %d rows", st.p[0].upload.row)
+
+	session.wait_until(s, st, proc(s: ^session.Session, st: ^Two) -> bool { return st.p[0].state != .Pending && st.p[1].state != .Pending }, "both uploads")
+	testing.expect(t, st.p[0].state == .Ready && st.p[1].state == .Ready)
+	testing.expect_value(t, pictures.held_bytes(&st.c), 2 * (w * h * 4 + w * h * 4 / 3))
 }

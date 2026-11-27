@@ -21,18 +21,28 @@ import "../tasks"
 CHORES_THREADS :: 2
 CHORES_GROW :: 6
 
-@(private = "file") chores_pool: tasks.Pool
-@(private = "file") chores_once: sync.Once
-@(private = "file") chores_stopped: bool
+// (a pool per start: chores_stop retires the running one and the next use starts another, so a second app in the same
+// process, or a test after a test, gets answers. A retired pool's struct is never freed: a thread that took it before
+// the stop may still call tasks.add on it, which then answers false; a stop that ran out of time leaves its threads on it)
+@(private = "file") chores_lock: sync.Mutex
+@(private = "file") chores_pool: ^tasks.Pool
+// (a stop drains the pool: it stays the one chores gives, refusing, until the stop ends. A chore that asked for another
+// during the drain got a new pool, whose work ran after the program had ended)
+@(private = "file") chores_stopping: bool
 
-// The program's pool for what the interface must not wait for, started at the first call.
+// The program's pool for what the interface must not wait for, started at the first call, and again at the first call
+// after chores_stop.
 chores :: proc() -> ^tasks.Pool {
-	sync.once_do(&chores_once, proc() {
+	sync.lock(&chores_lock)
+	defer sync.unlock(&chores_lock)
+	if chores_pool == nil {
 		context = runtime.default_context()
 		context.allocator = runtime.heap_allocator()
-		tasks.start(&chores_pool, {threads = CHORES_THREADS, grow = CHORES_GROW})
-	})
-	return &chores_pool
+		p := new(tasks.Pool)
+		tasks.start(p, {threads = CHORES_THREADS, grow = CHORES_GROW})
+		chores_pool = p
+	}
+	return chores_pool
 }
 
 // How long a program's end waits for its chores: a chore that hangs (a disk asleep, a share that does not answer) must
@@ -40,13 +50,19 @@ chores :: proc() -> ^tasks.Pool {
 CHORES_STOP_BOUND :: 2 * time.Second
 
 // At the program's end (or a test's): the chores waiting run, then the threads are joined, within `bound` (0: for as
-// long as they take). False: a chore still ran, its thread left to the process's end. A task asked after it runs
-// nothing (its `lost` gets the data).
+// long as they take). False: a chore still ran, its thread left to the process's end. A task asked after it starts the
+// chores again: an app that ends stops only what it asked, never a later app's answers.
 chores_stop :: proc(bound := CHORES_STOP_BOUND) -> (all: bool) {
-	if sync.atomic_load(&chores_stopped) { return true }
-	_ = chores()
-	sync.atomic_store(&chores_stopped, true)
-	return tasks.stop(&chores_pool, bound = bound)
+	sync.lock(&chores_lock)
+	p := chores_pool
+	if p == nil || chores_stopping { sync.unlock(&chores_lock); return true }
+	chores_stopping = true
+	sync.unlock(&chores_lock)
+	all = tasks.stop(p, bound = bound)
+	sync.lock(&chores_lock)
+	chores_pool, chores_stopping = nil, false
+	sync.unlock(&chores_lock)
+	return
 }
 
 // Where the tasks of a State post their results: shared by the State and its tasks (counted), so that a task ending after
@@ -94,9 +110,9 @@ Task :: struct {
 }
 
 // `work(data)` on the chores, then `done(data, 0)` on the interface's thread of `s` at the start of its next build.
-// Call it on that thread. When `s` is destroyed by then (or the chores stopped), `done` never runs: `lost(data)` does,
-// on the thread that found it out, to free the data (nil: nothing). That holds for an answer already queued and not yet
-// run when `s` goes too. `done` nil: nothing comes back.
+// Call it on that thread. When `s` is destroyed by then (or the chores stopped while it waited), `done` never runs:
+// `lost(data)` does, on the thread that found it out, to free the data (nil: nothing). That holds for an answer already
+// queued and not yet run when `s` goes too. `done` nil: nothing comes back.
 task :: proc(s: ^State, work: tasks.Work, done: Post_Proc, data: rawptr, lost: tasks.Work = nil) {
 	b := task_box_of(s)
 	sync.atomic_add(&b.refs, 1)
@@ -105,15 +121,15 @@ task :: proc(s: ^State, work: tasks.Work, done: Post_Proc, data: rawptr, lost: t
 	// (the chores' queue is the process's: it grows in the heap, not in the caller's allocator, which may be a frame's
 	// or a test's tracker)
 	context.allocator = runtime.heap_allocator()
-	if sync.atomic_load(&chores_stopped) || !tasks.add(chores(), task_run, t) { task_end(t, false) }
+	if !tasks.add(chores(), task_run, t) { task_end(t, false) }
 }
 
 // `work(data)` on the chores, nothing posted back (the caller waits on its own condition, with a bound). False: the
-// chores stopped, or refused it; `work` does not run.
+// chores refused it (a stop began meanwhile); `work` does not run.
 @(private)
 chore_add :: proc(work: tasks.Work, data: rawptr) -> bool {
 	context.allocator = runtime.heap_allocator()
-	return !sync.atomic_load(&chores_stopped) && tasks.add(chores(), work, data)
+	return tasks.add(chores(), work, data)
 }
 
 @(private = "file")
@@ -188,7 +204,7 @@ open :: proc(target: string, kind := Open_Kind.Path) {
 		delete(o.target, runtime.heap_allocator())
 		free(o, runtime.heap_allocator())
 	}
-	if sync.atomic_load(&chores_stopped) || !tasks.add(chores(), work, o) {
+	if !tasks.add(chores(), work, o) {
 		delete(o.target, runtime.heap_allocator())
 		free(o, runtime.heap_allocator())
 	}

@@ -1,7 +1,8 @@
 // The thumbnails' cache (ui.Thumb_Cache, src/md/features/thumbnails.md): only the cards built ask, the newest first, a
 // few at a time; an ask whose card is no longer built is dropped; an answer makes the entry Ready, a failure Failed and
 // not asked again; over the count, the least used go, never one built now; a clear drops what was made and keeps the
-// asks out. The local work (file_thumbnail_make) reduces a real PNG without the system.
+// asks out. The local work (file_thumbnail_make) reduces a real PNG without the system, turns a phone's photo as its EXIF
+// orientation says and draws an SVG.
 //   odin test tests/data_views -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package data_views_test
 
@@ -9,6 +10,8 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import exif "gt:exif"
+import image "gt:image"
 import "gt:png"
 import "gt:testkit"
 import "gt:testkit/session"
@@ -262,4 +265,47 @@ a_png_makes_its_thumbnail_without_the_system :: proc(t: ^testing.T) {
 	testing.expect(t, !text_ok, "another type without the system: none")
 	testing.expect(t, ui.file_thumbnail_decodes("a.PNG") == ui.file_thumbnail_decodes("a.png"), "by the extension, its case aside")
 	testing.expect(t, ui.file_thumbnail_decodes("photo.jpg") && !ui.file_thumbnail_decodes("notes.txt"))
+}
+
+// A phone's photo stored lying, its metadata saying to turn it a quarter: its thumbnail stands (classeur showed it
+// sideways), and the picture's size is said turned. An SVG drawing gets a thumbnail drawn at the side asked.
+@(test)
+a_turned_photo_and_a_drawing_make_their_thumbnails :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "thumbnail_turned")
+	// 64 x 32, its left half red and its right half blue, stored lying: shown, 32 wide and 64 tall, red on top
+	stored := image.create(64, 32, {220, 0, 0, 255})
+	defer image.destroy(&stored)
+	image.fill_rect(stored, {32, 0, 32, 32}, {0, 0, 220, 255})
+	jpeg := image.jpeg_encode(stored, 95)
+	defer delete(jpeg)
+	turned, result := exif.set_orientation(jpeg, 6)
+	defer delete(turned)
+	testing.expect_value(t, result, exif.Write_Result.Inserted)
+	path := fmt.tprintf("%s/phone.jpg", dir)
+	testing.expect(t, os.write_entire_file(path, turned) == nil)
+	th, ok := ui.file_thumbnail_make(path, 16, system = false)
+	defer delete(th.rgba)
+	if testing.expect(t, ok, "a turned JPEG is made") {
+		testing.expect_value(t, [2]int{th.width, th.height}, [2]int{8, 16})
+		testing.expect_value(t, th.picture, [2]int{32, 64})
+		top := th.rgba[(1 * th.width + 4) * 4:][:4]
+		bottom := th.rgba[(14 * th.width + 4) * 4:][:4]
+		testing.expectf(t, top[0] > 150 && top[2] < 100, "red on top: %v", top)
+		testing.expectf(t, bottom[2] > 150 && bottom[0] < 100, "blue below: %v", bottom)
+	}
+
+	drawing := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="20" height="20" fill="#00ff00"/></svg>`
+	svg_path := fmt.tprintf("%s/logo.svg", dir)
+	testing.expect(t, os.write_entire_file(svg_path, transmute([]u8)drawing) == nil)
+	testing.expect(t, ui.file_thumbnail_decodes("logo.SVG"))
+	d, d_ok := ui.file_thumbnail_make(svg_path, 64, system = false)
+	defer delete(d.rgba)
+	if testing.expect(t, d_ok, "an SVG is drawn") {
+		testing.expect_value(t, [2]int{d.width, d.height}, [2]int{64, 32})
+		testing.expect_value(t, d.picture, [2]int{40, 20})
+		left := d.rgba[(16 * 64 + 16) * 4:][:4]
+		right := d.rgba[(16 * 64 + 48) * 4:][:4]
+		testing.expect_value(t, [4]u8{left[0], left[1], left[2], left[3]}, [4]u8{0, 255, 0, 255})
+		testing.expect_value(t, right[3], 0)
+	}
 }

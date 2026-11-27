@@ -534,9 +534,9 @@ ui/state.odin tick_origin process  # the clock of the interfaces, started by the
 ui/state.odin build_of thread  # the state whose build is open on this thread
 ui/themes.odin THEMES const  # the toolkit's themes, read only
 ui/themes.odin THEME_MODE_NAMES const  # a table of names, read only
-ui/tasks.odin chores_pool process  # the program's one pool of chores, started once (sync.Once), locked inside
-ui/tasks.odin chores_once process  # starts the chores once
-ui/tasks.odin chores_stopped process  # the chores stopped (atomic)
+ui/tasks.odin chores_lock process  # guards chores_pool
+ui/tasks.odin chores_pool process  # the program's running pool of chores, nil before its first use and after a stop (locked)
+ui/tasks.odin chores_stopping process  # a stop drains the pool, which refuses meanwhile (locked)
 ui/themes.odin FINISH_NAMES const  # a table of names, read only
 ui/views_memory.odin VIEW_AS_NAMES const  # a table of names, read only
 ui/views_memory.odin VIEW_EDGE_NAMES const  # a table of names, read only

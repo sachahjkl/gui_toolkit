@@ -303,8 +303,9 @@ ui.file_dialog(s, .Open, d, done, app, source = &app.source)
 A card without a thumbnail (a folder, a file the source has none of) shows its kind's icon at half the picture's
 height (`table_card_icon_size`), at every card size.
 
-`local_files()`'s, on the chores: PNG, JPEG, BMP, WebP and a GIF's first frame are decoded (`gt:image`) and reduced; a
-picture over `FILE_THUMB_CACHED_BYTES` (2 MiB) is read from the system's cache first (`desktop.thumbnail_cached`) and
+`local_files()`'s, on the chores: PNG, JPEG, BMP, WebP and a GIF's first frame are decoded (`gt:image`), turned as
+their EXIF orientation says and reduced (a JPEG at 1/2, 1/4 or 1/8 when the program has the native decoder); an SVG
+drawing is drawn at the side asked (its texts left out); a picture over `FILE_THUMB_CACHED_BYTES` (2 MiB) is read from the system's cache first (`desktop.thumbnail_cached`) and
 kept there once made (`desktop.thumbnail_store`, Linux); another type, a picture over `FILE_THUMB_DECODE_BYTES`
 (64 MiB), or a picture `gt:image` fails to decode (a WebP in a program built without `IMAGE_WEBP`), gets the system's
 thumbnail (`desktop.thumbnail`: its cache, else its thumbnailer).

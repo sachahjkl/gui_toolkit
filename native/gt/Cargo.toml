@@ -1,4 +1,4 @@
-# The toolkit's one native library: the parts a program needs, by feature (text, mermaid, a11y, webp, pdf), linked as one
+# The toolkit's one native library: the parts a program needs, by feature (text, mermaid, a11y, webp, pdf, filesearch, jpeg), linked as one
 # static library with one copy of Rust's standard library (tools/tk build_native -features:...). Each part stays a crate
 # of its own (native/text, native/mermaid, native/a11y, native/webp): a program with a Rust library of its own builds the
 # crate it needs into it (FONT_NATIVE_LINK=false...), as before.
@@ -20,6 +20,7 @@ a11y = ["dep:gt_a11y"]
 webp = ["dep:gt_webp"]
 pdf = ["dep:gt_pdf"]
 filesearch = ["dep:gt_filesearch"]
+jpeg = ["dep:gt_jpeg"]
 
 [dependencies]
 gt_text = { path = "../text", optional = true }
@@ -28,6 +29,7 @@ gt_a11y = { path = "../a11y", optional = true }
 gt_webp = { path = "../webp", optional = true }
 gt_pdf = { path = "../pdf", optional = true }
 gt_filesearch = { path = "../filesearch", optional = true }
+gt_jpeg = { path = "../jpeg", optional = true }
 
 [profile.release]
 opt-level = 3

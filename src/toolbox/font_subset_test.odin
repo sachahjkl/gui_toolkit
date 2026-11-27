@@ -108,8 +108,10 @@ the_defines_of_the_features :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(feature_defines({}, .Windows, "x")), 0)
 	for target in ([]runtime.Odin_OS_Type{.Windows, .Linux, .Darwin}) {
 		testing.expect(t, slice.equal(feature_defines({.Webp}, target, ""), []string{"-define:IMAGE_WEBP=true"}), "WebP: the same define on every system")
+		testing.expect(t, slice.equal(feature_defines({.Jpeg}, target, ""), []string{"-define:IMAGE_JPEG=true"}), "JPEG: the same define on every system")
 	}
 	testing.expect(t, slice.equal(native_crates({}), []string{"native/text"}))
 	testing.expect(t, slice.equal(native_crates({.Mermaid, .Accessibility}), []string{"native/text", "native/a11y", "native/mermaid"}))
 	testing.expect(t, slice.equal(native_crates({.Webp}), []string{"native/text", "native/webp"}), "WebP: its crate's notices")
+	testing.expect(t, slice.equal(native_crates({.Jpeg}), []string{"native/text", "native/jpeg"}), "JPEG: its crate's notices")
 }

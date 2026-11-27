@@ -1,5 +1,5 @@
 //! The toolkit's native library: each part's `gt_*` functions, exported from this one static library (their crates
-//! mark them `#[no_mangle] pub extern "C"`: linking the crate in keeps them). The parts: text, mermaid, a11y, webp, pdf.
+//! mark them `#[no_mangle] pub extern "C"`: linking the crate in keeps them). The parts: text, mermaid, a11y, webp, pdf, filesearch, jpeg.
 
 #[cfg(feature = "text")]
 pub extern crate gt_text;
@@ -13,3 +13,5 @@ pub extern crate gt_webp;
 pub extern crate gt_pdf;
 #[cfg(feature = "filesearch")]
 pub extern crate gt_filesearch;
+#[cfg(feature = "jpeg")]
+pub extern crate gt_jpeg;

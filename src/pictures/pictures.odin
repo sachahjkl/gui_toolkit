@@ -13,6 +13,7 @@ package tk_pictures
 import "base:runtime"
 import "core:math"
 import "core:sync"
+import "core:time"
 import image "../image"
 import i18n "../i18n"
 import render "../render"
@@ -20,6 +21,7 @@ import ui "../ui"
 
 // The defaults of Options.
 BUDGET_BYTES_DEFAULT :: 96 << 20
+STAGED_FROM_BYTES_DEFAULT :: 16 << 20   // a texture this large and more is uploaded over several frames (render.Upload)
 DECODERS_DEFAULT :: 3
 KEEP_FRAMES_DEFAULT :: 2
 MAX_SIDE_DEFAULT :: 2048
@@ -53,6 +55,7 @@ Picture :: struct {
 	used:    u64,   // the frame it was last asked in
 	serial:  u64,   // its ask: an answer of another ask is dropped
 	bytes:   int,   // what its texture holds
+	upload:  render.Upload,   // a large picture's upload in steps (Pending until done), its pixels (heap) held meanwhile
 }
 
 // What turns the bytes a program has into a picture file, on the chores (get's `prepare`). Thread-safe: no state of
@@ -65,6 +68,10 @@ Options :: struct {
 	decoders:     int,   // decodes at a time (DECODERS_DEFAULT)
 	keep_frames:  int,   // a picture asked this many frames ago is still shown: never dropped (KEEP_FRAMES_DEFAULT)
 	max_side:     int,   // the longest side decoded, below the renderer's largest texture (MAX_SIDE_DEFAULT)
+	// a texture of this many bytes and more is uploaded over several frames, within upload_budget a frame
+	// (STAGED_FROM_BYTES_DEFAULT); a frame never spends more than that and a band on uploads
+	staged_from_bytes: int,
+	upload_budget:     time.Duration,   // (render.UPLOAD_BUDGET_DEFAULT)
 }
 
 // A picture of the cache: the caller's key and the side it is decoded at (0: the whole picture, mipmapped).
@@ -104,6 +111,7 @@ Cache :: struct {
 	queue:     [dynamic]^Job,   // waiting, the last asked at the end
 	decoding:  int,
 	held:      int,        // the bytes of every texture
+	uploads:   [dynamic]Entry_Key,        // the pictures whose upload is in steps, the oldest first
 	dropped:   [dynamic]render.Texture,   // destroyed at the next frame: a build may still draw them
 	link:      ^Link,
 	allocator: runtime.Allocator,
@@ -117,10 +125,13 @@ cache_init :: proc(c: ^Cache, renderer: ^render.Renderer, state: ^ui.State, o :=
 	if c.o.decoders <= 0 { c.o.decoders = DECODERS_DEFAULT }
 	if c.o.keep_frames <= 0 { c.o.keep_frames = KEEP_FRAMES_DEFAULT }
 	if c.o.max_side <= 0 { c.o.max_side = MAX_SIDE_DEFAULT }
+	if c.o.staged_from_bytes <= 0 { c.o.staged_from_bytes = STAGED_FROM_BYTES_DEFAULT }
+	if c.o.upload_budget <= 0 { c.o.upload_budget = render.UPLOAD_BUDGET_DEFAULT }
 	c.most = c.o.max_side
 	if renderer != nil { c.most = min(c.most, render.max_texture_size(renderer)) }
 	c.pictures = make(map[Entry_Key]^Picture, c.allocator)
 	c.queue = make([dynamic]^Job, c.allocator)
+	c.uploads = make([dynamic]Entry_Key, c.allocator)
 	c.dropped = make([dynamic]render.Texture, c.allocator)
 	c.link = new(Link, runtime.heap_allocator())
 	c.link^ = {cache = c, refs = 1}
@@ -131,12 +142,14 @@ cache_destroy :: proc(c: ^Cache) {
 	context.allocator = c.allocator
 	for _, p in c.pictures {
 		if p.texture != 0 { append(&c.dropped, p.texture) }
+		delete(p.upload.pixels, runtime.heap_allocator())
 		free(p)
 	}
 	for j in c.queue { job_free(j) }
 	textures_destroy(c)
 	delete(c.pictures)
 	delete(c.queue)
+	delete(c.uploads)
 	delete(c.dropped)
 	if c.link != nil {
 		c.link.cache = nil
@@ -192,7 +205,34 @@ get :: proc(c: ^Cache, key: u64, data: []u8, need_px: f32, prepare: Prepare = ni
 frame :: proc(c: ^Cache) {
 	c.frame_no += 1
 	textures_destroy(c)
+	uploads_step(c)
 	trim(c)
+}
+
+// The large pictures' uploads go on, the oldest first, within the frame's budget; one that ends is Ready. While some
+// remain, the next frame comes at once. Only frame calls it: one budget a frame for every picture of the cache.
+@(private)
+uploads_step :: proc(c: ^Cache) {
+	if len(c.uploads) == 0 { return }
+	began := time.tick_now()
+	stepped := false
+	for len(c.uploads) > 0 {
+		// (a band at least each frame, whatever the budget: an upload always moves)
+		left := c.o.upload_budget - time.tick_since(began)
+		if stepped && left <= 0 { break }
+		stepped = true
+		ek := c.uploads[0]
+		p, ok := c.pictures[ek]
+		// (dropped, or dropped and asked again: its new ask has no upload of this one's)
+		if !ok || p.upload.texture == 0 { ordered_remove(&c.uploads, 0); continue }
+		if !render.upload_step(c.renderer, &p.upload, left) { break }
+		ordered_remove(&c.uploads, 0)
+		delete(p.upload.pixels, runtime.heap_allocator())
+		p.upload = {}
+		p.state = .Ready
+		c.held += p.bytes
+	}
+	if len(c.uploads) > 0 { ui.wake_within(c.state, 1) }
 }
 
 // The picture of `key` is gone or changed: every size of it leaves the cache (its decodes' answers are dropped).
@@ -243,7 +283,8 @@ decode_run :: proc(data: rawptr) {
 		if !ok { j.format, j.ok = .Unknown, false; return }
 	}
 	img: image.Image
-	img, j.format, j.ok = image.decode(j.data, heap)
+	// (turned as the camera was held, as browsers show a photo; a JPEG at the least scale that covers the class)
+	img, j.format, j.ok = image.decode(j.data, heap, {orient = true, need_side = j.side})
 	if !j.ok { return }
 	if img.width <= 0 || img.height <= 0 {
 		image.destroy(&img, heap)
@@ -280,15 +321,29 @@ decoded :: proc(data: rawptr, _: u64) {
 	}
 	mips := j.entry.side == 0
 	w, h := j.img.width, j.img.height
+	p.size = {w, h}
+	p.bytes = w * h * BYTES_PER_PIXEL
+	if mips { p.bytes += p.bytes / MIP_SHARE_DIVISOR }
+	if w * h * BYTES_PER_PIXEL >= c.o.staged_from_bytes {
+		// (a large picture over several frames: its upload in one would hold the interface's thread for it)
+		u, made := render.upload_begin(c.renderer, j.img.pixels, w, h, mips = mips)
+		if !made {
+			failed(p, .No_Texture)
+			return
+		}
+		p.texture, p.upload = u.texture, u
+		j.img = {}   // (its pixels are the upload's now, freed when it ends)
+		// (its first band at this build's frame, with the others: an answer stepping its own would give each answer of a
+		// build a budget of its own, and five large answers in one build held the thread five budgets)
+		append(&c.uploads, j.entry)
+		return
+	}
 	p.texture = render.create_texture_rgba(c.renderer, w, h, mips = mips)
 	if p.texture == 0 {
 		failed(p, .No_Texture)
 		return
 	}
 	render.update_texture_rgba(c.renderer, p.texture, 0, 0, w, h, j.img.pixels)
-	p.size = {w, h}
-	p.bytes = w * h * BYTES_PER_PIXEL
-	if mips { p.bytes += p.bytes / MIP_SHARE_DIVISOR }
 	p.state = .Ready
 	c.held += p.bytes
 }
@@ -342,7 +397,9 @@ entry_drop :: proc(c: ^Cache, ek: Entry_Key) {
 	if !ok { return }
 	context.allocator = c.allocator
 	if p.texture != 0 { append(&c.dropped, p.texture) }
-	c.held -= p.bytes
+	if p.state == .Ready { c.held -= p.bytes }
+	// (an upload in steps given up: its texture goes with the others, its pixels now)
+	delete(p.upload.pixels, runtime.heap_allocator())
 	delete_key(&c.pictures, ek)
 	free(p)
 }

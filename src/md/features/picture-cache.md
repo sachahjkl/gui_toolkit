@@ -22,7 +22,12 @@ icons; the toolkit's replaces them.
 - **At most `decoders` decodes at a time.** On the chores (`ui.task`): a long list does not take every thread of the
   program.
 - **Upload on the interface's thread.** The worker decodes and resizes; the texture is made when the answer arrives at
-  the next build. The renderer is not shared with the workers.
+  the next build. The renderer is not shared with the workers. A texture of `staged_from_bytes` and more is uploaded
+  over several frames within `upload_budget` (`render.Upload`, [staged-upload.md](staged-upload.md)): the picture stays
+  Pending until its last band, and its bytes count once it is Ready.
+- **Upright, and no larger than the class.** The decode asks for the EXIF orientation (a photo as a browser shows it)
+  and for `need_side`, so a JPEG comes at the least of 1/2, 1/4, 1/8 that covers the class when the program has the
+  native decoder.
 - **The budget.** The bytes of every texture count (width × height × 4, a third more for mipmaps). Over the budget,
   `frame` drops the pictures shown longest ago. It never drops one asked in the last `keep_frames` frames, nor one that
   waits: what is on the screen stays, even over the budget.

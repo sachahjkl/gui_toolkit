@@ -71,6 +71,7 @@ Feature :: enum u8 {
 	Webp,               // WebP read and written (IMAGE_WEBP=true, native/webp): libwebp built into the program, every system
 	Pdf,                // PDF files opened, rendered and written (GT_PDF=true, native/pdf): gt:pdf, hayro built into the program
 	Filesearch,         // fast file search over directory trees (GT_FILESEARCH=true, native/filesearch): gt:filesearch, fff-search built in
+	Jpeg,               // JPEG decoded fast, whole or at 1/2, 1/4, 1/8 (IMAGE_JPEG=true, native/jpeg): zune-jpeg and jpeg-decoder built in
 }
 Features :: bit_set[Feature; u16]
 
@@ -230,6 +231,7 @@ feature_defines :: proc(features: Features, target: runtime.Odin_OS_Type, lucide
 	if .Webp in features { append(&out, "-define:IMAGE_WEBP=true") }
 	if .Pdf in features { append(&out, "-define:GT_PDF=true") }
 	if .Filesearch in features { append(&out, "-define:GT_FILESEARCH=true") }
+	if .Jpeg in features { append(&out, "-define:IMAGE_JPEG=true") }
 	return out[:]
 }
 
@@ -257,6 +259,7 @@ native_crates :: proc(features: Features) -> []string {
 	if .Webp in features { append(&out, "native/webp") }
 	if .Pdf in features { append(&out, "native/pdf") }
 	if .Filesearch in features { append(&out, "native/filesearch") }
+	if .Jpeg in features { append(&out, "native/jpeg") }
 	return out[:]
 }
 
@@ -313,6 +316,7 @@ native_parts :: proc(p: Project, target: runtime.Odin_OS_Type) -> []string {
 	if .Webp in p.features { append(&parts, "webp") }
 	if .Pdf in p.features { append(&parts, "pdf") }
 	if .Filesearch in p.features { append(&parts, "filesearch") }
+	if .Jpeg in p.features { append(&parts, "jpeg") }
 	return parts[:]
 }
 

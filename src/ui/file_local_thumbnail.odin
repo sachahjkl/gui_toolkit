@@ -1,16 +1,20 @@
 package ui
 
-// The local source's thumbnails (src/md/features/thumbnails.md), on the chores: a picture gt:image reads is decoded and
-// reduced (a large one read from the system's cache first, and kept there once made); any other file, or a picture it
-// fails to decode, gets the system's thumbnail (its cache, else its thumbnailer). file_thumbnail_make is that work,
+// The local source's thumbnails (src/md/features/thumbnails.md), on the chores: a picture gt:image reads is decoded,
+// turned as its EXIF orientation says and reduced (a JPEG decoded at 1/2, 1/4 or 1/8 when the native decoder is in; a
+// large one read from the system's cache first, and kept there once made); an SVG drawing is drawn at the side asked;
+// any other file, or a picture it fails to decode, gets the system's thumbnail (its cache, else its thumbnailer). file_thumbnail_make is that work,
 // public: a program with workers of its own makes its thumbnails by the same rules.
 
 import "base:runtime"
 import "core:os"
 import "core:strings"
 import desktop "../desktop"
+import exif "../exif"
 import fsx "../fsx"
 import img "../image"
+import paint "../paint"
+import svg "../svg"
 
 // A larger picture is not decoded here: the system's thumbnail, if it has one.
 FILE_THUMB_DECODE_BYTES :: 64 << 20
@@ -36,12 +40,12 @@ local_thumbnail :: proc(src: ^File_Source, path: string, px: int, reply: File_Re
 	task(reply.state, local_thumb_work, local_thumb_done, j, local_thumb_lost)
 }
 
-// Whether gt:image reads a file of this name (by its extension): a program asks it before it reads a file it means to
-// decode itself (classeur's inspector). (A WebP in a program built without IMAGE_WEBP is listed too: its decode fails
-// and the system is asked, as for a damaged file.)
+// Whether file_thumbnail_make draws a file of this name itself (by its extension: gt:image's pictures, gt:svg's
+// drawings): a program asks it before it reads a file it means to decode itself (classeur's inspector). (A WebP in a
+// program built without IMAGE_WEBP is listed too: its decode fails and the system is asked, as for a damaged file.)
 file_thumbnail_decodes :: proc(name: string) -> bool {
 	switch file_extension(name) {
-	case "png", "jpg", "jpeg", "bmp", "webp", "gif": return true
+	case "png", "jpg", "jpeg", "jpe", "jfif", "bmp", "dib", "webp", "gif", "svg": return true
 	}
 	return false
 }
@@ -77,14 +81,26 @@ file_thumbnail_make :: proc(path: string, side: int, system: bool, allocator := 
 	bytes, read_err := os.read_entire_file(path, a)
 	if read_err != nil { return }
 	defer delete(bytes, a)
-	pic, _, decoded := img.decode(bytes, a)
+	if img.file_format(bytes) == .Unknown && file_extension(path) == "svg" {
+		t, ok = file_thumb_svg(bytes, px, allocator)
+		if !ok && system { return file_thumb_system(path, px, false, allocator) }
+		return
+	}
+	// (turned as the camera was held: a phone's photo stored lying showed sideways; a JPEG at the least scale that still
+	// covers the side)
+	pic, _, decoded := img.decode(bytes, a, {orient = true, need_side = px})
 	if !decoded {
 		// (a WebP in a program built without its decoder, a picture gt:image cannot read: the system may)
 		if system { return file_thumb_system(path, px, false, allocator) }
 		return
 	}
 	defer delete(pic.pixels, a)
-	t.picture = {pic.width, pic.height}
+	// (the picture's own size, turned: a scaled decode is smaller than it)
+	if stored, sized := img.file_dimensions(bytes); sized {
+		t.picture = exif.orientation(bytes) >= 5 ? {stored.y, stored.x} : stored
+	} else {
+		t.picture = {pic.width, pic.height}
+	}
 	w, h := pic.width, pic.height
 	if max(w, h) > px {
 		k := f32(px) / f32(max(w, h))
@@ -98,6 +114,20 @@ file_thumbnail_make :: proc(path: string, side: int, system: bool, allocator := 
 	}
 	if large { _ = desktop.thumbnail_store(path, t.rgba, t.width, t.height) }
 	return t, true
+}
+
+// An SVG drawing drawn with its longer side `side` (its texts left out: no fonts on a worker); `picture`, its viewBox's
+// size.
+@(private = "file")
+file_thumb_svg :: proc(bytes: []u8, side: int, allocator: runtime.Allocator) -> (t: File_Thumbnail, ok: bool) {
+	doc, parsed := svg.parse(string(bytes))
+	if !parsed { return }
+	defer svg.destroy(&doc)
+	longest := max(doc.view[2], doc.view[3])
+	if longest <= 0 { return }
+	c := svg.raster(&doc, f32(side) / longest, nil, {}, allocator = runtime.heap_allocator())
+	defer paint.canvas_destroy(&c)
+	return {rgba = paint.to_rgba8(c, allocator), width = c.width, height = c.height, picture = {int(doc.view[2] + 0.5), int(doc.view[3] + 0.5)}}, true
 }
 
 // The system's thumbnail of `path`: from its cache only (`cached`), or made by its thumbnailer on a miss (the caller's

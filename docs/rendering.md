@@ -124,6 +124,26 @@ system; each dispatches to its backend behind `when USE_WGPU`.
 0x8C; llvmpipe and the like on WebGPU: a CPU adapter). It waits on nothing: WebGPU's names were read when the device was
 made, Direct3D's come from the device's adapter object. The settings' Diagnostics page shows it ([prefs_page.md](prefs_page.md)).
 
+## Staged upload
+
+A large picture's upload (its premultiplication, the copy the driver makes, its mips) took one frame of the interface's
+thread: a 186 MB picture held it 84 to 140 ms on the software device. `render.Upload` spreads it over frames, a band of
+rows (`UPLOAD_BAND_BYTES`, 1 MiB) at a time, as many bands as a frame's budget holds (`UPLOAD_BUDGET_DEFAULT`, 2 ms),
+one at least; the mip chain is made once, after the last band. The same picture then takes 15 to 19 frames of at most
+2.7 ms each. `gt:pictures` does it for every picture of 16 MiB and more ([pictures.md](pictures.md)).
+
+```odin
+u, ok := render.upload_begin(r, pixels, w, h)       // the texture made, nothing written; pixels stay the caller's
+// each frame, on the interface's thread:
+if render.upload_step(r, &u) { ready(u.texture) }   // done: drawable (its mips come before its first draw)
+render.upload_cancel(r, &u)                          // given up: the texture destroyed
+```
+
+The texture must not be drawn before `upload_step` says done: rows past `u.row` are undefined (Direct3D) or zero
+(WebGPU). A device recovered during the upload (`device_generation` changed: the texture came back empty) starts its
+bands again from the top at the next step. What each backend allows off the interface's thread, and why the toolkit spreads instead:
+[src/md/features/staged-upload.md](../src/md/features/staged-upload.md).
+
 ## What differs between the backends
 
 - **Present pacing.** Direct3D uses a DXGI waitable swap chain (a frame-latency object) and DWM timing for the frame

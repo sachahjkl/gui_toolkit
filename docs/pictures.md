@@ -37,7 +37,9 @@ case p.state == .Failed:    ui.label(pictures.failure_words(p.why))
 - **The key is the caller's**: a hash of the bytes, a URL. The first ask of a size copies `data`; later asks may give
   `nil`.
 - **Size classes**: 32, 64, 128 and 256 pixels, then multiples of 256, up to `max_side` and the renderer's largest
-  texture. A picture larger than its class is scaled down to fit it; a smaller one keeps its size.
+  texture. A picture larger than its class is scaled down to fit it; a smaller one keeps its size. A JPEG is decoded
+  at the least scale that still covers its class when the program has the native decoder (`image.Decode_Options.need_side`).
+- **Upright**: a photo is turned as its EXIF orientation says, as a browser shows it.
 - **The pointer** `get` returns stays valid until `forget` of its key or its eviction by `frame`. Take it again at each
   frame; do not keep it.
 - **What is shown stays.** A picture asked in the last `keep_frames` frames is never evicted, even over the budget.
@@ -51,5 +53,7 @@ case p.state == .Failed:    ui.label(pictures.failure_words(p.why))
 | `decoders` | 3 | decodes at a time; the last asked decodes first |
 | `keep_frames` | 2 | a picture asked this many frames ago counts as shown |
 | `max_side` | 2048 | the longest side decoded |
+| `staged_from_bytes` | 16 MiB | a texture this large and more is uploaded over several frames (`render.Upload`): it stays `.Pending` until its last band |
+| `upload_budget` | 2 ms | what a frame spends on those uploads, every picture of the cache together (`frame` steps them, the oldest first; one band at least) |
 
 Call every procedure on the interface's thread of `state`. Nothing in a frame reads a file or decodes.

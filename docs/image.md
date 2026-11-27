@@ -176,14 +176,83 @@ Rules a caller can count on:
 | `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp; `lossless` keeps every pixel. nil in a program built without WebP |
 | `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false in a program built without WebP or when the bytes are not WebP |
 | `webp_available()` | whether the program has WebP: `IMAGE_WEBP`. With `-define:IMAGE_WEBP=true`, `gt:image` links the native library (`build/native/gt_native.lib`, `libgt_native.a` elsewhere) built with the part `webp` (`tk build_native -features:...,webp`): libwebp is inside the program on every system, no DLL beside it and no system libwebp. `toolbox.Feature.Webp` does both. A program with a Rust library of its own builds the crate `native/webp` into it and passes `-define:IMAGE_WEBP_NATIVE_LINK=false`: its `gt_webp_*` functions come from there, as with `FONT_NATIVE_LINK` and `MERMAID_NATIVE_LINK` |
-| `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP, BMP or GIF file, as RGBA8 in the allocator; a GIF's first frame; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP in a program built without WebP |
+| `decode(data, allocator, options) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP, BMP or GIF file, as RGBA8 in the allocator; a GIF's first frame; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, a picture past the options' limits, or a WebP in a program built without WebP |
 | `file_format(data)` | `Png`, `Jpeg`, `Webp`, `Bmp`, `Gif` or `Unknown`, from the signature alone (nothing decoded) |
+| `file_dimensions(data) -> (size, ok)` | the size the header says, as stored (before an orientation), nothing decoded: PNG's IHDR, a JPEG's frame header, WebP's VP8, VP8L or VP8X header, BMP's header, a GIF's canvas (its screen grown to its first frame: `gif.canvas_size`) |
+| `orient(img, o)` | a new picture as the EXIF orientation `o` (1 to 8, `exif.orientation`) says it was held: mirrored, then turned |
+| `decode_bytes(data, scale = 1, turned = false)` | the bytes a decode of that file holds at its peak, from its header (0: no header read): the RGBA, the decoder's own planes, a progressive JPEG's coefficients of the whole picture (2 bytes a sample, whatever the scale), the copies of a turn. What the gate admits and `max_bytes` bounds |
+| `jpeg_native_available()` | whether JPEG is decoded by the native library (`IMAGE_JPEG`) |
 
-A PNG is `gt:png`'s `png.encode`. `decode` reads a PNG with `png.decode`, a JPEG and a BMP with the Odin core's
-`core:image/jpeg` and `core:image/bmp` (the same decoders as the clipboard's), a WebP with libwebp, a GIF with
-`gt:gif`'s `gif.decode` (pure Odin: its first frame on its logical screen, the rest transparent; a canvas past
-`gif.MAX_DECODE_PIXELS` is refused, see [gif.md](gif.md)). A JPEG's EXIF orientation is not applied: the picture comes
-as its pixels are stored. To show a picture smaller, `resize` it after (`.Bilinear` for a thumbnail).
+A PNG is `gt:png`'s `png.encode`. `decode` reads a PNG with `png.decode`, a BMP with the Odin core's `core:image/bmp`
+(the same decoder as the clipboard's), a WebP with libwebp, a GIF with `gt:gif`'s `gif.decode` (pure Odin: its first
+frame on its logical screen, the rest transparent; [gif.md](gif.md) has every frame). A JPEG is the native library's
+(below) when the program has it, else the Odin core's `core:image/jpeg`. To show a picture smaller, `resize` it after
+(`.Bilinear` for a thumbnail).
+
+### Decode_Options
+
+The zero value is the picture as stored, whole, within `DECODE_MAX_PIXELS`, admitted by the process's gate.
+
+| Field | What it does |
+|---|---|
+| `orient` | the EXIF orientation applied ([exif.md](exif.md)): a phone's photo stored lying comes upright |
+| `need_side` | the longest side the caller shows (0: the whole picture). A JPEG decoded by the native library comes at 1/2, 1/4 or 1/8 of its size when that still covers it (`jpeg_scale_for`); the other formats come whole. The caller still resizes to its exact size |
+| `max_pixels` | more pixels (as stored) is refused before any allocation; 0: `DECODE_MAX_PIXELS` |
+| `max_bytes` | more bytes held by the decode (`decode_bytes`) is refused before any allocation; 0: no bound |
+| `gate` | where a large decode waits for its bytes (nil: `decode_gate()`, the process's) |
+
+```odin
+// a viewer's first view of a photo: upright, at the screen's size, the camera's own small JPEG shown meanwhile
+if small := exif.thumbnail(file); small != nil { show_soon(image.decode(small, o = {orient = true})) }
+pic, _, ok := image.decode(file, o = {orient = true, need_side = screen_side})
+```
+
+### Large pictures
+
+`DECODE_MAX_PIXELS` is the Odin core's `MAX_DIMENSIONS` (8192 x 8192, 256 MiB of RGBA): its PNG, JPEG and BMP decoders
+refuse a larger picture whatever the caller asks. A program that shows larger pictures raises both with a define,
+then passes `max_pixels` where it wants more than the default:
+
+```odin
+// the program's tool (toolbox.Project): every odin command of the program gets it, build, test and check
+project.defines = {"-define:MAX_DIMENSIONS=268435456"}   // 16384 x 16384
+```
+
+The native JPEG decoder has no such cap (a JPEG's sides are 16 bits); `max_pixels` and `max_bytes` bound it. A file
+whose native decoder reads another size than its first frame header says (`file_dimensions`) is refused before its
+pixels are allocated.
+
+**The gate.** A process with several decode threads (a cache's decoders, a viewer's, the chores) must not hold several
+large pictures at once: a 200-megapixel photo is 0.8 GB of RGBA. `decode` acquires the bytes it will hold
+(`decode_bytes`) at a `Decode_Gate` before it decodes and gives them back after; a decode waits while the budget is
+taken. Under `GATE_FROM_BYTES` (4 MiB) it never waits: a thumbnail does not queue behind a giant. One decode larger
+than the whole budget is admitted alone, when nothing else is held (`max_bytes` refuses it).
+
+| Call | What it does |
+|---|---|
+| `decode_gate()` | the process's gate (budget `GATE_BUDGET_DEFAULT`, 1 GiB) |
+| `gate_set_budget(g, bytes)` | its budget (0: the default); the decodes that wait look again |
+| `gate_acquire(g, bytes)`, `gate_release(g, bytes)` | what a decoder of its own does around its work (blocks: a worker's call) |
+| `gate_counts(g) -> (held, waiting)` | the bytes held and the decodes waiting |
+
+### Fast JPEG
+
+With `-define:IMAGE_JPEG=true` (`toolbox.Feature.Jpeg`: the define and the part `jpeg` of `tk build_native`), a JPEG
+is decoded by the toolkit's native library (`native/jpeg`): zune-jpeg for a picture at its size, jpeg-decoder's scaled
+IDCT at 1/2, 1/4 or 1/8 of it. Both are pure Rust: no C compiler, no system library. A 24-megapixel photo (6000 x
+4000, 4:2:0, 6.5 MB) at `-o:speed` on one core:
+
+| Decode | Odin core | native |
+|---|---|---|
+| whole (6000 x 4000) | 356 ms | 138 ms |
+| 1/2 (3000 x 2000) | 356 ms, then a resize | 89 ms |
+| 1/4 (1500 x 1000) | 356 ms, then a resize | 79 ms |
+| 1/8 (750 x 500) | 356 ms, then a resize | 78 ms |
+| the camera's own thumbnail (`exif.thumbnail`) | a slice of the file, then a 160 x 120 decode | the same |
+
+A scaled decode never makes the whole picture: 1/8 of 24 MP is 1.5 MB of RGBA, not 96 MB. Without the define, nothing
+is linked and `decode` reads JPEG with the core's decoder, whole. A program with a Rust library of its own carries
+`native/jpeg` in it and passes `-define:IMAGE_JPEG_NATIVE_LINK=false`, as with WebP.
 
 ## How it stays fast
 
@@ -207,4 +276,8 @@ reads each format by its signature (a PNG, a BMP and a GIF pixel for pixel, a JP
 unknown format and a file cut short. The stitcher (`stitch_test.odin`) rebuilds a synthetic page (a sticky header, a
 footer, 770 rows that scroll) exactly from screens at irregular steps, refuses a screen that overlaps too little and
 goes on, reports a repeated screen as the end, stops at `max_height`, aligns a page with blocks of equal rows, and
-takes the smallest move on a page whose rows all repeat.
+takes the smallest move on a page whose rows all repeat. `decode_options_test.odin`: each of the eight orientations
+puts every pixel where the tag says, each format's header gives its size, a picture one pixel past `max_pixels` or
+past `max_bytes` is refused, the gate holds a third decode until one of two gives its bytes back, and the native JPEG
+decoder (`IMAGE_JPEG=true`) reads whole and at 1/2, 1/4, 1/8, each block's colour kept, every cut of a file refused
+or read.

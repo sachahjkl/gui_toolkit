@@ -1,0 +1,26 @@
+# The toolkit's fast JPEG decoder (src/image/jpeg_native.odin): zune-jpeg for a picture at its size, jpeg-decoder's
+# scaled IDCT for 1/2, 1/4 and 1/8 of it (a first view, a thumbnail). Both pure Rust, no C to compile. A part of the one
+# native library (native/gt, feature jpeg: tools/tk build_native -features:jpeg). Versions pinned here and by Cargo.lock;
+# the build runs with --locked. See src/md/features/image-decode.md, "Fast JPEG".
+[package]
+name = "gt_jpeg"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["rlib"]   # (linked into native/gt's static library; its release profile is native/gt's)
+path = "src/lib.rs"
+
+[dependencies]
+zune-jpeg = { version = "=0.5.15", default-features = false, features = ["std", "x86", "neon"] }
+zune-core = { version = "=0.5.3", default-features = false, features = ["std"] }
+jpeg-decoder = { version = "=0.3.2", default-features = false }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+debug = false
+panic = "unwind"

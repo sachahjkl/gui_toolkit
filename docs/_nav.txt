@@ -43,6 +43,7 @@ Widgets and layout
   wheel.md            The wheel and the touchpad
   scroll-bar.md       The scroll bar
   strip.md            Strips: rows of choices that scroll
+  cell-row.md         A row of cells: only those in view built
   scroll-marks.md     Marks on a scroll bar
   find.md             Find in a view
   data-views.md       Tables, graphs and meters
@@ -114,8 +115,9 @@ Frames and threads
   arena.md            arena: lifetimes
   flate.md            flate: DEFLATE streams
   png.md              png: the PNG codec
-  gif.md              gif: animated GIF encoder
+  gif.md              gif: animated GIF encoder and decoder
   image.md            image: transformations of pictures
+  exif.md             exif: a camera's metadata
   pdf.md
 filesearch.md              pdf: open, render and write PDF files
   h264.md             h264: H.264 with the system's encoders
