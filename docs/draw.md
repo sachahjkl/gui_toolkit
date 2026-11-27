@@ -202,6 +202,7 @@ the blend with what is already drawn. `push_layer(dc, bounds, alpha)` is `push_e
 | `filter_drop_shadow(offset, sigma, color)` | `drop-shadow()` | the blurred alpha of what is drawn, moved, in `color`, under it. CSS gives a blur radius: sigma = radius / 2 |
 | `filter_brightness`, `filter_contrast`, `filter_grayscale`, `filter_sepia`, `filter_saturate`, `filter_hue_rotate` (turns), `filter_invert`, `filter_opacity` | the functions of the same name | 4 x 5 color matrices of Filter Effects 1 §13 |
 | `filter_matrix(m)` | `feColorMatrix` | any `Color_Matrix` (row-major 4 x 5 on straight values) |
+| `filter_lut(tex, version)` | `feComponentTransfer` (`table`) | a table per channel on straight sRGB values: levels, gamma, exposure, curves. `tex` is `lut_texture(r, &table)` (`render.LUT_SIZE` RGBA entries: entry i, what each channel's i / 255 becomes; linear between entries), updated by `lut_texture_update`; the program destroys it. `version`: bump it when the table changes under the same texture (a layer kept by `cache_id` is drawn again). `image.lut_*` make the tables, and `image.lut_apply` writes the same one into a picture |
 
 - Colors are filtered **in sRGB**, on straight values for the matrices (each result clamped, so
   `brightness(3) brightness(0.5)` is not the identity) and premultiplied values for blurs, as browsers compute them;

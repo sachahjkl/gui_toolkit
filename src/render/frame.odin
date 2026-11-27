@@ -426,7 +426,7 @@ run_pass :: proc(r: ^Renderer, p: ^Pass) {
 	if r.prof.cur != nil {
 		kind: Gpu_Step
 		switch p.mode {
-		case .Color: kind = .Color
+		case .Color, .Lut: kind = .Color   // (both pointwise colour passes)
 		case .Blur: kind = .Blur
 		case .Downsample: kind = .Downsample
 		case .Shadow: kind = .Shadow

@@ -84,6 +84,23 @@ All in place; alpha stays.
 | `sepia(img)` | CSS's `sepia(1)` |
 | `threshold(img, level)` | white where the luma is `level` or more, else black |
 
+## Tables
+
+A `Lut` (`[256][4]u8`) is a table per channel: entry i is what each channel's value i becomes, red, green, blue,
+alpha. The same table previews on the GPU (`draw.filter_lut` with `draw.lut_texture`, [draw.md](draw.md)) and is
+written into the file here: what the person sees is what the file gets.
+
+| Call | What it gives |
+|---|---|
+| `lut_identity()` | every value as it is |
+| `lut_levels(black, white, gamma, channels)` | `black` and `white` (0..1) stretched to the whole range, then `gamma` (above 1: lighter mid-tones) |
+| `lut_exposure(stops, channels)` | each colour times 2^stops in linear light |
+| `lut_curve(points, channels)` | a smooth curve through the points (input, output, 0..1), monotone between them (no overshoot), flat past the ends |
+| `lut_then(a, b)` | `a`, then `b`, as one table |
+| `lut_apply(img, &l)` | in place: each channel through its table |
+
+`channels` is `LUT_COLORS` (red, green, blue) by default; the alpha is a channel too (`.Alpha`).
+
 ## Filters
 
 - `blur(img, radius)`: a gaussian whose standard deviation is half of `radius`, as a CSS shadow's blur radius. It fades

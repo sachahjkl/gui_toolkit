@@ -20,6 +20,7 @@ Filter_Kind :: enum u8 {
 	Color_Matrix,   // `cm`
 	Blur,           // gaussian, standard deviation `sigma`
 	Drop_Shadow,    // the alpha of the input, blurred (`sigma`), moved by `offset`, in `color`, under the input
+	Lut,            // a table per channel (`lut`): levels, gamma, exposure, curves (filter_lut)
 }
 
 // One filter function. Lengths (sigma, offset) are in the local units of the layer (they follow its transform).
@@ -29,6 +30,29 @@ Filter :: struct {
 	sigma:  f32,
 	offset: Vec2,
 	color:  Color,      // linear, straight alpha, like every color of draw
+	lut:         render.Texture,   // .Lut: lut_texture's
+	lut_version: u64,              // .Lut: the program's count of its table's changes (a layer kept by cache_id is drawn again when it moves)
+}
+
+// A table per channel, applied to straight sRGB values (as the file's 8-bit values are): `lut` is a texture of
+// lut_texture, texel i the value each channel's i / 255 becomes (render.LUT_SIZE texels), linear between them. Levels,
+// gamma, exposure and curves preview on the GPU; image.lut_apply writes the same table into a picture.
+// `version`: bump it when the table changes under the same texture (a layer kept by cache_id is then drawn again).
+filter_lut :: proc(lut: render.Texture, version: u64 = 0) -> Filter { return Filter{kind = .Lut, lut = lut, lut_version = version} }
+
+// A table of render.LUT_SIZE entries as a texture for filter_lut: RGBA, entry i the four channels' values. 0: none
+// could be made. The program destroys it (render.destroy_texture); after a device loss, it uploads it again
+// (lut_texture_update), as an image's.
+lut_texture :: proc(r: ^render.Renderer, table: ^[render.LUT_SIZE][4]u8) -> render.Texture {
+	t := render.create_texture_data(r, render.LUT_SIZE, 1, .RGBA8, mips = false)
+	if t != 0 { lut_texture_update(r, t, table) }
+	return t
+}
+
+// The texture of lut_texture, with another table.
+lut_texture_update :: proc(r: ^render.Renderer, t: render.Texture, table: ^[render.LUT_SIZE][4]u8) {
+	bytes := ([^]u8)(table)[:render.LUT_SIZE * 4]
+	render.update_texture_data(r, t, 0, 0, render.LUT_SIZE, 1, bytes)
 }
 
 filter_matrix :: proc(m: Color_Matrix) -> Filter { return Filter{kind = .Color_Matrix, cm = m} }
@@ -114,6 +138,7 @@ filter_is_identity :: proc(f: Filter) -> bool {
 	case .Color_Matrix: return f.cm == COLOR_MATRIX_IDENTITY
 	case .Blur: return f.sigma <= 0
 	case .Drop_Shadow: return f.color.a <= 0
+	case .Lut: return f.lut == 0
 	}
 	return true
 }
@@ -632,6 +657,13 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 				offset = affine_apply_vector(m, f.offset), color = {render.linear_to_srgb(col.r), render.linear_to_srgb(col.g), render.linear_to_srgb(col.b), clamp(col.a, 0, 1)},
 			})
 			cur, cur_linear = d, false
+		case .Lut:
+			// pointwise: at the scale of its input; the table is src2, read by its own coordinates
+			d, ok := chain_target(&ch, cur.scale, cur.origin)
+			if !ok { failed = true; break }
+			lut := render.Image_Ref{tex = f.lut, size = {render.LUT_SIZE, 1}, scale = 1}
+			append(&ch.passes, render.Pass{mode = .Lut, flags = base | (cur_linear ? render.PASS_IN_LINEAR : 0), src = cur, src2 = lut, dst = d})
+			cur, cur_linear = d, false
 		}
 		i += 1
 	}
@@ -644,7 +676,8 @@ run_filters :: proc(c: ^Context, input: render.Image_Ref, filters: []Filter, m: 
 	last_read := make(map[render.Texture]int, 16, context.temp_allocator)
 	for p, n in ch.passes {
 		if p.src.tex != 0 { last_read[p.src.tex] = n }
-		if p.src2.tex != 0 { last_read[p.src2.tex] = n }
+		// (a table is the program's texture, not a target of the pool: never handed back)
+		if p.src2.tex != 0 && p.mode != .Lut { last_read[p.src2.tex] = n }
 	}
 	for p, n in ch.passes {
 		add_op(c, render.Op{kind = .Pass, dst = p.dst.tex, pass = p})

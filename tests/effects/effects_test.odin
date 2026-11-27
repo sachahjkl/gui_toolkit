@@ -149,6 +149,68 @@ half_gray :: proc() -> int {
 	return int(math.round((1.055 * math.pow(f32(0.5), 1 / 2.4) - 0.055) * 255))
 }
 
+@(private = "file", thread_local)
+current_lut: render.Texture
+
+// A table per channel (draw.filter_lut): each channel of the layer's straight sRGB values through its own column, as
+// image.lut_apply writes them into a file; a translucent layer keeps its colour through the table.
+@(test)
+a_table_maps_each_channel :: proc(t: ^testing.T) {
+	for space in render.Blend_Space {
+		current_space = space
+		f: Fx
+		if !open(&f) { testing.fail_now(t, "no device (WARP, lavapipe)") }
+		defer close(&f)
+		// red inverted, green levels, blue a quarter more light, alpha as it is
+		table: [render.LUT_SIZE][4]u8
+		for &e, i in table {
+			g := clamp((f32(i) - 60) / 130, 0, 1)
+			e = {u8(255 - i), u8(math.round(g * 255)), u8(math.round(clamp(f32(i) * 1.25, 0, 255))), u8(i)}
+		}
+		current_lut = draw.lut_texture(&f.r, &table)
+		if !testing.expect(t, current_lut != 0, "the table's texture") { continue }
+		defer render.destroy_texture(&f.r, current_lut)
+		for alpha in ([]f32{1, 0.5}) {
+			current_filters = {draw.filter_lut(current_lut)}
+			img: []u8
+			if alpha == 1 {
+				img = frame(&f, proc(dc: ^draw.Context) {
+					draw.push_effects(dc, {{16, 16}, {112, 112}}, draw.Layer_Effects{alpha = 1, filters = current_filters})
+					draw.rect(dc, {{16, 16}, {112, 112}}, srgb8(BASE.r, BASE.g, BASE.b))
+					draw.pop_layer(dc)
+				})
+			} else {
+				img = frame(&f, proc(dc: ^draw.Context) {
+					draw.push_effects(dc, {{16, 16}, {112, 112}}, draw.Layer_Effects{alpha = 1, filters = current_filters})
+					c := srgb8(BASE.r, BASE.g, BASE.b)
+					c.a = 0.5
+					draw.rect(dc, {{16, 16}, {112, 112}}, c)
+					draw.pop_layer(dc)
+				}, {0, 0, 0, 1})
+			}
+			want := [4]int{255 - BASE.r, int(table[BASE.g][1]), int(table[BASE.b][2]), 255}
+			got := px(img, 64, 64)
+			if alpha == 1 {
+				testing.expectf(t, close_rgb(got, want, 2), "%v: got %v, want %v", space, got, want)
+				testing.expectf(t, close_rgb(px(img, 4, 4), {255, 255, 255, 255}, 0), "%v: outside the layer untouched", space)
+			} else {
+				// (alpha 0.5 becomes table[128] = 128 / 255: the colour as the table says, over black)
+				a := f32(table[128][3]) / 255
+				over := [4]int{}
+				for k in 0 ..< 3 {
+					v := f32(want[k]) / 255
+					over[k] = int(math.round((space == .Srgb ? v * a : enc(dec(v) * a)) * 255))
+				}
+				testing.expectf(t, close_rgb(got, over, 3), "%v, translucent: got %v, want %v", space, got, over)
+			}
+		}
+		current_filters = nil
+	}
+}
+
+@(private = "file")
+enc :: proc(c: f32) -> f32 { return c <= 0.0031308 ? c * 12.92 : 1.055 * math.pow(c, 1 / 2.4) - 0.055 }
+
 @(test)
 blur_conserves_energy_and_is_symmetric :: proc(t: ^testing.T) {
 	for space in render.Blend_Space {

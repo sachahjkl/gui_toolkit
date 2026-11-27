@@ -196,6 +196,7 @@ cache_full_key :: proc(c: ^Context, caller: u64, filters: []Filter, m: Affine, f
 		h = hash_f32(h, f.sigma)
 		h = hash_f32(hash_f32(h, f.offset.x), f.offset.y)
 		for v in f.color { h = hash_f32(h, v) }
+		h = hash_mix(hash_mix(h, u64(f.lut)), f.lut_version)
 	}
 	h = hash_f32(hash_f32(hash_f32(hash_f32(h, m.a), m.b), m.c), m.d)
 	h = hash_f32(hash_f32(h, frac.x), frac.y)

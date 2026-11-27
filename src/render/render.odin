@@ -282,7 +282,12 @@ Pass_Mode :: enum u32 {
 	             // PASS_MASK_APPLY: out = src (the content, any space) x coverage. Else out = the coverage composited
 	             // with src's alpha (the layers below, PASS_MASK_DEST) by the Mask_Op in flags >> MASK_OP_SHIFT,
 	             // as premultiplied white
+	Lut,         // a table per channel: src2 = LUT_SIZE x 1 raw texels (create_texture_data, .RGBA8), texel i the value
+	             // each channel's i / (LUT_SIZE - 1) becomes, on straight sRGB values; linear between texels
 }
+
+// The entries of a table of the Lut pass, per channel (one texel each, RGBA: the four channels side by side).
+LUT_SIZE :: 256
 PASS_IN_LINEAR :: 1    // src holds linear premultiplied color (the frame, a layer); else sRGB-encoded premultiplied
 PASS_OUT_LINEAR :: 2   // write linear premultiplied color (the end of a chain); else sRGB-encoded premultiplied
 PASS_CLAMP :: 4        // reads past src's valid region repeat its edge (backdrops); else they are transparent

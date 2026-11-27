@@ -10,6 +10,8 @@ const MODE_BLUR: u32 = 1u;
 const MODE_DOWNSAMPLE: u32 = 2u;
 const MODE_SHADOW: u32 = 3u;
 const MODE_MASK: u32 = 4u;
+const MODE_LUT: u32 = 5u;
+const LUT_SIZE: f32 = 256.0;
 const PASS_IN_LINEAR: u32 = 1u;
 const PASS_OUT_LINEAR: u32 = 2u;
 const PASS_CLAMP: u32 = 4u;
@@ -141,6 +143,18 @@ fn ps_fx(@builtin(position) pos: float4) -> @location(0) float4 {
 			c = float4(r, r, r, r);
 		}
 		return c;
+	} else if (pc.mode == MODE_LUT) {
+		// src2: the table, LUT_SIZE x 1 raw texels; a channel's straight value v reads its texel at v (LUT_SIZE - 1),
+		// between two texels the bilinear sampler mixes them: a table of a few hundred entries, a smooth curve
+		c = sample_at(true, tc, pc.src_size, pc.src_dim, lin);
+		var v = float4(0.0, 0.0, 0.0, c.a);
+		if (c.a > 0.0) { v = float4(c.rgb / c.a, c.a); }
+		let u = (saturate(v) * (LUT_SIZE - 1.0) + 0.5) / LUT_SIZE;
+		let r = textureSampleLevel(src2, samp, float2(u.r, 0.5), 0.0).r;
+		let g = textureSampleLevel(src2, samp, float2(u.g, 0.5), 0.0).g;
+		let b = textureSampleLevel(src2, samp, float2(u.b, 0.5), 0.0).b;
+		let a = textureSampleLevel(src2, samp, float2(u.a, 0.5), 0.0).a;
+		c = float4(float3(r, g, b) * a, a);
 	} else {
 		c = sample_at(true, tc, pc.src_size, pc.src_dim, lin);
 		if (pc.mode == MODE_COLOR && pc.matrix_count > 0u) {

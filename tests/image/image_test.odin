@@ -408,3 +408,40 @@ text_is_drawn_at_its_anchor :: proc(t: ^testing.T) {
 	}
 	testing.expectf(t, left > 150 && top > 50, "at the bottom right: from %d, %d", left, top)
 }
+
+// The tables (lut.odin): levels stretch their points to the range and bend the middle by gamma, exposure doubles the
+// light per stop, a curve passes through its points without overshooting, two tables in one, and a table applied to a
+// picture leaves its alpha.
+@(test)
+tables_map_each_channel :: proc(t: ^testing.T) {
+	id := image.lut_identity()
+	testing.expect_value(t, id[77], [4]u8{77, 77, 77, 77})
+
+	lv := image.lut_levels(0.2, 0.8)
+	testing.expect_value(t, lv[51][0], 0)     // (the black point and below: 0)
+	testing.expect_value(t, lv[204][1], 255)  // (the white point and above: 255)
+	testing.expect_value(t, lv[128][2], 128)  // (halfway stays halfway)
+	testing.expect_value(t, lv[200][3], 200)  // (the alpha is not a colour)
+	testing.expect(t, image.lut_levels(gamma = 2)[64][0] > 64, "a gamma above 1 lightens the middle")
+
+	ex := image.lut_exposure(1)
+	// (0.5 in sRGB is 0.214 in light; twice that, 0.428, is 0.686 in sRGB)
+	testing.expectf(t, abs(int(ex[128][0]) - 175) <= 1, "one stop up: %v", ex[128][0])
+	testing.expect_value(t, ex[255][0], 255)
+	testing.expect_value(t, image.lut_exposure(-1)[0][0], 0)
+
+	pts := [][2]f32{{0, 0}, {0.25, 0.5}, {0.75, 0.6}, {1, 1}}
+	cv := image.lut_curve(pts, {.Green})
+	testing.expectf(t, abs(int(cv[64][1]) - 128) <= 1, "through its points: %v", cv[64][1])
+	testing.expect_value(t, cv[64][0], 64)   // (red not asked: unchanged)
+	for i in 1 ..< 256 { if cv[i][1] < cv[i - 1][1] { testing.expectf(t, false, "monotone: %d after %d", cv[i][1], cv[i - 1][1]); break } }
+	for i in 64 ..= 191 { if cv[i][1] < 127 || cv[i][1] > 154 { testing.expectf(t, false, "no overshoot between 0.5 and 0.6: %d at %d", cv[i][1], i); break } }
+
+	both := image.lut_then(lv, ex)
+	testing.expect_value(t, both[128][0], ex[lv[128][0]][0])
+
+	img := picture(2, {{40, 128, 220, 90}, {255, 0, 51, 255}})
+	image.lut_apply(img, &lv)
+	testing.expect_value(t, pixel(img, 0, 0), image.Color{0, 128, 255, 90})
+	testing.expect_value(t, pixel(img, 1, 0), image.Color{255, 0, 0, 255})
+}
