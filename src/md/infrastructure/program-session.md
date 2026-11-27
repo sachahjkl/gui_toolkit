@@ -51,6 +51,11 @@ A tool waits for a condition, with a bound; it never sleeps a guess. The window 
   condition (Playwright's "network idle" has the same shape), not a delay: the wait ends as soon as the picture has
   held that long, and fails at its bound.
 
+A wait's bound is time, but it fails only on a tree built after the bound: the window first makes the builds the wait
+needs to answer (`wait_ripe`). A window stalls at its start (a device made again for its surface, a first frame under
+lavapipe) longer than a wait's bound; the first look after the stall read the tree from before it and failed, while the
+text was on the screen one frame later. A window that never builds again never answers, as it never answers anything.
+
 What no wait can see stays the program's to say: a history of samples that must grow (inspecteur's graphs). A program
 that shows such data in a picture makes it ready at once in its demo mode; the tool does not sleep for it.
 
@@ -61,3 +66,5 @@ that shows such data in a picture makes it ready at once in its demo mode; the t
   port is asked once and passed to the program.
 - Counting a window's chores in flight in `wait_idle`: it would answer more conditions, but it changes what "idle" means
   for every caller of the devtools server; `wait_still` answers the same need from the outside.
+- An empty event injected while a wait is pending, to force builds of a window at rest: the ticker's wake already makes
+  the host loop build a frame (`host_frame` builds on every wake), so a window at rest was never the cause.

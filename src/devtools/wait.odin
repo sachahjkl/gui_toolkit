@@ -12,7 +12,8 @@ import "../ui"
 // Answers that wait for the interface: Toolkit.waitFor (a box there, or gone), Toolkit.waitIdle (nothing moving) and
 // Toolkit.click (the box at rest: a dialog that is still taking its place, centred once it is measured, would take the
 // click on its scrim, which closes it). A script says what it waits for instead of sleeping a guess. Checked at each frame; while one waits, the ticker keeps
-// the window waking, so a timeout comes on time in a program that is not drawing.
+// the window waking, so a timeout comes on time in a program that is not drawing. A timeout never comes before the window
+// made the builds that could answer it (wait_ripe): a window that stalled longer than the wait is judged on a fresh tree.
 
 @(private)
 Wait_Kind :: enum { Box, Idle, Click }
@@ -25,6 +26,7 @@ Wait :: struct {
 	text:     string,
 	gone:     bool,
 	first:    u64,         // the build from which an answer counts: input sent before the wait has been through it
+	ripe:     u64,         // the build until which the time cannot run out: the builds the wait needs to answer
 	seen:     u64,         // the last build looked at (Idle)
 	quiet:    int,         // builds in a row with nothing moving (Idle)
 	deadline: time.Tick,
@@ -59,9 +61,21 @@ wait_add :: proc(srv: ^Server, s: ^ui.State, to: Reply_To, kind: Wait_Kind, p: j
 		params = params,
 		to = hold(to), kind = kind,
 		name = strings.clone(str(p["name"]), h), text = strings.clone(str(p["text"]), h), gone = bool_of(p["gone"]),
-		first = s.build_index + WAIT_BUILDS, seen = s.build_index, timeout = ms,
+		first = s.build_index + WAIT_BUILDS, ripe = wait_ripe(kind, s.build_index), seen = s.build_index, timeout = ms,
 		deadline = time.tick_add(time.tick_now(), time.Duration(ms * f64(time.Millisecond))),
 	})
+}
+
+// The build a wait added after `build` needs to have looked at before it may fail: a window that stalled (its first
+// frames, a slow device) past the deadline is answered from what it shows now, not from the tree it had before the stall.
+@(private)
+wait_ripe :: proc(kind: Wait_Kind, build: u64) -> u64 {
+	switch kind {
+	case .Box:   return build + WAIT_BUILDS
+	case .Idle:  return build + WAIT_BUILDS + IDLE_BUILDS
+	case .Click: return build + 1 + CLICK_REST_BUILDS
+	}
+	return build
 }
 
 @(private)
@@ -90,7 +104,7 @@ waits_poll :: proc(srv: ^Server, s: ^ui.State) {
 		case w.kind == .Click:
 			over = wait_click(srv, s, &w)
 		}
-		if !over && time.tick_diff(now, w.deadline) <= 0 {
+		if !over && time.tick_diff(now, w.deadline) <= 0 && s.build_index >= w.ripe {
 			over = true
 			if w.kind == .Idle {
 				reply(w.to, fmt.tprintf(`{{"idle":false,"build":%d}}`, s.build_index))   // (something moves for good: not an error)
