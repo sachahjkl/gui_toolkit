@@ -30,6 +30,23 @@ fault_arm :: proc(f: Fault, skip := 0, count := 1) {
 	fault_skip[f], fault_count[f], fault_fired_count[f] = skip, count, 0
 }
 
+// The faults armed on a thread, for a thread that works for it: the device made early (preload_device) fails as the
+// thread that asked for it would, or a test of a machine with no device gets one from the preload's thread.
+@(private)
+Fault_Arms :: struct {
+	skip, count: [Fault]int,
+}
+
+@(private)
+fault_arms_get :: proc() -> Fault_Arms {
+	when RENDER_FAULTS { return {fault_skip, fault_count} } else { return {} }
+}
+
+@(private)
+fault_arms_set :: proc(a: Fault_Arms) {
+	when RENDER_FAULTS { fault_skip, fault_count = a.skip, a.count }
+}
+
 // How many calls failed since fault_arm.
 fault_fired :: proc(f: Fault) -> int { return fault_fired_count[f] }
 

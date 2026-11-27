@@ -39,6 +39,7 @@ Device_Preload :: struct {
 	held:   Renderer,               // where the thread makes the device: device and ctx (Direct3D 11), wg (wgpu)
 	done:   proc(user: rawptr),     // preload_device's: called by the thread once the device is made (or failed)
 	user:   rawptr,
+	faults: Fault_Arms,             // the asking thread's (faults.odin: they are per thread), the worker's too
 }
 
 @(private)
@@ -55,6 +56,7 @@ preload_device :: proc(warp := false, done: proc(user: rawptr) = nil, user: rawp
 	if sync.atomic_load(&preload.state) != .Not_Started { return false }
 	preload.warp = warp
 	preload.transparent, preload.space = transparent, space
+	preload.faults = fault_arms_get()
 	preload.done, preload.user = done, user
 	preload.began = time.tick_now()
 	when USE_WGPU { preload.held.wg.shared = new(Wgpu_Shared) }   // (the caller's allocator, as wgpu_create_device's)
@@ -111,6 +113,7 @@ take_preloaded_device :: proc(r: ^Renderer, warp: bool) -> bool {
 
 @(private = "file")
 make_preloaded_device :: proc() {
+	fault_arms_set(preload.faults)
 	ok: bool
 	when USE_WGPU {
 		// (no surface: the window's is made by init. No display either: a GL device made here is surfaceless, and a
