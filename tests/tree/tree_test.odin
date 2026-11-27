@@ -468,7 +468,7 @@ the_acts_copy_duplicate_rename_and_paste_on_the_disk :: proc(t: ^testing.T) {
 	ui.file_tree_set_root(&f.t, dir)
 	s := session.start(t, {build = files_build, user = &f, size = {700, 500}})
 	session.wait_until(s, Wait_Labels{&f, "docs,a.txt"}, labels_are, "the folder listed", BOUND)
-	a_txt := strings.concatenate({dir, "/a.txt"}, context.temp_allocator)
+	a_txt := strings.concatenate({dir, filepath.SEPARATOR_STRING, "a.txt"}, context.temp_allocator)   // (the system's form, as it is copied)
 	// copy the path
 	session.click(s, "lrow_1")
 	session.key(s, .C, {.Alt, .Shift})
