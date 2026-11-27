@@ -15,6 +15,13 @@ room before its first tab ("and the void? wtf").
 
 ## The rule
 
+- **One face, public.** `tab_face(b, on, mark)` applies the look to any box: `tab_box` (the toolkit's rows) is a
+  box and `tab_face`, so a program's own strip (classeur's tabs: a fixed width, drags, drop zones, its own content)
+  draws the same pixels as `ui.tabs` (`tests/scenarios/tab_face_test.odin`), with no second path. `tab_body` and
+  `tab_strip_start` are public with it. `mark`: classeur's accent on the focused panel's tab, drawn inside the
+  shape along its top. Refused: a `tab_box` with options for every program's needs (the box is the program's), the
+  look copied in each program (it drifted with every change of the face).
+
 - **A tab gives way before its strip scrolls.** Its box and body are `children_sum(0)`; its words are sized by
   `tab_title_width`: their own width, cut with an ellipsis down to `TAB_TITLE_LEAST_EM` of text. The strip gives the
   room ([strip.md](strip.md)). A stack of views counts a tab cut to that least, an arrow and its "+" before it shows the

@@ -58,26 +58,42 @@ tab_foot :: proc() -> f32 { return math.round(font_size() * shape_of(.Control) *
 @(private)
 tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
 	s := gs()
-	set_next_axis(.X, .End)   // (its content in tab_body, at its bottom: the visible part of its shape)
+	if !s.has_next { s.next_mod = {} }
 	s.next_mod.width = children_sum(0)
 	s.next_mod.height = pct(1)
-	s.next_mod.radius = 0
-	push_tags(on ? "tab_on" : "tab")
+	s.has_next = true
 	b := build_box(Box_Flags{.Clickable, .Focusable} + flags, id)
+	tab_face(b, on)
+	return b
+}
+
+// The look of a row of tabs' tab on a program's own box `b` (its size, its presses, its drags and its content stay the
+// program's): the chosen tab (`on`) rising out of the strip's line as one shape with its panel, the others a faint
+// outline, the tab's colours whatever tags the box was built under, the focus ring round the visible shape, the box's
+// children laid out in a row at its bottom (their place: tab_body). `mark`: an accent along the chosen tab's top
+// (the panel that has the keyboard; a zero colour: none). Call it right after building the box, in the same build.
+// The strip: tab_strip_draw on it, tab_strip_start before its first tab (docs/widgets.md, "Your own tab strip").
+tab_face :: proc(b: ^Box, on: bool, mark := Color{}) {
+	if b == nil { return }
+	s := gs()
+	push_tags(on ? "tab_on" : "tab")
+	b.tags_key = current_tags_key(s)
+	b.target_bg, b.target_border, b.target_text = color("background"), color("border"), color("text")
 	pop_tags()
+	b.layout_axis, b.cross = .X, .End   // (its content in tab_body, at its bottom: the visible part of its shape)
+	b.radius = 0
 	td := frame_new(Tab_Draw)
-	td^ = {on = on, radius = tab_radius(), foot = tab_foot()}
+	td^ = {on = on, radius = tab_radius(), foot = tab_foot(), mark = mark}
 	b.custom, b.custom_user = tab_draw, td
 	b.ring_at = tab_ring   // (the focus goes round the shape a person sees, not the strip's height)
 	// (a strip's view as wide as its tabs would cut the chosen tab's feet at its ends: its clip lets them out)
 	if on && b.parent != nil && .Clip in b.parent.flags { b.parent.clip_overhang = max(b.parent.clip_overhang, td.foot) }
-	return b
 }
 
 // `if parent(tab) { if tab_body() { ... } }`: the row a tab's content goes in, as tall as the visible part of its shape
 // (the strip's ground shows above the shape), the content centred across it: the words sit in the middle of the shape,
-// not of the strip.
-@(private, require_results, deferred_none = pop_parent)
+// not of the strip. Its width is its content's (it gives way with the tab: children_sum(0)).
+@(require_results, deferred_none = pop_parent)
 tab_body :: proc() -> bool {
 	next({width = children_sum(0), height = pct(1 - TAB_TOP_SHARE)})
 	set_next_axis(.X, .Center)
@@ -98,7 +114,10 @@ tab_title_width :: proc(text: string, pad: f32 = 0, text_pad: f32 = -1) -> Size 
 }
 
 @(private)
-Tab_Draw :: struct { on: bool, radius, foot: f32 }
+Tab_Draw :: struct { on: bool, radius, foot: f32, mark: Color }
+
+// The accent of a marked chosen tab (tab_face's `mark`): logical pixels along its top.
+@(private = "file") TAB_MARK_PX :: 2
 
 // A tab's visible shape for its focus ring: from its top (under the strip's ground) down to the line, its top corners
 // rounded as the shape's.
@@ -159,6 +178,13 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			draw.pop_clip(dc)
 		} else {
 			draw.path_fill(dc, &fill, face)
+		}
+		// (the mark: a band along the top, inside the shape: its rounded corners keep it)
+		if td.mark.a > 0 {
+			draw.push_clip_polygon(dc, fill.points[:])
+			band := max(p, math.round(TAB_MARK_PX * s.scale))
+			draw.rect(dc, {{xl - p, top - p}, {xr + p, top + band}}, td.mark)
+			draw.pop_clip(dc)
 		}
 		// the finish's rim along the inside of its top (machined, edged): the light a raised face catches. (Every stroke here
 		// is opaque, mixed over what it lies on: a translucent path_stroke draws through a layer of its own.)
@@ -221,8 +247,8 @@ tab_line_rect :: proc(b: ^Box, reach: f32) -> Rect {
 @(private)
 tab_strip_inset :: proc() -> f32 { return tab_foot() + math.round(TAB_LINE_LEAD_PX * scale()) }
 
-// Built first in a row of tabs' strip: the room before its first tab.
-@(private)
+// Built first in a row of tabs' strip (a program's own too): the room before its first tab, its left foot's and a short
+// run of the line.
 tab_strip_start :: proc() { spacer(px(tab_strip_inset())) }
 
 // A tab's shape, open, left to right (temp memory): from the line at `x0 - foot` up through a concave fillet tangent to the

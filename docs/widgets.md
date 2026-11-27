@@ -304,6 +304,35 @@ whatever its strictness: it scrolls to what it hides. In a view that scrolls the
 (`Allow_Overflow_X`, `Allow_Overflow_Y`), it is held to that view's room. A wide table in a page that scrolls sideways
 scrolls in its own box, and the page does not scroll for it.
 
+## Your own tab strip
+
+A program whose tabs are its own boxes (a fixed width, a drag that moves or tears off, a drop zone, its own icon, title
+and close) gives them the toolkit's look with three calls; `ui.tabs`, a dock's stack and a stack of views use the same:
+
+```odin
+if ui.strip("###tabs") {
+	ui.parent_box().parent.custom = ui.tab_line_draw    // the line under the strip (a bar of its own: ui.tab_strip_draw)
+	ui.tab_strip_start()                                 // the room before the first tab
+	for &tab, i in app.tabs {
+		ui.next({width = ui.px(tab_w), height = ui.pct(1)})
+		b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###tab_%d", tab.id))
+		ui.tab_face(b, i == app.shown, app.focused == i ? ui.color("accent") : {})
+		if ui.parent(b) { if ui.tab_body() { tab_content(app, &tab) } }   // icon, title (ui.tab_title_width), close
+	}
+}
+```
+
+- `tab_face(b, on, mark)`: the chosen tab (`on`) rises out of the line as one shape with its panel, the others a faint
+  outline; the tab's colours whatever tags `b` was built under; the focus ring round the visible shape; its children
+  in a row at its bottom. `mark`: an accent along the chosen tab's top (the panel that has the keyboard); zero: none.
+  Call it right after building the box. The box's size, presses and drags stay the program's.
+- `tab_body()`: `if ui.parent(tab) { if ui.tab_body() { ... } }`, the row the content goes in, as tall as the visible
+  shape: the words sit in its middle, not in the strip's.
+- `tab_strip_start()`: the room before the first tab (its foot and a short run of the line). `tab_line_draw` draws the
+  line along a box's bottom; `tab_strip_draw` the bar's ground and the line, for a box with `.Draw_Background` and
+  `.Custom_Ground`. `dock_content_inset()`: where the first tab's words start, for a panel lined up with them.
+- `tab_title_width(words)`: the words' width, giving way down to `TAB_TITLE_LEAST_EM` before the strip scrolls.
+
 ## Tool bars (`src/ui/toolbar.odin`)
 
 `if ui.toolbar(id, o) { ... }` is a bar of groups; `if ui.toolbar_group(id, o) { ... }` is one group; the group's block
