@@ -8,6 +8,7 @@ package tree_test
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "core:testing"
 import "core:time"
@@ -336,6 +337,7 @@ labels_are :: proc(s: ^session.Session, w: Wait_Labels) -> bool { return labels(
 
 @(test)
 a_file_tree_lists_a_folder_off_the_interface_thread_and_follows_it :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "b/")
 	write(dir, "a/")
@@ -362,13 +364,15 @@ a_file_tree_lists_a_folder_off_the_interface_thread_and_follows_it :: proc(t: ^t
 	session.wait_until(s, Wait_Labels{&f, "a,>c.txt,>inner.txt,b,file2.txt,file3.txt,file10.txt"}, labels_are, "a file made at the top", BOUND)
 	// a file chosen gives its path
 	session.click(s, "lrow_5")
-	testing.expect(t, len(f.chosen) == 1 && f.chosen[0] == strings.concatenate({dir, "/file3.txt"}, context.temp_allocator))
+	// (in the system's own separator: what a program passes on to it)
+	testing.expect(t, len(f.chosen) == 1 && f.chosen[0] == strings.concatenate({dir, filepath.SEPARATOR_STRING, "file3.txt"}, context.temp_allocator))
 }
 
 // An open folder removed, then made again at its path (a build folder cleaned): its rows come back, and it is
 // followed again.
 @(test)
 an_open_folder_removed_and_made_again_is_followed_again :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "out/")
 	write(dir, "out/old.txt", "x")
@@ -392,6 +396,7 @@ an_open_folder_removed_and_made_again_is_followed_again :: proc(t: ^testing.T) {
 
 @(test)
 a_file_tree_reveals_a_path_in_folders_not_read_yet :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "x/")
 	write(dir, "x/y/")
@@ -418,6 +423,7 @@ row_named :: proc(f: ^Files, label: string) -> string {
 
 @(test)
 the_filter_finds_names_in_folders_not_read_and_gives_back_the_open_folders :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	for rel in ([]string{"a/", "a/inner.txt", "b/", "b/deep/", "b/deep/needle.md", "c.txt", ".git/", "ignored/", "ignored/needle.txt", "keep/", "keep/needle.txt"}) { write(dir, rel, "x") }
 	write(dir, ".gitignore", "ignored/\n")
@@ -453,6 +459,7 @@ the_filter_finds_names_in_folders_not_read_and_gives_back_the_open_folders :: pr
 
 @(test)
 the_acts_copy_duplicate_rename_and_paste_on_the_disk :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "docs/")
 	write(dir, "a.txt", "hello")
@@ -543,6 +550,7 @@ a_name_is_checked_by_each_system_s_rules :: proc(t: ^testing.T) {
 // and "a.txt" are two files.
 @(test)
 a_case_rename_never_replaces_another_file :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "A.txt", "upper")
 	write(dir, "a.txt", "lower")
@@ -574,6 +582,7 @@ a_case_rename_never_replaces_another_file :: proc(t: ^testing.T) {
 // nothing.
 @(test)
 a_folder_s_duplicate_and_a_drop_on_itself :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "v1.2/")
 	write(dir, "v1.2/in.txt", "x")
@@ -599,6 +608,7 @@ a_folder_s_duplicate_and_a_drop_on_itself :: proc(t: ^testing.T) {
 @(test)
 a_refused_move_copies_nothing :: proc(t: ^testing.T) {
 	when ODIN_OS != .Linux { return }
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "into/")
 	write(dir, "locked/")
@@ -627,6 +637,7 @@ a_refused_move_copies_nothing :: proc(t: ^testing.T) {
 
 @(test)
 a_row_dragged_onto_a_folder_moves_its_file :: proc(t: ^testing.T) {
+	crash_reports()
 	dir := testkit.temp_folder(t, "tree")
 	write(dir, "into/")
 	write(dir, "moved.txt", "x")
