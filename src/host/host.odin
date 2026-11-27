@@ -44,6 +44,7 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 import base "../base"
+import debug "../debug"
 import "../draw"
 import "../font"
 import "../platform"
@@ -161,6 +162,7 @@ host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^H
 	h.next, sh.hosts = sh.hosts, h
 	h.last_ms = ui.now_ms()
 	w.user, w.on_frame = h, host_paint
+	debug_attach(h)
 }
 
 // Why host_open returned false (open_error).
@@ -226,7 +228,16 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 	ui.use(&sh.main.state)
 	h.last_ms = ui.now_ms()
 	h.win.user, h.win.on_frame = h, host_paint
+	debug_attach(h)
 	return true
+}
+
+// Every window gets the debug surface in a build that has it: its key, its View tab, the program's panels as tabs
+// (src/md/features/debug-panel.md, "Every window has it"). A program had to register a panel first, and most never
+// did: the key did nothing. A release build without the define compiles this to nothing.
+@(private = "file")
+debug_attach :: proc(h: ^Host) {
+	when debug.ENABLED { _ = debug.attach(&h.state) }
 }
 
 @(private = "file")

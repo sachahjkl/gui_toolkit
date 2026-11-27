@@ -79,8 +79,29 @@ right. The views float it, dock it, send it to a window of its own, resize it an
 - Its body scrolls inside the view.
 - The key is Ctrl+Alt+Shift+D, as the wireframe's W and the exploded view's E, in a build with the devtools.
 
-A window gets the surface when a panel is registered on its State (`debug.panel`), or by `debug.attach`. The surface is
-the debug package's, kept in the State's `debug_hook` (`ui.Debug_Hook`): `ui` reads the key, calls the hook, and
+### Every window has it
+
+Every window that `gt:host` opens has the surface from its open, in a build with the devtools: `host_open` (a
+program's windows, its dialogs that are windows, a view's own window) and `host_adopt` attach it. The key works in
+every program, with the View tab; each panel the program registers adds a tab. Each window has its own surface, its
+own window and its own key. A window opened without `gt:host` gets the surface when a panel is registered on its
+State (`debug.panel`), or by `debug.attach`; a window that `devtools.service` serves gets it too.
+
+Why: the surface came with the first panel, and most programs never registered one. The key did nothing there, and
+the View tab (the wireframe, the exploded view, the frame times) was missing where it was wanted (Tower). The window
+is `gt:host`'s: it opens every window, so the attach is in one place and no program has to remember it.
+
+Refused:
+
+- **An attach at the first key press** (`ui` would make the surface when the key comes): `ui` cannot import `gt:debug`,
+  and the hook is the only link (see below).
+- **An attach in each program's start**: one place to forget per program, and a dialog's window is missed.
+
+The cost: one `Surface` and its View panel per window (a few hundred bytes), made once at the open, freed with the
+State. Nothing per frame while the window is closed (`tests/debug`). A release build without the define compiles the
+attach to nothing (`tests/lean_build`).
+
+The surface is the debug package's, kept in the State's `debug_hook` (`ui.Debug_Hook`): `ui` reads the key, calls the hook, and
 destroys the surface with the State. `ui` cannot import `gt:debug` (that imports `ui`): the hook is the one link. The
 surface allocates with the allocator of the code that made it: a program's tracking allocator sees it.
 
@@ -201,6 +222,23 @@ snapshot.
   allocations and bytes of 30 frames with a panel and without.
 - The window open: the tab shown builds its rows, as any view builds what it shows. A slice shows a bounded number of
   items.
+
+### In a release, by default? (proposed, not decided)
+
+The owner wants the debug window in the programs people use every day: a fault seen in a release is looked at where it
+is, not after a debug build. Measured on `examples/hello` (Linux, `-o:speed`, stripped; hello does not import the
+devtools, so the difference is the debug window, its View tab, the curve editor and the wireframe's and exploded view's
+keys): 34,492,224 bytes without, 36,121,224 with `-define:TOOLKIT_DEVTOOLS=true`: +1,629,000 bytes (+4.7 %). A program
+that imports `gt:devtools` adds its server too (about 350 KB, `src/devtools/devtools.odin`).
+
+The default stays off in a release. The ways open:
+
+- **The define as it is, per program** (today): a program that wants the window in its release builds with
+  `TOOLKIT_DEVTOOLS=true`. It also compiles the devtools' endpoint in; the server stays off until
+  `TOOLKIT_DEVTOOLS=<port>` asks, but a release then answers a variable of the person's environment.
+- **A define of its own** (`TOOLKIT_DEBUG_WINDOW`, on by default in every build): the window and its key in every
+  release, the endpoint still the devtools' define. It costs the 1.6 MB above in every program, and a key that a
+  person can press by chance opens an instrument; it waits for the owner's choice of that cost.
 
 ## Refused
 

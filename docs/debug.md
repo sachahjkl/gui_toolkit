@@ -158,8 +158,9 @@ For a test's pointer: `debug.curve_screen(s, path, {time, value})` is where that
   Its tab comes back when that view closes.
 - The filter field keeps the rows whose sections and label hold each word typed, the words lit as in every filtered
   list.
-- A window gets the surface with its first panel, or with `debug.attach(s)` for the View tab alone. A program served by
-  the devtools has it.
+- Every window that `gt:host` opens has it (`host_open`, `host_adopt`, a view's own window): the key works in every
+  program, with the View tab, and each panel adds a tab. A window opened without `gt:host` gets it with its first
+  panel, or with `debug.attach(s)` for the View tab alone. A window that the devtools serve has it too.
 
 ### A number's field
 
@@ -233,6 +234,7 @@ testing.expect_value(t, debug.set(&s, "Drone/speed", "2.5"), "")
 - A release build (`TOOLKIT_DEVTOOLS` false): every call is empty or returns false (`debug.ENABLED`); the key is not read.
   The curves' model (`curve_eval`, `playback_step`, `curve_text`...) stays: a release plays its curves.
   A release that keeps its panels builds with `-define:TOOLKIT_DEVTOOLS=true`: the devtools come too, their server off
-  until `TOOLKIT_DEVTOOLS=<port>` asks it.
+  until `TOOLKIT_DEVTOOLS=<port>` asks it. The debug window's cost in a release is in the intent
+  ([debug-panel.md](../src/md/features/debug-panel.md), "Cost").
 - The window closed: nothing runs.
 - The window open: the tab shown builds its rows, as any view.
