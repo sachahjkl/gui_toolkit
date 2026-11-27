@@ -312,7 +312,7 @@ rich_cache_key_is_what_the_layout_depends_on :: proc(t: ^testing.T) {
 	for r in ([]^ui.Rich_Run{&a[0], &b[0]}) {
 		r.text = "same"
 		r.font, r.size, r.bold, r.italic, r.code = 0, 0, false, false, false
-		r.color, r.background = {}, {}
+		r.color, r.background, r.edge = {}, {}, {}
 		r.underline, r.strike, r.link = false, false, ""
 	}
 	testing.expect(t, ui.rich_layout_cached(a[:], c, 300) == ui.rich_layout_cached(b[:], c, 300), "the same content, the same layout")
@@ -396,7 +396,8 @@ rich_find_shows_over_inline_code :: proc(t: ^testing.T) {
 	testing.expectf(t, diff > 20, "the match changes the code's background: %v against %v", lit[at:at + 3], plain[at:at + 3])
 }
 
-// The letters of a match read on it in every palette, on the current match and on the others: measured on what is drawn.
+// A match in every palette, measured on what is drawn (src/md/features/find-in-view.md, "The look of a match"): its edge
+// reaches FIND_EDGE_RATIO on the page, the current one's edge twice as thick, and its letters keep their own colour.
 @(test)
 rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 	sync.mutex_lock(&lock)
@@ -406,12 +407,16 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(f), "renderer and fonts") { close(f); return }
 	defer close(f)
 	linear :: proc(v: u8) -> f64 { c := f64(v) / 255; return c <= 0.03928 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4) }
-	luma :: proc(px: []u8, at: int) -> f64 { return 0.2126 * linear(px[at]) + 0.7152 * linear(px[at + 1]) + 0.0722 * linear(px[at + 2]) }
+	luma :: proc(px: []u8, x, y: int) -> f64 {
+		at := (y * SIZE.x + x) * 4
+		return 0.2126 * linear(px[at]) + 0.7152 * linear(px[at + 1]) + 0.0722 * linear(px[at + 2])
+	}
+	ratio :: proc(a, b: f64) -> f64 { return (max(a, b) + 0.05) / (min(a, b) + 0.05) }
 	f.width, f.finding = 400, true
 	defer ui.find_close(&f.s)
 	f.needle = "HH"
 	gold := draw.Color{0.9, 0.75, 0.48, 1}
-	// large letters reach their full colour; those of the text one reads are thin, and what counts
+	gold_luma := f64(ui.luminance(gold))
 	all := ui.theme_palettes(ui.THEMES[:], allocator = context.allocator)
 	defer { for np in all { delete(np.name) }; delete(all) }
 	count := len(all)
@@ -430,20 +435,27 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 		rects := [2]ui.Rect{ms[0].rect, ms[1].rect}
 		px := frame(f, draw_it = true)
 		defer delete(px)
+		mid := int((rects[0].min.y + rects[0].max.y) * 0.5)
+		page := luma(px, 2, mid)   // (left of the paragraph: the page)
 		for r, which in rects {
-			// its background: the top row, above the letters; its letters: the darkest pixel inside
-			bg := luma(px, (int(r.min.y + 1) * SIZE.x + int((r.min.x + r.max.x) * 0.5)) * 4)
-			dark, bright := 1.0, 0.0
-			for y in int(r.min.y) + 3 ..< int(r.max.y) - 3 {   // (inside its rounded corners)
-				for x in int(r.min.x) + 3 ..< int(r.max.x) - 3 {
-					v := luma(px, (y * SIZE.x + x) * 4)
-					dark, bright = min(dark, v), max(bright, v)
-				}
+			kind := which == 0 ? "current" : "other"
+			// the edge: on the middle row, the columns left of the letters' rect (its pixel of room, then the edge)
+			edge, thick := 0.0, 0
+			for x in int(r.min.x) - 5 ..< int(r.min.x) {
+				// (8-bit values: a colour made to reach 3 exactly can land a hair under it)
+				c := ratio(luma(px, x, mid), page)
+				edge = max(edge, c)
+				if c >= f64(ui.FIND_EDGE_RATIO) - 0.1 { thick += 1 }
 			}
-			// (the text's own colour under the dark letters would show at their edges)
-			testing.expectf(t, bright <= bg + 0.01, "%s at %.0f: no halo: %.3f on a background of %.3f", name, size, bright, bg)
-			contrast := (bg + 0.05) / (dark + 0.05)
-			testing.expectf(t, contrast >= 4.5, "%s at %.0f, %s match: contrast %.1f (background %.3f, letters %.3f)", name, size, which == 0 ? "current" : "other", contrast, bg, dark)
+			testing.expectf(t, edge >= f64(ui.FIND_EDGE_RATIO) - 0.1, "%s at %.0f, %s match: the edge %.2f on the page", name, size, kind, edge)
+			testing.expectf(t, thick == (which == 0 ? 2 : 1), "%s at %.0f, %s match: an edge %d px thick", name, size, kind, thick)
+			// the letters in their own colour: large ones reach it (thin ones are blended with what is under them)
+			if size < 48 { continue }
+			nearest := 1.0
+			for y in int(r.min.y) + 3 ..< int(r.max.y) - 3 {
+				for x in int(r.min.x) + 3 ..< int(r.max.x) - 3 { nearest = min(nearest, abs(luma(px, x, y) - gold_luma)) }
+			}
+			testing.expectf(t, nearest <= 0.01, "%s at %.0f, %s match: the letters are not in their own colour (%.3f from it)", name, size, kind, nearest)
 		}
 	}
 }

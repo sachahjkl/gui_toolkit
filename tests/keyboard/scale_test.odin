@@ -77,7 +77,8 @@ sizes_follow_the_scale :: proc(t: ^testing.T) {
 		b := picture(f, dpi, tabs, &off)
 		defer delete(b)
 		n := 0
-		for y in 0 ..< SIZE.y { if differs(a, b, int(8 * dpi), y) { n += 1 } }
+		// (past the first tab's inset from the strip's edge, tab_strip_inset, and its side: inside its padding)
+		for y in 0 ..< SIZE.y { if differs(a, b, int(16 * dpi), y) { n += 1 } }
 		return n
 	}
 	p1, p2 := plate(f, 1), plate(f, 2)
