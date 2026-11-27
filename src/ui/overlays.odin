@@ -694,36 +694,6 @@ modal_end :: proc() {
 	popup_end()
 }
 
-////////////////////////////////
-// Menu bar
-
-// A menu bar entry. Returns the id of its menu, to pass to `menu` (valid for the frame). Clicking toggles the menu; while
-// another bar menu is open, hovering switches to this one.
-menu_bar_button :: proc(id: string) -> string {
-	s := gs()
-	em := font_size()
-	key := key_from_string(parent_box().key, id)
-	menu_id := fmt.tprintf("###menu_bar_%x", u64(key))
-	append(&s.bar_keys, menu_key(menu_id))
-	open := menu_is_open(menu_id)
-	bar_active := false
-	for k in s.bar_keys_prev { if len(s.menus) > 0 && s.menus[0].key == k { bar_active = true } }
-
-	push_tags(open ? "selected" : "ghost_button")
-	next({width = px(font_text_width(id) + em * 1.6), height = px(dense(em * 1.9)), text_align = .Center, radius = em * 0.4})
-	b := build_box({.Clickable, .Draw_Text, .Draw_Hot_Effects, .Draw_Background}, id)
-	pop_tags()
-	a11y_default(parent_box(), {role = .Menu_Bar, orientation = .X})
-	a11y_default(b, {role = .Menu_Item, popup = .Menu, expanded = open})
-	sig := signal(b)
-	if sig.clicked {
-		if open { menu_close() } else { menu_open(menu_id, b.rect, b.key) }
-	} else if sig.hovering && bar_active && !open {
-		menu_open(menu_id, b.rect, b.key)
-	}
-	return menu_id
-}
-
 @(private)
 font_text_width :: proc(text_with_id: string) -> f32 {
 	st := top_style()

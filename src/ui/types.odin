@@ -412,8 +412,7 @@ State :: struct {
 	toast_serial: u64,
 	toast_area:  Rect,
 	toast_area_set: bool,
-	bar_keys:    [dynamic]Key,          // menu bar menus built this frame
-	bar_keys_prev: [dynamic]Key,
+	bar: Menu_Bar_State,                // the menu bar's entries and its keyboard (menu_bar.odin)
 
 	// per build
 	parent_stack: [dynamic]^Box,

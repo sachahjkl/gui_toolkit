@@ -23,6 +23,29 @@ A program's author reads [docs/menus.md](../../../docs/menus.md). This file keep
 - A drop-down opens on its current value (`menu_select`): Enter keeps it while nothing is typed. A letter selects the
   first match instead.
 
+## The menu bar's keys
+
+`menu_bar_button` (`src/ui/menu_bar.odin`) takes the keyboard as Windows' and GTK's bars do: galerie's bar had only the
+pointer, and a person who works with the keys could not reach its menus.
+
+- **Access letters** come from the words: `&` marks one (Windows' and GTK's own mark: "&File", "Ed&it"); without it,
+  the first letter. One way to write it, no option of the call. The letter is underlined while Alt is held, while the bar
+  is lit, and while a menu of the bar opened by the keys is open: the system's rule (underlines only for who uses the
+  keys). Refused: underlined always (noise for the pointer's user), a separate `mnemonic` argument (two places to
+  keep in step).
+- **F10 and Alt alone light the bar** (its first entry): Windows has both, GTK has F10. Alt alone counts only when
+  nothing was pressed while it was down (`alt_alone`, set by the press, cleared by any other key or a press of the
+  pointer, read at its release): Alt+Left is no tap.
+- **The bar has no begin nor end**: the first entry of a build reads the keys against the last build's entries (an
+  entry's box, its menu, its letter). A key that opens a menu sets `bar.open`; that entry opens it when it is built:
+  an entry built before the menu that took the key opens a build later (a frame), with no state of its own across
+  windows.
+- **Left and Right in an open menu of the bar go to the next menu**, not to nothing: before, Left at the top level was
+  swallowed. Right on an item with a submenu still opens it. **Escape** closes the menu and leaves its entry lit, the
+  keys the bar's; a second Escape gives them back (Windows').
+- The implicit state machine: Idle, Lit (`bar.focus`), Open (a menu of the bar); the transitions are in the head of
+  `menu_bar.odin`.
+
 ## Refused
 
 - **A mode where a typed letter selects the next item that starts with it** (`menu_open`'s `search = false`, the tool

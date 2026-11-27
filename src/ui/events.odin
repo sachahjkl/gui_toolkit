@@ -40,6 +40,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	clear(&s.events.consumed)
 	clear(&s.typed)
 	s.typed_mods = {}
+	s.bar.alt_tapped = false
 	clear(&s.mouse_events)
 	clear(&s.pointer_samples)
 	s.mouse_moved = false
@@ -55,6 +56,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 		case .Mouse_Leave:
 			s.mouse_valid = false
 		case .Mouse_Press:
+			s.bar.alt_alone = false
 			s.mouse = e.pos
 			s.mouse_valid = true
 			// the click that ends a latched autoscroll does nothing else
@@ -132,6 +134,9 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 		case .Key_Release:
 			s.mods = e.mods
 			s.keys_held -= {e.key}
+			// (Alt pressed and let go with nothing between: the menu bar's key, menu_bar.odin)
+			if e.key == .Alt && s.bar.alt_alone { s.bar.alt_tapped = true }
+			s.bar.alt_alone = false
 		case .Activate:
 			if s.window != nil && !s.window.active { left = true }
 		case .Frame_Press:
@@ -140,6 +145,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods
 			s.typed_mods += e.mods
 			if e.key != .None { s.keys_held += {e.key} }
+			s.bar.alt_alone = e.key == .Alt && e.mods - {.Alt} == {}
 			if act := zoom_key_action(e.key, e.mods); zoom_keys && act != .None {
 				// the zone that holds the keyboard focus, else the window (zoom-zones.md)
 				if z := zoom_zone_of_focus(s); z != nil {

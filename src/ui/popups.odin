@@ -636,11 +636,14 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 				continue
 			}
 			if lv.filters && menu_query_key(lv, e) { continue }
+			// (a menu of the bar: Left and Right go to the menu beside it, Alt+letter to that letter's: menu_bar.odin)
+			if depth == 0 && menu_bar_menu_key(s, e, valid && items[lv.sel].submenu) { break keys }
 			if e.mods - {.Shift} != {} { continue }
 			#partial switch e.key { case .Down, .Up, .Home, .End, .Page_Up, .Page_Down: lv.reveal = true }
 			#partial switch e.key {
 			case .Escape, .Left:
 				if e.key == .Left && depth == 0 { continue }
+				if depth == 0 { menu_bar_escaped(s) }
 				menu_pop_to(depth)
 				// (the pointer still rests on the row of the submenu just closed: it would open it again at once, and
 				// Escape would seem to do nothing; as the system's menus, it waits for the pointer to move)

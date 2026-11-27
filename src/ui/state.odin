@@ -113,8 +113,8 @@ destroy :: proc(s: ^State) {
 	delete(s.sb_owner)
 	delete(s.reveal_owner)
 	text_reveal_close(s)
-	delete(s.bar_keys)
-	delete(s.bar_keys_prev)
+	delete(s.bar.entries)
+	delete(s.bar.entries_prev)
 	delete(s.parent_stack)
 	delete(s.style_stack)
 	delete(s.tag_stack)
@@ -267,8 +267,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.modals_open, s.modals_built = s.modals_built, s.modals_open
 	clear(&s.modals_built)
 	s.find.waiting = false
-	s.bar_keys, s.bar_keys_prev = s.bar_keys_prev, s.bar_keys
-	clear(&s.bar_keys)
+	s.bar.entries, s.bar.entries_prev = s.bar.entries_prev, s.bar.entries
+	clear(&s.bar.entries)
 	s.has_next = false
 	s.next_mod = {}
 	s.window_size = p.window_size
