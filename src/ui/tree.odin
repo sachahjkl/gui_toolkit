@@ -23,6 +23,7 @@ import "core:math"
 import "core:strings"
 import "../draw"
 import "../platform"
+import turn "../turn"
 
 // A row's parts, in the text's ems: the inset before depth 0's chevron, a level's indent, the chevron's cell, the icon's
 // cell, a row's height in the person's density (a dense scope: dense_row_height).
@@ -404,11 +405,11 @@ tree_row_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 	if !d.branch { return }
 	c := Vec2{r.min.x + d.edge + f32(d.depth) * d.indent + d.chevron * 0.5, (r.min.y + r.max.y) * 0.5}
-	angle := d.turn * math.PI * 0.5
-	co, si := math.cos(angle), math.sin(angle)
-	turn :: proc(p: Vec2, co, si: f32) -> Vec2 { return {p.x * co - p.y * si, p.x * si + p.y * co} }
+	// (a quarter turn from right to down)
+	si, co := turn.sincos(d.turn * 0.25)
+	rotate :: proc(p: Vec2, co, si: f32) -> Vec2 { return {p.x * co - p.y * si, p.x * si + p.y * co} }
 	a := d.arm
-	p0, p1, p2 := turn({-a * 0.5, -a}, co, si), turn({a * 0.5, 0}, co, si), turn({-a * 0.5, a}, co, si)
+	p0, p1, p2 := rotate({-a * 0.5, -a}, co, si), rotate({a * 0.5, 0}, co, si), rotate({-a * 0.5, a}, co, si)
 	draw.line(dc, c + p0, c + p1, d.line * 1.4, d.ink)
 	draw.line(dc, c + p1, c + p2, d.line * 1.4, d.ink)
 }
