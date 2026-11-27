@@ -71,7 +71,14 @@ local_watch_start :: proc(s: ^State) -> ^File_Local_Watch {
 	lw.follows = make(map[u64]Local_Follow, a)
 	lw.box = task_box_of(s)
 	sync.atomic_add(&lw.box.refs, 1)
-	if thread.create_and_start_with_data(lw, local_watch_run, priority = .Low, self_cleanup = true, name = LOCAL_WATCH_THREAD) == nil {
+	// (the thread frees itself with the allocator it was made with, after the State may be gone: the process's heap, not
+	// the caller's, which may be a test's tracker, destroyed by then)
+	started: ^thread.Thread
+	{
+		context.allocator = a
+		started = thread.create_and_start_with_data(lw, local_watch_run, priority = .Low, self_cleanup = true, name = LOCAL_WATCH_THREAD)
+	}
+	if started == nil {
 		delete(lw.follows)
 		local_watch_release(lw)   // (the thread's reference)
 		local_watch_release(lw)

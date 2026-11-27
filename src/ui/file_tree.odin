@@ -542,7 +542,14 @@ file_tree_watch :: proc(t: ^File_Tree) {
 	if !l.watched {
 		l.watched = true
 		sync.atomic_add(&l.refs, 1)
-		if thread.create_and_start_with_data(l, file_tree_watch_run, priority = .Low, self_cleanup = true, name = FILE_TREE_WATCH_THREAD) == nil {
+		// (the thread frees itself with the allocator it was made with, after the tree may be gone: the process's heap,
+		// not the caller's, which may be a test's tracker, destroyed by then; its call went to address 0 on Windows)
+		started: ^thread.Thread
+		{
+			context.allocator = runtime.heap_allocator()
+			started = thread.create_and_start_with_data(l, file_tree_watch_run, priority = .Low, self_cleanup = true, name = FILE_TREE_WATCH_THREAD)
+		}
+		if started == nil {
 			l.watched = false
 			file_tree_link_release(l)
 			return
