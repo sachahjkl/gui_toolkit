@@ -3,6 +3,7 @@ package render
 import "core:math"
 import "core:os"
 import "core:thread"
+import turn "../turn"
 
 // The CPU rasteriser of the CPU stage (cpu_stage.odin, src/md/infrastructure/cpu-first-frames.md): a frame's instances
 // drawn as rect.wgsl's ps_main and slug.wgsl's ps_slug / ps_slug_dual draw them, pixel for pixel, with the same formulas.
@@ -456,9 +457,9 @@ cr_gradient_color :: proc "contextless" (s: ^Cr, p: [2]f32, h: u32) -> (color: [
 	switch space {
 	case 1: rgb = v
 	case 2: rgb = cr_oklab_to_linear(v)
-	case 3: hr := v.z * math.PI / 180; rgb = cr_oklab_to_linear({v.x, v.y * math.cos(hr), v.y * math.sin(hr)})
+	case 3: s_h, c_h := turn.sincos(turn.from_degrees(v.z)); rgb = cr_oklab_to_linear({v.x, v.y * c_h, v.y * s_h})
 	case 4: rgb = cr_lab_to_linear(v)
-	case 5: hr := v.z * math.PI / 180; rgb = cr_lab_to_linear({v.x, v.y * math.cos(hr), v.y * math.sin(hr)})
+	case 5: s_h, c_h := turn.sincos(turn.from_degrees(v.z)); rgb = cr_lab_to_linear({v.x, v.y * c_h, v.y * s_h})
 	case 6: rgb = cr_hsl_to_srgb(v)
 	case 7: rgb = cr_hwb_to_srgb(v)
 	case: rgb = v

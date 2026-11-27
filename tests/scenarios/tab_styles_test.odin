@@ -34,10 +34,12 @@ style_build :: proc(s: ^session.Session) {
 	r := (^Style_Run)(s.user)
 	r.calls = 0
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
-	if !ui.column(id = "###page") { return }
+	in_page := ui.column(id = "###page")
+	if !in_page { return }
 	ui.spacer(ui.px(20))
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
-	if !ui.row(id = "###margin") { return }
+	in_margin := ui.row(id = "###margin")
+	if !in_margin { return }
 	ui.spacer(ui.px(20))
 	o := ui.Tab_Panel_Options{surface = {ground = STYLE_GROUND}, tabs = {style = r.style}}
 	if r.custom {
@@ -308,7 +310,8 @@ tabs_over_scopes_nest :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing
 	build :: proc(s: ^session.Session) {
 		r := (^Scope_Run)(s.user)
 		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
-		if !ui.column(id = "###page") { return }
+		in_page := ui.column(id = "###page")
+		if !in_page { return }
 		if ui.tabs_over(.Header, {ground = STYLE_GROUND}) {
 			ui.next({width = ui.px(400), height = ui.px(160)})
 			if _, ok := ui.tab_panel("###panel", STYLE_TABS[:], nil, &r.sel, {surface = {ground = {0.3, 0.1, 0.1, 1}}, tabs = {style = .Segmented}}); ok {

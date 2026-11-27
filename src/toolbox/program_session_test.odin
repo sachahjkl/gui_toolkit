@@ -1,9 +1,12 @@
 package tk_toolbox
 
+import "core:fmt"
 import "core:net"
+import "core:os"
 import "core:strings"
 import "core:testing"
 import base "../base"
+import testkit "../testkit"
 
 // The port free_port gives is one a listener can take now.
 @(test)
@@ -46,7 +49,11 @@ a_session_without_a_command_does_not_start :: proc(t: ^testing.T) {
 // stays. (base's tests check the whole policy, base.isolated_env)
 @(test)
 a_program_draws_on_lavapipe_unless_it_asks_for_the_gpu :: proc(t: ^testing.T) {
-	desktop := []string{"HOME=/h", "VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json", "VK_ICD_FILENAMES=/n.json", "VK_ADD_DRIVER_FILES=/m.json"}
+	// (a real file on disk: isolated_env keeps nonexistent VK_DRIVER_FILES paths on purpose, as no_graphics's tests do)
+	dir := testkit.temp_folder(t, "program_env")
+	nvidia := fmt.tprintf("%s/nvidia_icd.json", dir)
+	testing.expect(t, os.write_entire_file(nvidia, "{}") == nil, "a driver manifest")
+	desktop := []string{"HOME=/h", fmt.tprintf("VK_DRIVER_FILES=%s", nvidia), "VK_ICD_FILENAMES=/n.json", "VK_ADD_DRIVER_FILES=/m.json"}
 	value :: proc(env: []string, name: string) -> (v: string, n: int) {
 		for e in env {
 			if strings.has_prefix(e, name) && len(e) > len(name) && e[len(name)] == '=' { v, n = e[len(name) + 1:], n + 1 }
@@ -71,7 +78,7 @@ a_program_draws_on_lavapipe_unless_it_asks_for_the_gpu :: proc(t: ^testing.T) {
 
 	gpu := program_env(desktop, 4242, {gpu = true})
 	v, _ = value(gpu, "VK_DRIVER_FILES")
-	testing.expect_value(t, v, "/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json")
+	testing.expect_value(t, v, nvidia)
 	_, n = value(gpu, "VK_LOADER_LAYERS_DISABLE")
 	testing.expect_value(t, n, 0)
 	_, n = value(gpu, "VK_ICD_FILENAMES")

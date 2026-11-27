@@ -22,7 +22,8 @@ face_build :: proc(s: ^session.Session) {
 	r := (^Face_Run)(s.user)
 	em := ui.font_size()
 	ui.next({width = ui.fill(), height = ui.px(math_round(em * 2.4)), axis = .X})
-	if !ui.parent(ui.build_box({}, "###row")) { return }
+	in_row := ui.parent(ui.build_box({}, "###row"))
+	if !in_row { return }
 	if !r.hand {
 		ui.tabs("###tabs", FACE_TABS[:], nil, &r.sel)
 		return

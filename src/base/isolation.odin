@@ -73,22 +73,24 @@ isolated_env :: proc(env: []string, gpu := false) -> []string {
 	return out[:]
 }
 
-// Every path of a ':' list is `ok` or does not exist (and there is one).
+@(private = "file") ISOLATION_PATH_SEP :: ";" when ODIN_OS == .Windows else ":"
+
+// Every path of a path list is `ok` or does not exist (and there is one).
 @(private)
 isolation_all :: proc(list: string, ok: proc(path: string) -> bool) -> bool {
 	if list == "" { return false }
-	for p in strings.split(list, ":", context.temp_allocator) {
+	for p in strings.split(list, ISOLATION_PATH_SEP, context.temp_allocator) {
 		if p == "" { continue }
 		if !ok(p) && isolation_exists(p) { return false }
 	}
 	return true
 }
 
-// None of the folders of a ':' list exists (and there is one): EGL finds no vendor there.
+// None of the folders of a path list exists (and there is one): EGL finds no vendor there.
 @(private)
 isolation_none_exist :: proc(list: string) -> bool {
 	if list == "" { return false }
-	for p in strings.split(list, ":", context.temp_allocator) { if p != "" && isolation_exists(p) { return false } }
+	for p in strings.split(list, ISOLATION_PATH_SEP, context.temp_allocator) { if p != "" && isolation_exists(p) { return false } }
 	return true
 }
 
