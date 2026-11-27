@@ -12,19 +12,22 @@ import "../platform"
 //   steps:  the kinds asked one after the other, files, then text, then an image, each a Clipboard_Data event of a later
 //           build (begin_build takes it); the first that comes is the answer, nothing more is asked;
 //   decode: an image's pixels on the chores when the request asked for them;
-//   take:   paste_answer(key, kinds), in the build of the widget `key`.
+//   take:   paste_answer(key, kinds), in the build of the widget `key`; when no kind asked came, the answer is .Nothing.
 //
 // One paste waits at a time: a new request replaces the one waiting, whose answers (and decode) are then dropped. An
 // answer nobody takes in its build is dropped at the end of the build.
 
 Paste_Kind :: enum u8 {
 	Text,
-	Files,   // absolute paths (a file manager's Copy or Cut)
+	Files,     // absolute paths (a file manager's Copy or Cut)
 	Image,
+	// the answer only: the clipboard held none of the kinds asked (empty, or another kind), so the program can say so.
+	// Asking for it changes nothing; taking it is asking for it in paste_answer's kinds (PASTE_KINDS_ALL has it)
+	Nothing,
 }
 Paste_Kinds :: bit_set[Paste_Kind; u8]
 
-PASTE_KINDS_ALL :: Paste_Kinds{.Text, .Files, .Image}
+PASTE_KINDS_ALL :: Paste_Kinds{.Text, .Files, .Image, .Nothing}
 
 // The order the kinds are asked in, and so which wins: a file manager offers the paths as text too, a spreadsheet's cells
 // come as text and as a picture of them.
@@ -82,8 +85,10 @@ paste_request :: proc(key: Key, kinds := Paste_Kinds{.Text}, decode := false) ->
 		if .Text not_in kinds { return false }
 		if text := s.clipboard_get(); text != "" {
 			p.answer = {kind = .Text, text = strings.clone(text, runtime.heap_allocator())}
-			p.step = .Held
+		} else {
+			p.answer = {kind = .Nothing}
 		}
+		p.step = .Held
 		return true
 	}
 	if s.window == nil { return false }
@@ -111,6 +116,7 @@ paste_ask_from :: proc(s: ^State, p: ^Paste, from: int) -> bool {
 		case .Text:  format = .Text
 		case .Files: format = .Files
 		case .Image: format = .Image
+		case .Nothing: continue   // (never in PASTE_ORDER)
 		}
 		p.id = platform.clipboard_request(s.window, format)
 		if p.id == 0 { break }
@@ -151,9 +157,15 @@ paste_begin_build :: proc(s: ^State, events: []platform.Event) {
 				copy(data, r.data)
 				p.answer = {kind = .Image, image = {data = data, mime = strings.clone(r.mime, h)}}
 			}
+		case .Nothing:
 		}
 		switch {
-		case !got:                         paste_ask_from(s, p, p.at + 1)   // (its answer comes in a later build)
+		case !got:
+			// (the next kind's answer comes in a later build; none left: the clipboard held nothing asked, said now)
+			if !paste_ask_from(s, p, p.at + 1) {
+				p.answer = {kind = .Nothing}
+				p.step = .Ready
+			}
 		case kind == .Image && p.decode:   paste_decode_start(s, p)
 		case:                              p.step = .Ready
 		}

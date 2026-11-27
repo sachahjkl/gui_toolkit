@@ -100,6 +100,25 @@ ctrl_v :: proc(s: ^session.Session) {
 @(private = "file")
 taken_one :: proc(s: ^session.Session, p: ^Paster) -> bool { return p.taken == 1 }
 
+// A clipboard that holds none of the kinds asked answers Nothing, once, so the program can say so; a text field, which
+// takes text only, is left alone.
+@(test)
+an_empty_clipboard_answers_nothing :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s, p := paster_start(t)
+	testing.expect(t, platform.clipboard_set(s.win, {text = "words, no picture"}), "text only")
+	p.ask_view = true
+	session.wait_until(s, p, taken_one, "the answer")
+	testing.expect_value(t, p.last.kind, ui.Paste_Kind.Nothing)
+	session.frames(s, QUIET_FRAMES)
+	testing.expect_value(t, p.taken, 1)
+	testing.expect(t, platform.clipboard_set(s.win, {}), "emptied")
+	session.click(s, "plain")
+	ctrl_v(s)
+	session.frames(s, QUIET_FRAMES)
+	testing.expect_value(t, ui.text_edit_string(&p.plain), "")
+	testing.expect_value(t, p.taken, 1)   // (the field asked: its answer is no one else's)
+}) }
+
 // A file manager's Cut puts the files and their paths as text: the files win, cut, and the editor gets no text.
 @(test)
 files_win_over_their_paths_as_text :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

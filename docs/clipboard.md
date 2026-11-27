@@ -79,7 +79,7 @@ if a, ok := ui.paste_answer(view_key); ok && a.image.rgba != nil { show(a.image.
 |---|---|
 | `paste_request(key, kinds = {.Text}, decode = false) -> bool` | asks for one of `kinds` for the widget `key`; `decode`: an image comes with its pixels. False: no clipboard to ask |
 | `paste_answer(key, kinds = PASTE_KINDS_ALL) -> (Paste_Answer, ok)` | the answer, in the build it is ready, when its kind is in `kinds`; once |
-| `Paste_Answer` | `kind` (`.Text`, `.Files`, `.Image`), `text`, `files` and `cut`, `image` (`data` and `mime` as the clipboard held them; `rgba` and `size` when decoded) |
+| `Paste_Answer` | `kind` (`.Text`, `.Files`, `.Image`; `.Nothing`: the clipboard held none of the kinds asked, so the program can say so, taken when `kinds` has it), `text`, `files` and `cut`, `image` (`data` and `mime` as the clipboard held them; `rgba` and `size` when decoded) |
 | `Text_Edit_Options.paste`, `.paste_decode` | what the editor's Ctrl+V, Shift+Insert and menu ask for (`{}`: text) |
 | `edit_menu(..., paste, paste_decode)`, `edit_paste(owner, kinds, decode)` | the same for a program's own menu of an editor |
 

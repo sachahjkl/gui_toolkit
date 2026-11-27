@@ -33,10 +33,14 @@ This is the rule opencode native had; it moves here unchanged.
 
 The kinds are asked one after the other, in that order, and the next is asked only when the last came empty. Each step
 is a `platform.clipboard_request`, which returns at once; its answer is a `Clipboard_Data` event of a later poll. When
-a kind comes, the paste is decided: nothing more is asked. When none comes, nothing is answered.
+a kind comes, the paste is decided: nothing more is asked. When none comes, the answer is `.Nothing`: galerie's Paste
+with no picture on the clipboard did nothing, and the person could not tell a paste that failed from a key that was not
+read. Refused: no answer (the program cannot say "nothing to paste"), a timeout in the program (it does not know how
+many kinds are asked, nor how slow the owner is). A text field takes text only (`{.Text}`), so its paste of nothing
+stays silent; the program takes `.Nothing` when its kinds have it (`PASTE_KINDS_ALL` does).
 
 ```
-Idle ─request─▶ Asking(Files) ─empty─▶ Asking(Text) ─empty─▶ Asking(Image) ─empty─▶ Idle (no answer)
+Idle ─request─▶ Asking(Files) ─empty─▶ Asking(Text) ─empty─▶ Asking(Image) ─empty─▶ Ready (.Nothing)
                      │ok                    │ok                    │ok
                      ▼                      ▼                      ├─decode─▶ Decoding ─chore done─▶ Ready
                    Ready                  Ready                    ▼
@@ -47,7 +51,7 @@ any state ─request─▶ Asking (the last paste is dropped: its answers and it
 
 - A kind that is not asked is skipped: a text field's paste is one request.
 - A program's own clipboard in memory (`Build_Params.clipboard_get`, a test's) has only text: with it, only `.Text` is
-  answered, at the next build.
+  answered, at the next build; empty, `.Nothing`.
 
 ## One API
 
