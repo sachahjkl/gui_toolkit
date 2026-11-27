@@ -13,6 +13,10 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **A session test's leak count without the D-Bus connection.** `testkit/session` counts the process's D-Bus session
+  connection (`dbus` `conn_linux.odin` hello, `call_linux.odin` `call_wait`) as 4 blocks not freed in the first session of
+  a process. The bus connection is then opened and closed outside the test's count, or left out of it: a program's
+  first session test stops failing on a leak that is not its own.
 - **The update of an install for everyone.** The updater downloads and checks as now; "Restart to update" then starts
   the installed program elevated (`--system update <file>`), which checks the signature again with its own key and
   places the file, in one prompt per update. Until then such an install says that an administrator updates it. Intent:
@@ -123,9 +127,6 @@
 - **A frame scrubber in the debug window.** The last seconds of a program's panel values kept per frame, and a timeline
   to step back and forth through them: a glitch is seen again frame by frame. Intent:
   [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
-- **A curve and keyframe editor in the debug window.** A panel's value animated over time: keyframes on a timeline,
-  Bézier handles dragged, the curve played on the program's object live and printed as Odin source to paste back.
-  Intent: [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
 - **A log console in the debug window.** The program's log (`gt:log`) as a tab: filtered by level and words, the last
   lines kept in a ring, a line's source opened. Intent: [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
 - **A value recorder in the debug window.** Any number of a panel plotted over time on demand, with no

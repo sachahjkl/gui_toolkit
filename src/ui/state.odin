@@ -665,6 +665,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.font = st.font
 	b.font_size = st.font_size
 	b.text_pad = st.text_pad
+	b.dense = s.dense_depth > 0
 	b.text_align = st.text_align
 	b.radius = st.radius
 	// (an instrument's corners are square: dense_scope, a square view, debug-panel.md; a shape's radius, a dot's, stays)
@@ -960,31 +961,56 @@ ease_at :: proc(e: Ease, t: f32) -> f32 {
 		q := -2 * p + 2
 		return 1 - q * q * q / 2
 	case .Sine:   return 0.5 - 0.5 * turn.cos(p * 0.5)
-	case .Emphasized: return cubic_bezier(0.2, 0, 0, 1, p)
+	case .Emphasized: return cubic_bezier_at({0.2, 0, 0, 1}, p)
 	}
 	return p
 }
 
-// The bezier ease from (0,0) to (1,1) with control points (x1, y1), (x2, y2), as CSS's cubic-bezier(): the y of the
-// curve where its x is `p`. x(t) = p is solved for t by Newton's steps, and by bisection when a step leaves the bracket
-// or the slope is flat (x1 or x2 at 0 flattens it at an end).
-@(private)
-cubic_bezier :: proc(x1, y1, x2, y2, p: f32) -> f32 {
+// An ease from (0, 0) to (1, 1) through the control points (x1, y1) and (x2, y2), as CSS's cubic-bezier(). x1 and x2
+// in 0..1 (a time has one value); y1 and y2 free (beyond 0..1: an overshoot). The debug window edits one (debug.easing).
+Cubic_Bezier :: struct { x1, y1, x2, y2: f32 }
+
+// The y of curve `c` where its x is `p` (clamped to 0..1).
+cubic_bezier_at :: proc(c: Cubic_Bezier, p: f32) -> f32 {
 	if p <= 0 { return 0 }
 	if p >= 1 { return 1 }
+	t := f64(bezier_param(c.x1, c.x2, p))
+	u := 1 - t
+	return f32(3 * u * u * t * f64(c.y1) + 3 * u * t * t * f64(c.y2) + t * t * t)
+}
+
+// The parameter t (0..1) where a cubic whose x runs 0, x1, x2, 1 reaches `x`: x(t) = x solved by Newton's steps, and by
+// bisection when a step leaves the bracket or the slope is flat (x1 or x2 at 0 flattens it at an end). x1 and x2 in 0..1.
+// A curve's segment solves its time with it (debug.curve_eval).
+bezier_param :: proc(x1, x2, x: f32) -> f32 {
+	if x <= 0 { return 0 }
+	if x >= 1 { return 1 }
 	at :: proc(a1, a2, t: f64) -> f64 { u := 1 - t; return 3 * u * u * t * a1 + 3 * u * t * t * a2 + t * t * t }
 	slope :: proc(a1, a2, t: f64) -> f64 { u := 1 - t; return 3 * u * u * a1 + 6 * u * t * (a2 - a1) + 3 * t * t * (1 - a2) }
-	X1, X2, x := f64(x1), f64(x2), f64(p)
-	lo, hi, t := 0.0, 1.0, x
+	X1, X2, X := f64(clamp(x1, 0, 1)), f64(clamp(x2, 0, 1)), f64(x)
+	lo, hi, t := 0.0, 1.0, X
 	for _ in 0 ..< 32 {
-		e := at(X1, X2, t) - x
+		e := at(X1, X2, t) - X
 		if abs(e) < 1e-7 { break }
 		if e > 0 { hi = t } else { lo = t }
 		d := slope(X1, X2, t)
 		n := t - e / d
 		t = abs(d) > 1e-6 && n > lo && n < hi ? n : (lo + hi) / 2
 	}
-	return f32(at(f64(y1), f64(y2), t))
+	return f32(t)
+}
+
+// Ease `e` as a cubic-bezier: the start of a program's own (debug.easing's presets). Linear and Emphasized are theirs
+// exactly; Out, In_Out and Sine as CSS approximates them (easeOutCubic, easeInOutCubic, easeInOutSine).
+ease_bezier :: proc(e: Ease) -> Cubic_Bezier {
+	switch e {
+	case .Linear:     return {0, 0, 1, 1}
+	case .Out:        return {0.33, 1, 0.68, 1}
+	case .In_Out:     return {0.65, 0, 0.35, 1}
+	case .Sine:       return {0.37, 0, 0.63, 1}
+	case .Emphasized: return {0.2, 0, 0, 1}
+	}
+	return {0, 0, 1, 1}
 }
 
 // Goes to `target` in `ms` along `ease`: for a change with a beginning and an end, where anim's long tail arrives after the eye
@@ -993,6 +1019,17 @@ cubic_bezier :: proc(x1, y1, x2, y2, p: f32) -> f32 {
 // nothing: the time since the last frame is not part of it. `step_max_ms` bounds what one frame adds to it: a short tween (a dialog's
 // fade) that a late frame would move by a third.
 tween :: proc(key: Key, target: f32, ms: f32, ease: Ease = .Out, initial: Maybe(f32) = nil, step_max_ms: f32 = 0) -> f32 {
+	return tween_run(key, target, ms, ease, nil, initial, step_max_ms)
+}
+
+// tween along a program's own curve (one tuned in the debug window's easing editor): the same runs, its curve the
+// cubic-bezier `curve`.
+tween_curve :: proc(key: Key, target: f32, ms: f32, curve: Cubic_Bezier, initial: Maybe(f32) = nil, step_max_ms: f32 = 0) -> f32 {
+	return tween_run(key, target, ms, .Linear, curve, initial, step_max_ms)
+}
+
+@(private)
+tween_run :: proc(key: Key, target: f32, ms: f32, ease: Ease, curve: Maybe(Cubic_Bezier), initial: Maybe(f32), step_max_ms: f32) -> f32 {
 	s := gs()
 	a, found := s.anims[key]
 	if !found {
@@ -1012,7 +1049,8 @@ tween :: proc(key: Key, target: f32, ms: f32, ease: Ease = .Out, initial: Maybe(
 		// (`step_max_ms`: a late frame moves it by that much at most, not by its whole dt)
 		a.elapsed_s += step_max_ms > 0 ? min(s.dt, step_max_ms / 1000) : s.dt
 		p := min(a.elapsed_s * 1000 / ms, 1)
-		a.value = p >= 1 ? a.to : a.from + (a.to - a.from) * ease_at(ease, p)
+		k := curve != nil ? cubic_bezier_at(curve.?, p) : ease_at(ease, p)
+		a.value = p >= 1 ? a.to : a.from + (a.to - a.from) * k
 		s.anim_busy = true
 	}
 	s.anims[key] = a

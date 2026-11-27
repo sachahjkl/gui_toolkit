@@ -9,8 +9,14 @@ ellipsis opens the whole text.
 
 - The ellipsis of a cut text is a target of its own. The pointer over it is a hand and lights it in the accent colour.
   A click on it opens a **reveal**: a bubble under the ellipsis, with the whole text, selectable, and two small glyphs
-  in its top right corner, Copy and close, without words. The text wraps at `REVEAL_MAX_WIDTH_EM`: a long text makes
-  the bubble taller, not as wide as the window. The bubble is the text's; buttons with words made it heavy.
+  after it, Copy and close, without words. The bubble is the text's; buttons with words made it heavy.
+- **One line for a short text, sized to it.** The text shows at its own face and size, its box as wide as the text and
+  its inset (a box of the text's width alone wrapped "Bézier" into "Bézi / er"); Copy and the cross follow it on its
+  line, a line high, and never take its room. The bubble's padding is the text's inset, as a tooltip's: no spacers
+  around it. Opened from a dense scope (`Box.dense`), the bubble is dense: the dense size and inset, square corners.
+- **A long text wraps between words only**, past `REVEAL_MAX_WIDTH_EM`: it makes the bubble taller, not as wide as
+  the window. A word wider than that widens the bubble to it (`widest_word_cached`), up to the window; never broken
+  inside. Refused: the glyphs only for a long text (one bubble, one look), and over the text (they hid its end).
 - The reveal stays until the person closes it: the cross, Escape, or a press outside it. A tooltip goes when the
   pointer moves; the text must be read, selected and copied at leisure.
 - Every cut single-line text has it, in every program, with no flag. A program does nothing to get it.

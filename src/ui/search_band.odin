@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../draw"
+import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
 
@@ -24,9 +25,18 @@ Search_Band_Options :: struct {
 
 // The search over a list that it filters (a palette, a picker, a menu that searches, a sidebar's filter): a band from
 // edge to edge in a field's background (top_strip_draw), a line under it, a magnifier, the field (`id`), the count.
+// The least width a search band of text size `em` shows its hint whole in: its lead, its glyph, the hint and its inset,
+// and as much again as the lead after it. `f`: the face the band is built in (0: the style's in effect).
+search_band_width :: proc(em: f32, placeholder := "", f: font.Font_Id = 0) -> f32 {
+	hint := placeholder != "" ? placeholder : i18n.tr("Type to search")
+	face := f != 0 ? f : top_style().font
+	return math.ceil(em * (0.8 + 1.2 + 0.8) + text_width(face, em * 1.05, hint) + 2 * math.round(em * 0.4))
+}
+
 // One look wherever a list is searched. Build it first in its box: its top corners are that box's. Its size comes from
 // `next` (default: the whole width, SEARCH_BAND_EM high). The field is a line_edit with no frame of its own; the
 // result is its (focus it with `set_focus(res.box.key)`). Its hint stays while the field is empty, the keyboard in it.
+
 search_band :: proc(id: string, field: ^Line_Edit, o := Search_Band_Options{}) -> (res: Edit_Result) {
 	s := gs()
 	em := font_size()

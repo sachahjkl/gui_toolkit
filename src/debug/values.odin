@@ -36,6 +36,9 @@ Pass :: struct {
 	err:     string,                    // Apply: why the item asked refused (temp)
 	sb:      ^strings.Builder,          // List
 	items:   int,
+	panel:   ^Panel,                    // the panel run
+	acts:    bool,                      // Build: a row of acts is open, the next act goes on it
+	acts_used, acts_room: f32,          // its width taken so far, and its whole width (by the last layout; 0: unknown)
 }
 
 // The pass this thread runs: its procedure's calls find it here.
@@ -46,10 +49,16 @@ Pass :: struct {
 pass_run :: proc(pass: ^Pass, p: ^Panel) {
 	pass.depth = 0
 	pass.keys[0], pass.names[0] = p.key, p.name
+	pass.panel = p
 	was := current
 	current = pass
 	defer current = was
+	if pass.kind == .Build { ui.dense_labels_begin(&p.labels) }
 	p.build(p.data)
+	if pass.kind == .Build {
+		acts_close(pass)
+		ui.dense_labels_end(&p.labels)
+	}
 }
 
 ////////////////////////////////
@@ -162,16 +171,30 @@ plot_numbers :: proc(key: u64, lo, last, hi: f32) {
 // values shown before it (debug-panel.md, "Acts take no arguments").
 act :: proc(label: string) -> (pressed: bool) {
 	when ENABLED {
-		p, key, here := item(label)
+		p, key, here := item(label, act = true)
 		if !here { return }
 		switch p.kind {
 		case .Build:
-			ui.spacer(ui.px(ui.dense_gap()))
-			ui.next({width = ui.fill(), height = ui.px(ui.dense_row_height()), axis = .X, cross = .Center})
-			if ui.row(.Center) {
-				ui.next({width = ui.text_size(ui.font_size()), height = ui.pct(1)})
-				pressed = ui.button(widget_id(key, "act"), shown_label(p, label)).clicked
+			// (acts one after another share a row, as many as it holds, then the next row: Print and Reset side by side,
+			// not a row each for a short button)
+			gap := ui.dense_gap()
+			em := ui.font_size()
+			words := shown_label(p, label)
+			w := ui.text_width(ui.top_style().font, em, words) + 2 * em + 2 * gap
+			if p.acts && p.acts_room > 0 && p.acts_used + gap + w > p.acts_room { acts_close(p) }
+			if !p.acts {
+				ui.spacer(ui.px(gap))
+				ui.next({width = ui.fill(), height = ui.px(ui.dense_row_height()), axis = .X, cross = .Center})
+				row := ui.build_box({}, widget_id(key, "acts"))
+				ui.push_parent(row)
+				p.acts, p.acts_used, p.acts_room = true, 0, row.rect.max.x - row.rect.min.x
+			} else {
+				ui.spacer(ui.px(gap))
+				p.acts_used += gap
 			}
+			ui.next({width = ui.text_size(em), height = ui.pct(1)})
+			pressed = ui.button(widget_id(key, "act"), words).clicked
+			p.acts_used += w
 		case .List:
 			list_open(p, label, "act")
 			strings.write_string(p.sb, "}")
@@ -185,11 +208,20 @@ act :: proc(label: string) -> (pressed: bool) {
 	}
 }
 
+// Ends the row of acts open, if one is.
+@(private)
+acts_close :: proc(p: ^Pass) {
+	if !p.acts { return }
+	ui.pop_parent()
+	p.acts = false
+}
+
 // A line of words in the panel (what a group of values is for). Not in a tool's list.
 note :: proc(words: string) {
 	when ENABLED {
 		p := current
 		if p == nil || p.kind != .Build || p.filter != "" { return }
+		acts_close(p)
 		ui.spacer(ui.px(ui.dense_gap()))
 		ui.next({width = ui.fill(), height = ui.text_size()})
 		if ui.tags("weak") { ui.build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###note", ui.text_shown(words))) }
@@ -205,6 +237,7 @@ section :: proc(label: string, open := true) -> bool {
 		p := current
 		if p == nil || p.depth >= SECTIONS_MAX { return false }
 		key := path_child(p.keys[p.depth], label)
+		if p.kind == .Build { acts_close(p) }
 		if p.kind == .Build && p.filter == "" {
 			sf := p.surface
 			on := sf.opened[key] or_else open
@@ -234,6 +267,7 @@ section_end :: proc(entered: bool) {
 		if !entered { return }
 		p := current
 		p.depth -= 1
+		if p.kind == .Build { acts_close(p) }
 		if p.kind == .Build && p.filter == "" { ui.pop_parent(); ui.pop_parent() }
 	}
 }
@@ -505,12 +539,15 @@ value_text :: proc(key: u64, words: string, width: f32) {
 // An item's start: the pass, its path's hash, and whether this pass deals with it (Build: its label holds the filter;
 // Apply: it is the target).
 @(private)
-item :: proc(label: string) -> (p: ^Pass, key: u64, here: bool) {
+item :: proc(label: string, act := false) -> (p: ^Pass, key: u64, here: bool) {
 	p = current
 	if p == nil { return }
 	key = path_child(p.keys[p.depth], label)
 	switch p.kind {
-	case .Build: here = p.filter == "" || filter_matches(shown_label(p, label), p.filter)
+	case .Build:
+		here = p.filter == "" || filter_matches(shown_label(p, label), p.filter)
+		// (what is not an act ends a row of acts)
+		if here && !act { acts_close(p) }
 	case .List:  here = true
 	case .Apply:
 		here = !p.found && key == p.target
@@ -523,14 +560,19 @@ item :: proc(label: string) -> (p: ^Pass, key: u64, here: bool) {
 @(private, require_results, deferred_out = row_end)
 row_start :: proc(p: ^Pass, label: string, key: u64, height: f32 = 0) -> bool {
 	ui.spacer(ui.px(ui.dense_gap()))
-	// (a column of labels as wide at every depth of sections: the fields line up)
-	em := ui.font_size()
-	// (with a filter, a label says its sections too: a wider column)
-	width := p.filter == "" ? math.round(em * LABEL_EM) - f32(p.depth) * math.round(em * ui.DENSE_INDENT_EM) : math.round(em * LABEL_FILTERED_EM)
 	shown := shown_label(p, label)
 	ranges := p.filter != "" ? ui.word_ranges(shown, p.filter) : nil
-	ui.dense_row_open(shown, widget_id(key, "row"), max(width, em * 2), ranges, height)
+	ui.dense_row_open(shown, widget_id(key, "row"), row_label_width(p, shown), ranges, height)
 	return true
+}
+
+// The labels' column of a row at the pass's depth: the panel's longest label's width (ui.Dense_Labels), less the
+// sections' indent, so the fields of every depth line up on one edge; with a filter, a label says its sections too and
+// is not indented.
+@(private)
+row_label_width :: proc(p: ^Pass, label: string) -> f32 {
+	indent := p.filter == "" ? f32(p.depth) * math.round(ui.font_size() * ui.DENSE_INDENT_EM) : 0
+	return ui.dense_label_column(&p.panel.labels, label, indent)
 }
 
 // Whether a row's words (its sections and its label) hold each word of the filter, in any case: as a settings page
@@ -542,9 +584,6 @@ filter_matches :: proc(words, filter: string) -> bool {
 	return true
 }
 
-// The labels' column of a panel, in its text's sizes; with a filter.
-@(private) LABEL_EM :: 7
-@(private) LABEL_FILTERED_EM :: 11
 
 @(private)
 row_end :: proc(ok: bool) { if ok { ui.pop_parent() } }

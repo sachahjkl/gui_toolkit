@@ -88,6 +88,9 @@ SHOWCASE_SHOTS := []Shot {
 	// (examples/debug_panel: the drone and its panel in the debug window, the time held)
 	{name = "debug_panel", example = "debug_panel", args = {"--headless", "--still", "--debug"}, webp = true},
 	{name = "debug_panel_light", example = "debug_panel", args = {"--headless", "--still", "--debug", "--theme=Glacier", "--light"}, webp = true},
+	// (its Flight panel: the drone's curves and its landing's easing)
+	{name = "debug_curves", example = "debug_panel", args = {"--headless", "--still", "--debug=Flight"}, webp = true},
+	{name = "debug_curves_light", example = "debug_panel", args = {"--headless", "--still", "--debug=Flight", "--theme=Glacier", "--light"}, webp = true},
 }
 
 SHOTS := []Shot {

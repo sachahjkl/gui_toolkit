@@ -43,6 +43,22 @@ no_debug_panels_without_the_define :: proc(t: ^testing.T) {
 	testing.expect_value(t, probe.runs, 0)
 }
 
+// Without the endpoint, the curve editor is compiled out, and a curve still plays: a release animates with it
+// (src/md/features/curve-editor.md).
+@(test)
+a_curve_plays_without_the_editor :: proc(t: ^testing.T) {
+	c: debug.Curve
+	debug.curve_insert(&c, {time = 0, value = 0, interp = .Linear})
+	debug.curve_insert(&c, {time = 2, value = 4})
+	testing.expect(t, !debug.curve("hover", &c))
+	easing := ui.ease_bezier(.Out)
+	testing.expect(t, !debug.easing("land", &easing))
+	play := debug.Playback{}
+	testing.expect_value(t, debug.playback_step(&play, 0.5, debug.curve_span(c)), 0.5)
+	testing.expect_value(t, debug.curve_eval(c, play.time), 1)
+	testing.expect(t, strings.has_prefix(debug.curve_text(c), "debug.Curve{count = 2, keys = {0 = {time = 0, value = 0, interp = .Linear}"))
+}
+
 // Without the fallback fonts, their data is empty and a missing system font is not replaced.
 @(test)
 no_fallback_fonts_without_the_define :: proc(t: ^testing.T) {

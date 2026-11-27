@@ -36,7 +36,8 @@ debug_command :: proc(sb: ^strings.Builder, s: ^ui.State, method: string, p: jso
 @(private)
 debug_attach :: proc(s: ^ui.State) { _ = debug.attach(s) }
 
-// A JSON value as the text debug.set reads: a number, a bool, a string as it is, an array of numbers as "1,2,3".
+// A JSON value as the text debug.set reads: a number, a bool, a string as it is, an array of numbers as "1,2,3"; what
+// else (a curve's keys: objects, lists of lists) as its JSON text (curve-editor.md, "The tools").
 @(private)
 debug_value_text :: proc(v: json.Value) -> (text: string, ok: bool) {
 	#partial switch x in v {
@@ -45,9 +46,24 @@ debug_value_text :: proc(v: json.Value) -> (text: string, ok: bool) {
 	case json.Boolean: return x ? "true" : "false", true
 	case json.String:  return x, true
 	case json.Array:
+		flat := true
+		for e in x {
+			#partial switch _ in e {
+			case json.Array, json.Object: flat = false
+			}
+		}
+		if !flat { return debug_value_json(v) }
 		parts := make([]string, len(x), context.temp_allocator)
 		for e, i in x { parts[i] = debug_value_text(e) or_return }
 		return strings.join(parts, ",", context.temp_allocator), true
+	case json.Object:
+		return debug_value_json(v)
 	}
 	return "", false
+}
+
+@(private)
+debug_value_json :: proc(v: json.Value) -> (text: string, ok: bool) {
+	data, err := json.marshal(v, allocator = context.temp_allocator)
+	return string(data), err == nil
 }

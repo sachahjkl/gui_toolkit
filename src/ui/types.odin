@@ -152,6 +152,7 @@ Box :: struct {
 	font:        font.Font_Id,
 	font_size:   f32,
 	text_pad:    f32,
+	dense:       bool,           // built in a dense scope (an instrument's): what opens from it (a cut text's reveal) is dense too
 	text_align:  Text_Align,
 	radius:      f32,
 	square_corners: Corners,     // these corners stay square whatever the radius (a resize grip's corner)

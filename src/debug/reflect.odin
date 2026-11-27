@@ -66,7 +66,13 @@ tag_of :: proc(tag: reflect.Struct_Tag, inherited: Field_Tag) -> (t: Field_Tag) 
 reflect_node :: proc(label: string, data: rawptr, ti: ^runtime.Type_Info, tag: Field_Tag, depth: int) -> (changed: bool) {
 	if tag.hidden { return }
 	if ti.id == typeid_of(ui.Color) { return color_any(label, (^ui.Color)(data), tag.read_only) }
+	// (a curve, or a few as a vector's channels: the curve editor)
+	if ti.id == typeid_of(Curve) { return curves_any(label, ([^]Curve)(data)[:1], nil, "x") }
+	if ti.id == typeid_of(ui.Cubic_Bezier) { return easing_any(label, (^ui.Cubic_Bezier)(data)) }
 	b := runtime.type_info_base(ti)
+	if a, ok := b.variant.(runtime.Type_Info_Array); ok && a.elem.id == typeid_of(Curve) && a.count >= 1 && a.count <= CURVE_CHANNELS_MAX {
+		return curves_any(label, ([^]Curve)(data)[:a.count], nil, "xyzw")
+	}
 	#partial switch v in b.variant {
 	case runtime.Type_Info_Integer, runtime.Type_Info_Float:
 		return number_any(label, data, ti, tag.lo, tag.hi, tag.step, tag.read_only)
@@ -144,6 +150,8 @@ odin_text :: proc(v: any) -> string {
 @(private)
 odin_write :: proc(b: ^strings.Builder, data: rawptr, ti: ^runtime.Type_Info, named: bool, depth: int) {
 	if data == nil { strings.write_string(b, "nil"); return }
+	// (a curve's keys past its count are not written: Odin takes them by index)
+	if ti.id == typeid_of(Curve) { curve_write(b, (^Curve)(data)^, named ? "Curve" : ""); return }
 	base := runtime.type_info_base(ti)
 	#partial switch v in base.variant {
 	case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_Boolean:

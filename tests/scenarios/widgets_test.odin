@@ -4,9 +4,11 @@ package scenarios_test
 // a virtual list scrolled by the program (and one of 100 000 rows that changes nothing, not walked), a menu's heading, posted calls by the window, selection cleared.
 
 import "core:fmt"
+import "core:math"
 import "core:slice"
 import "core:strings"
 import "core:testing"
+import "gt:font"
 import "gt:platform"
 import "gt:testkit/session"
 import "gt:testkit/unwatched"
@@ -668,6 +670,172 @@ a_dropdown_filters_and_opens_on_its_value :: proc(t: ^testing.T) { unwatched.run
 	session.frames(s, 2)
 	testing.expect_value(t, r.sel, 1)
 }) }
+
+// A dropdown's open list holds its rows whole, in every density: each check inside the list's box, the list never
+// narrower than its widest row nor than its field's hint (wider than its button when they need it); the button shows
+// its whole word (src/md/features/dropdown.md).
+@(test)
+a_dropdown_s_list_holds_its_rows_and_its_hint :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) { dropdown_list_check(t, false) }) }
+
+@(test)
+a_dense_dropdown_s_list_holds_its_rows_and_its_hint :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) { dropdown_list_check(t, true) }) }
+
+// A list wider than its button, opened at the right edge of the room its button is shown in (a clipped panel narrower
+// than the window), moves left to stay in that room.
+@(test)
+a_dropdown_s_list_stays_in_its_button_s_room :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Dropdown_Run{sel = 0}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Dropdown_Run)(s.user)
+		ui.next({width = ui.px(320), height = ui.px(200), axis = .X})
+		if ui.parent(ui.build_box({.Clip}, "###room")) {
+			ui.spacer(ui.fill())
+			ui.next({width = ui.px(40)})
+			ui.dropdown("###dd", []string{"A", "A longer choice"}, &r.sel)
+		}
+	}})
+	session.frames(s, 3)
+	session.click(s, "dd")
+	session.frames(s, 4)
+	list, _, ok := ui.menu_rect(0)
+	if !testing.expect(t, ok, "the list is open") { return }
+	room := session.get(s, "room").rect
+	testing.expectf(t, list.max.x <= room.max.x + 1 && list.min.x >= room.min.x - 1, "the list %v in its room %v", list, room)
+}) }
+
+// A list wider than its button's room keeps its place by its button: moved to the room's left edge, it left its
+// button and still ran past the room.
+@(test)
+a_dropdown_s_list_wider_than_its_room_stays_by_its_button :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Dropdown_Run{sel = 0}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Dropdown_Run)(s.user)
+		ui.spacer(ui.px(200))
+		ui.next({width = ui.px(90), height = ui.px(200), axis = .X})
+		if ui.parent(ui.build_box({.Clip}, "###room")) {
+			ui.spacer(ui.fill())
+			ui.next({width = ui.px(40)})
+			ui.dropdown("###dd", []string{"A", "A much longer choice than the room"}, &r.sel)
+		}
+	}})
+	session.frames(s, 3)
+	session.click(s, "dd")
+	session.frames(s, 4)
+	list, _, ok := ui.menu_rect(0)
+	if !testing.expect(t, ok, "the list is open") { return }
+	room := session.get(s, "room").rect
+	button := session.get(s, "dd").rect
+	testing.expectf(t, list.max.x - list.min.x > room.max.x - room.min.x, "the list %v wider than its room %v", list, room)
+	testing.expectf(t, abs(list.min.x - button.min.x) <= 1, "the list %v by its button %v", list, button)
+}) }
+
+// A list follows its button and the room it is shown in while it is open: the room moved across, the list moved with
+// it and stayed inside (it kept the room it opened in, and was pulled back to it, far from its button).
+@(test)
+a_dropdown_s_list_follows_its_button_s_room :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Dropdown_Run{sel = 0}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Dropdown_Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.px(200), axis = .X})
+		if ui.parent(ui.build_box({}, "###line")) {
+			ui.spacer(ui.px(r.shift))
+			ui.next({width = ui.px(320), height = ui.pct(1), axis = .X})
+			if ui.parent(ui.build_box({.Clip}, "###room")) {
+				ui.spacer(ui.fill())
+				ui.next({width = ui.px(40)})
+				ui.dropdown("###dd", []string{"A", "A longer choice"}, &r.sel)
+			}
+		}
+	}})
+	session.frames(s, 3)
+	session.click(s, "dd")
+	session.frames(s, 4)
+	before, _, _ := ui.menu_rect(0)
+	// (moved by less than the window's room: the list stays whole in the window)
+	r.shift = 140
+	session.frames(s, 4)
+	list, _, ok := ui.menu_rect(0)
+	if !testing.expect(t, ok, "the list is still open") { return }
+	room := session.get(s, "room").rect
+	testing.expectf(t, list.min.x >= room.min.x - 1 && list.max.x <= room.max.x + 1, "the list %v in its room %v", list, room)
+	testing.expectf(t, abs(list.min.x - before.min.x - 140) <= 1, "the list moved with its button: %v, was %v", list, before)
+}) }
+
+// A dense field's ticks at the value's place never reach into its digits: over the digits, each stops short of their
+// band (they cut "0.92|0").
+@(test)
+a_drag_number_s_ticks_leave_its_digits_whole :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Ticks :: struct { a, b: f64, mono: font.Font_Id }
+	r := Ticks{a = 0.95, b = 0.05}
+	s := session.start(t, {size = {400, 200}, user = &r, build = proc(s: ^session.Session) {
+		r := (^Ticks)(s.user)
+		r.mono = ui.mono_font()
+		ui.spacer(ui.px(20))
+		if ui.dense_scope() {
+			ui.next({width = ui.px(150), height = ui.px(ui.dense_row_height())})
+			ui.drag_number("###over", &r.a, lo = 0, hi = 1, step = 0.01)
+			ui.spacer(ui.px(10))
+			ui.next({width = ui.px(150), height = ui.px(ui.dense_row_height())})
+			ui.drag_number("###clear", &r.b, lo = 0, hi = 1, step = 0.01)
+		}
+	}})
+	session.frames(s, 3)
+	img := session.capture(s)
+	inner :: proc(b: ^ui.Box) -> ui.Rect { return {b.rect.min + 1, b.rect.max - 1} }
+	tick_x :: proc(r: ui.Rect, v: f32) -> int { return int(math.round(r.min.x + (r.max.x - r.min.x) * v)) - 1 }
+	// (the accent as drawn: the clear field's tick, away from its digits, at its top)
+	clear := inner(session.get(s, "value", within = session.get(s, "clear")))
+	accent := session.pixel(img, tick_x(clear, 0.05), int(clear.min.y) + 1)
+	over := session.get(s, "value", within = session.get(s, "over"))
+	m := font.metrics(s.state.fonts, r.mono, over.font_size)
+	baseline := math.round((over.rect.min.y + over.rect.max.y) * 0.5 + (m.ascent - m.descent) * 0.5)
+	cap_px := m.cap_height > 0 ? m.cap_height : m.ascent * 0.72
+	x := tick_x(inner(over), 0.95)
+	// (the band and a row on each side: a tick that touches a digit is blended into its edge, the "|" of "0.92|0")
+	n := session.count_color(img, {x - 1, int(baseline - math.ceil(cap_px)) - 1}, {x + 3, int(baseline) + 1}, accent, tolerance = 32)
+	testing.expectf(t, n == 0, "%d pixels of the ticks on the digits' band", n)
+}) }
+
+@(private = "file")
+Dropdown_Run :: struct { sel: int, dense: bool, shift: f32 }
+
+@(private = "file")
+dropdown_list_check :: proc(t: ^testing.T, dense: bool) {
+	r := Dropdown_Run{sel = 2, dense = dense}
+	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
+		r := (^Dropdown_Run)(s.user)
+		items := []string{"Bézier", "Linear", "Constant"}
+		ui.spacer(ui.px(20))
+		if r.dense {
+			if ui.dense_scope() {
+				// (as the curve editor's key row gives it: the width of its longest word)
+				ui.next({width = ui.px(ui.dropdown_width(items)), height = ui.px(ui.dense_row_height())})
+				ui.dropdown("###dd", items, &r.sel)
+			}
+		} else {
+			ui.dropdown("###dd", items, &r.sel)
+		}
+	}})
+	session.frames(s, 3)
+	cur := session.get(s, "cur", within = session.get(s, "dd"))
+	testing.expectf(t, cur.ellipsis == {}, "dense=%v: the button's word whole", dense)
+	session.click(s, "dd")
+	session.frames(s, 4)
+	list, _, ok := ui.menu_rect(0)
+	if !testing.expectf(t, ok, "dense=%v: the list is open", dense) { return }
+	chk := session.find(s, "chk")
+	if testing.expectf(t, chk != nil, "dense=%v: the chosen row's check", dense) {
+		testing.expectf(t, chk.rect.min.x >= list.min.x && chk.rect.max.x <= list.max.x, "dense=%v: the check %v inside the list %v", dense, chk.rect, list)
+	}
+	for i in 0 ..< 3 {
+		lbl := session.find(s, "lbl", index = i)
+		if !testing.expectf(t, lbl != nil, "dense=%v: row %d", dense, i) { continue }
+		testing.expectf(t, lbl.rect.max.x <= list.max.x && lbl.ellipsis == {}, "dense=%v: row %d whole in the list", dense, i)
+	}
+	band := session.get(s, "menu_search")
+	em := session.get(s, "lbl").font_size
+	testing.expectf(t, band.rect.max.x - band.rect.min.x >= ui.search_band_width(em) - 1, "dense=%v: the hint whole: %v px", dense, band.rect.max.x - band.rect.min.x)
+}
 
 // Escape with the pointer resting on a submenu's row closes the submenu and keeps it closed (the row waits for the
 // pointer to move before it opens it again); a second Escape closes the menu. It reopened at once, and Escape seemed to

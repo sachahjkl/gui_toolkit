@@ -1550,9 +1550,10 @@ dot_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 ////////////////////////////////
 // Dropdown and tabs
 
-// A dropdown's room before its item's words, and its arrow's cell, in ems.
-@(private = "file") DROPDOWN_LEAD_EM :: 0.8
-@(private = "file") DROPDOWN_ARROW_EM :: 1.8
+// A dropdown's arrow's cell, in ems: the arrow close to the right edge, a small gap. Its words have their text's inset
+// only (src/md/features/dropdown.md); a dense scope's cell is tighter still.
+@(private = "file") DROPDOWN_ARROW_EM :: 1.25
+@(private = "file") DROPDOWN_DENSE_ARROW_EM :: 1.0
 
 // The width a dropdown of `items` takes with no width given, in the style in effect: its widest item, its padding, its
 // arrow and its border.
@@ -1561,7 +1562,8 @@ dropdown_width :: proc(items: []string) -> f32 {
 	st := top_style()
 	widest: f32
 	for it in items { widest = max(widest, text_width(st.font, st.font_size, display_part(it))) }
-	return math.ceil(widest + 2 * st.text_pad + em * (DROPDOWN_LEAD_EM + DROPDOWN_ARROW_EM) + 2 * max(1, math.round(gs().scale)))
+	room := em * (dense_shown() ? DROPDOWN_DENSE_ARROW_EM : DROPDOWN_ARROW_EM)
+	return math.ceil(widest + 2 * st.text_pad + room + 2 * max(1, math.round(gs().scale)))
 }
 
 // Button showing the current item; opens a menu of `items`. Returns true when the selection changed. Without a width
@@ -1583,10 +1585,10 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 		cur := selected^ >= 0 && selected^ < len(items) ? items[selected^] : ""   // none chosen, or the list changed
 		a11y_default(btn, {role = .Combo_Box, value = display_part(cur), expanded = open, popup = .Listbox, read_only = true})
 		if parent(btn) {
-			spacer(px(em * DROPDOWN_LEAD_EM))
+			tight := dense_shown()
 			next({width = fill(), height = pct(1)})
 			build_box({.Draw_Text}, fmt.tprintf("%s###cur", cur))
-			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * DROPDOWN_ARROW_EM, nil, widget_icons()) }
+			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * (tight ? DROPDOWN_DENSE_ARROW_EM : DROPDOWN_ARROW_EM), nil, widget_icons()) }
 		}
 	}
 	// Down / Alt+Down on the focused button opens the list from the keyboard too
@@ -1604,7 +1606,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 			if to != selected^ { selected^ = to; changed = true }
 		}
 	}
-	if menu(menu_id, max(btn.size.x, em * MENU_MIN_WIDTH_EM)) {
+	if menu(menu_id, dense_shown() ? btn.size.x : max(btn.size.x, em * MENU_MIN_WIDTH_EM)) {
 		for item, i in items {
 			if menu_item(item, "", i == selected^).clicked { selected^ = i; changed = true }
 		}

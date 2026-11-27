@@ -57,7 +57,8 @@ debug.panel(&h.state, "Drone", drone_debug, app)        // once, after the windo
 | `odin_text(x)` | a value written as Odin source, to paste back (works in a release build too) |
 
 Each call that edits returns true when the value changed, by a person or by a tool: the program's code under it runs
-then. An act takes no arguments: show the arguments as values before it.
+then. An act takes no arguments: show the arguments as values before it. Acts one after another share a row, as many
+as it holds.
 
 ### Reflection
 
@@ -74,6 +75,77 @@ World :: struct {
 	step:    f32 `debug:"0..1,step=0.01"`,
 }
 ```
+
+## Curves
+
+A value animated over time: keys on a timeline, Bézier handles, played on the program's object while it is edited. The
+intent is [src/md/features/curve-editor.md](../src/md/features/curve-editor.md).
+
+![The Flight panel of examples/debug_panel: the drone's hover and sway as curves, its landing's easing](screenshots/debug_curves.webp)
+
+```odin
+Drone :: struct {
+	hover: debug.Curve,       // its height over time
+	sway:  [3]debug.Curve,    // a lean and a turn, a channel per axis
+	land:  ui.Cubic_Bezier,   // how it lands
+}
+app.play: debug.Playback      // the program's clock for them
+
+// each frame, a release build too
+debug.playback_step(&app.play, dt, debug.curve_span(d.hover))
+height := debug.curve_eval(d.hover, app.play.time)
+lean := debug.curves_eval(d.sway, app.play.time)
+down := ui.tween_curve(ui.key_from_string(0, "land"), landing ? 1 : 0, 1200, d.land)
+
+// in a panel's procedure
+debug.curve("hover", &d.hover, &app.play)
+debug.curves("sway", d.sway[:], &app.play)
+debug.easing("land", &d.land)
+```
+
+### The model, in every build
+
+| Name | What |
+|---|---|
+| `Curve` | `count` keys sorted by time, `CURVE_KEYS_MAX` (32) at most: plain data, a constant of the program |
+| `Curve_Key` | `time`, `value`, `in_handle` and `out_handle` (the control points, (time, value) from the key), `interp` (`.Bezier`, `.Linear`, `.Constant`: the segment that leaves it), `broken` (its handles move apart) |
+| `curve_eval(c, t)` | its value at `t`: the first key's before it, the last key's after it, 0 without a key; O(log keys) |
+| `curves_eval(cs, t)` | `[N]Curve`'s values at `t`, a `[N]f32` |
+| `curve_span(c)`, `curves_span(cs)` | the time from the first key to the last, `{from, to}` |
+| `Playback` | `time`, `speed` (0: 1), `paused`, `once` (else it loops): the program's clock, shown and changed by the editor |
+| `playback_step(&p, dt, span)` | one frame: the time moves at its speed, loops over `span` or stops at its end; returns it |
+| `curve_insert(&c, key)`, `curve_remove(&c, i)`, `curve_smooth(&c, i)` | a key at its time (its index, -1 when full), a key gone, smooth handles (its neighbours' slope, a third of each segment) |
+| `curve_text(c)`, `curves_text(cs)` | Odin source to paste back: `debug.Curve{count = 2, keys = {0 = {...}, 1 = {...}}}` (the keys by index: Odin takes no shorter array literal); `odin_text` writes a curve so too |
+
+### The editor
+
+`curve(label, &c, &play)`, `curves(label, cs, &play, names = "xyzw")` (4 channels at most) and `easing(label, &e)` are
+items of a panel; `debug.value` shows a `Curve`, a `[N]Curve` and a `ui.Cubic_Bezier` field with them. Without a
+Playback, the editor plays its own. Its rows: the head, by the curve's name (play, loop, the playhead's time, the speed,
+frame all, Print to the standard output and the clipboard); the graph, the channels' letters in its corner (a click shows
+or hides one); with a key selected, smooth, broken or aligned handles, its time and value (a change moves every key
+selected by as much) and its interpolation. The head and the key's row share their columns. The easing editor is one
+row: the square, then the presets and Print, then the handles' numbers.
+
+In the graph:
+
+- **A key**: click it (Shift or Ctrl adds it or takes it away), or drag a box from an empty place. Drag it: the keys
+  selected follow, sorted as they pass each other; Shift keeps the main direction, Ctrl snaps to the grid.
+- **A handle** of a key selected: drag it; the other turns with it unless the key's handles are broken; Alt breaks them,
+  Shift flattens it. A handle stays within its segment.
+- **Add**: a double click on nothing, on the channel whose curve passes nearest. **Delete**: Delete or Backspace.
+- **The view**: the wheel zooms about the pointer (Ctrl: time only, Shift: value only), the middle button pans, F frames
+  all, Ctrl+A selects all.
+- **The time**: drag in the time's ruler; Space plays or pauses.
+- **Undo**: Ctrl+Z; Ctrl+Shift+Z or Ctrl+Y redoes.
+
+The easing editor: a square graph from (0, 0) to (1, 1) with its two handles (x in 0..1, y free), the toolkit's easings
+as presets, its four numbers, a dot that runs along it while the pointer is on the square and once after a change, and
+Print (`ui.Cubic_Bezier{0.2, 0, 0, 1}`). A curve editor with no Playback of the program's starts paused.
+
+For a test's pointer: `debug.curve_screen(s, path, {time, value})` is where that point of a curve item is drawn,
+`debug.curve_channel_at(s, path, channel)` where a channel's letter is;
+`debug.box_name(path, "graph")` names its graph.
 
 ## The window
 
@@ -122,13 +194,17 @@ if ui.dense_scope() {
 - `ui.drag_vector(id, &v, lo, hi, step, o)`: N of them on one row.
 - `ui.tree_header(id, label, &open)`: a header that opens and closes; the caller keeps `open`.
 - `ui.dense_row(label, id, label_width, ranges)`: a label and its field on one row.
+- `ui.Dense_Labels`: a panel's labels' column as wide as its longest label (`DENSE_LABEL_MIN_EM` to `DENSE_LABEL_MAX_EM`,
+  a longer one cut). `dense_labels_begin(&l)` before the rows, `dense_row(label, label_width = dense_label_column(&l,
+  label, indent))` for each, `dense_labels_end(&l)` after, `dense_labels_destroy(&l)` at the end: each label measured
+  once, the column the widest of the last build's. The debug window keeps one per panel.
 
 ## The tools
 
 | Method | What |
 |---|---|
-| `Toolkit.debugPanels` | the panels and their items: `path`, `kind` (number, vector, bool, choice, text, color, watch, plot, act), `value`, and `min`, `max`, `step`, `integer`, `choices`, `readOnly` where they apply |
-| `Toolkit.debugSet {path, value}` | sets a value: a number, a bool, a string, an enum's name, an array of numbers, a colour as `"#rrggbbaa"`; held to its bounds and its step |
+| `Toolkit.debugPanels` | the panels and their items: `path`, `kind` (number, vector, bool, choice, text, color, watch, plot, act, curve, easing), `value`, and `min`, `max`, `step`, `integer`, `choices`, `readOnly` where they apply; a curve's `value` is its channels, each a list of keys `{"time", "value", "in_handle": [t, v], "out_handle": [t, v], "interp": "bezier" \| "linear" \| "constant", "broken"}` (Print's names, `debug.CURVE_KEY_FIELDS`), and `channels` their letters |
+| `Toolkit.debugSet {path, value}` | sets a value: a number, a bool, a string, an enum's name, an array of numbers, a colour as `"#rrggbbaa"`; held to its bounds and its step. A curve: the list `debugPanels` gives (one channel: its keys alone), a missing field its zero, the keys sorted; an easing: four numbers or a preset's name (`"Emphasized"`) |
 | `Toolkit.debugPress {path}` | presses an act: its code runs before this frame's build |
 
 From the command line and in scripts: `tk cdp debug` lists every value, `tk cdp debug-set Drone/Transform/position 1,2,3`
@@ -140,9 +216,22 @@ closed window answers too. In the program's own process: `debug.list(s, &sb)`, `
 `debug.press(s, path)`. For a test's click, `debug.box_name(path, part)` names a box of the window (`"value"`,
 `"c0"`, `"act"`, `"section"`, `"row"`).
 
+A panel's test needs no window. It runs on a bare `ui.State` with `debug.list`, `debug.set` and `debug.press`: no fonts,
+no theme, no session. It works on a release runner with no display and no offscreen renderer, where `testkit/session`
+fails.
+
+```odin
+s: ui.State
+ui.init(&s, nil, nil)
+defer ui.destroy(&s)
+debug.panel(&s, "Drone", drone_debug, &drone)
+testing.expect_value(t, debug.set(&s, "Drone/speed", "2.5"), "")
+```
+
 ## Cost
 
 - A release build (`TOOLKIT_DEVTOOLS` false): every call is empty or returns false (`debug.ENABLED`); the key is not read.
+  The curves' model (`curve_eval`, `playback_step`, `curve_text`...) stays: a release plays its curves.
   A release that keeps its panels builds with `-define:TOOLKIT_DEVTOOLS=true`: the devtools come too, their server off
   until `TOOLKIT_DEVTOOLS=<port>` asks it.
 - The window closed: nothing runs.

@@ -99,6 +99,55 @@ dense_row_open :: proc(label: string, id := "", label_width: f32 = 0, ranges: []
 	spacer(px(dense_gap()))
 }
 
+// The labels' column of a dense panel (debug-panel.md, "A dense look"): as wide as its longest label shown, its indent
+// counted, so that the fields of every depth line up on one edge and no label leaves a gap before its field. A label's
+// width is measured once (by its text, in its text's ems: a zoom keeps it) and kept; a build takes the widest of the
+// last build's labels (one map lookup a row: the row is built anyway), so a label that comes or goes moves the column
+// at the next build. DENSE_LABEL_MIN_EM at least; DENSE_LABEL_MAX_EM at most: a longer label is cut, its whole text one
+// click away (text-reveal.md).
+//
+//   ui.dense_labels_begin(&panel.labels)
+//   if ui.dense_row("speed", label_width = ui.dense_label_column(&panel.labels, "speed", indent)) { ... }
+//   ui.dense_labels_end(&panel.labels)
+Dense_Labels :: struct {
+	widths: map[u64]f32,   // a label's width with its inset, in its text's ems, by its text's hash
+	column: f32,           // the last build's column, ems (0: no build yet)
+	next:   f32,           // this build's so far
+}
+
+DENSE_LABEL_MIN_EM :: 2.5
+DENSE_LABEL_MAX_EM :: 11
+// The column before a build has measured one.
+@(private = "file") DENSE_LABEL_FIRST_EM :: 6
+
+dense_labels_begin :: proc(l: ^Dense_Labels) { l.next = 0 }
+
+// (a column that moved asks for the next build: an idle window kept the first build's guess, its labels cut)
+dense_labels_end :: proc(l: ^Dense_Labels) {
+	if l.next > 0 && l.next != l.column {
+		l.column = l.next
+		keep_animating()
+	}
+}
+
+dense_labels_destroy :: proc(l: ^Dense_Labels) { delete(l.widths); l^ = {} }
+
+// The width of the labels' column for a row of `label` moved in by `indent` pixels (its sections'): the column less the
+// indent, so that every depth's fields start on one edge. Counts the label toward the next build's column.
+dense_label_column :: proc(l: ^Dense_Labels, label: string, indent: f32 = 0) -> f32 {
+	st := top_style()
+	em := max(st.font_size, 1)
+	h := hash_bytes(transmute([]u8)label)
+	w, ok := l.widths[h]
+	if !ok {
+		w = (text_width(st.font, st.font_size, label) + 2 * st.text_pad) / em
+		l.widths[h] = w
+	}
+	l.next = max(l.next, min(w + indent / em, DENSE_LABEL_MAX_EM))
+	col := l.column > 0 ? l.column : DENSE_LABEL_FIRST_EM
+	return math.ceil(max(col, DENSE_LABEL_MIN_EM) * em - indent)
+}
+
 // A theme's weak ink is made for text at the theme's size: at a dense size, it still reads on the ground it lies on
 // (WCAG AA, 4.5), moved away from that ground as far as it must.
 @(private = "file")

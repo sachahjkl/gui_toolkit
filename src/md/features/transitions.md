@@ -35,6 +35,11 @@ when a step leaves the interval or the slope is flat), then y(t). A polynomial t
 curve is a named one, and its look is its numbers. A spring was refused: it needs a velocity kept and a stiffness to
 tune, and nothing here asks for an overshoot.
 
+A program's own transition takes its own curve: `tween_curve` runs as `tween` along a `Cubic_Bezier` (CSS's four
+numbers), which the debug window's easing editor tunes (curve-editor.md). The toolkit's named curves stay few: a
+program's curve is its own, not a sixth name. `ease_bezier` gives each named one as a cubic-bezier, the start of a
+program's (Out, In_Out and Sine as CSS approximates them: their polynomials are not cubic-beziers).
+
 ## ui.swap
 
 `if ui.swap(id, face) { ... }`: a box sized by what is built in it. `face` names what it shows now: "install",

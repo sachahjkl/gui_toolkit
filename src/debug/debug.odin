@@ -48,6 +48,7 @@ Panel :: struct {
 	data:    rawptr,
 	pinned:  bool,     // in a view of its own (DEBUG_PANEL_VIEW), not a tab of the window
 	surface: ^Surface,
+	labels:  ui.Dense_Labels,   // its labels' column: its longest label's width
 }
 
 // What one window's debug surface keeps: its panels, the sections the person opened or closed, the tab shown, the
@@ -63,6 +64,14 @@ Surface :: struct {
 	fields:    map[u64]^Text_Field,    // the text fields of the strings shown
 	frame_ms:  ui.Value_History(FRAMES_KEPT),
 	frame_build: u64,                  // the build whose frame time is the last pushed
+	curve_edits: map[u64]^Curve_Edit,  // the curve editors' views, selections and undo steps, by path
+	easing_key:  u64,                  // the easing whose handle is dragged (its path's hash), 0: none
+	easing_handle: int,                // 1 or 2
+	easing_seen: map[u64]ui.Cubic_Bezier,   // each easing's curve at its last build: a change runs its preview
+	easing_anim_key:   u64,            // the easing whose preview runs (0: none), its time in it, s, and when it stops
+	easing_anim_t:     f64,
+	easing_anim_end:   f64,
+	easing_anim_build: u64,
 }
 
 // The frames the View panel's graph shows.
@@ -82,6 +91,7 @@ panel :: proc(s: ^ui.State, name: string, build: proc(data: ^$T), data: ^T) {
 		}
 		p := new(Panel, sf.allocator)
 		p^ = {name = clone(sf, name), key = path_root(name), build = Panel_Build(rawptr(build)), data = data, surface = sf}
+		p.labels.widths.allocator = sf.allocator
 		append(&sf.panels, p)
 	}
 }
@@ -114,9 +124,11 @@ attach :: proc(s: ^ui.State) -> ^Surface {
 		sf := new(Surface)
 		sf.state, sf.allocator = s, context.allocator
 		sf.panels.allocator, sf.opened.allocator, sf.written.allocator, sf.fields.allocator = sf.allocator, sf.allocator, sf.allocator, sf.allocator
+		sf.curve_edits.allocator, sf.easing_seen.allocator = sf.allocator, sf.allocator
 		s.debug_hook = {data = sf, toggle = hook_toggle, destroy = hook_destroy}
 		p := new(Panel, sf.allocator)
 		p^ = {name = clone(sf, VIEW_PANEL), key = path_root(VIEW_PANEL), build = Panel_Build(rawptr(view_panel)), data = sf, surface = sf}
+		p.labels.widths.allocator = sf.allocator
 		append(&sf.panels, p)
 		return sf
 	} else {
@@ -181,12 +193,16 @@ hook_destroy :: proc(data: rawptr) {
 	delete(sf.written)
 	for _, f in sf.fields { ui.line_edit_destroy(&f.edit); free(f, sf.allocator) }
 	delete(sf.fields)
+	for _, e in sf.curve_edits { curve_edit_free(sf, e) }
+	delete(sf.curve_edits)
+	delete(sf.easing_seen)
 	ui.line_edit_destroy(&sf.filter)
 	free(sf, sf.allocator)
 }
 
 @(private)
 panel_free :: proc(sf: ^Surface, p: ^Panel) {
+	ui.dense_labels_destroy(&p.labels)
 	delete(p.name, sf.allocator)
 	free(p, sf.allocator)
 }

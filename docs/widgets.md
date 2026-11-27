@@ -419,6 +419,10 @@ on to the next lines, the row as tall as they are, the box or the switch on the 
 
 `dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
 padding and its arrow (`dropdown_width(items)`), so a header's tools or any row as wide as its children shows it whole.
+Its words have their text's inset only and its arrow a small cell at its right edge; in a dense scope both are tighter and
+its list is dense. The list is never narrower than its widest row nor than its field's hint (`search_band_width(em)`),
+its check at the left of each row, and it stays in the room its button is shown in (a floating view's body) when it fits
+there, and in the window ([src/md/features/dropdown.md](../src/md/features/dropdown.md)).
 When closed, the scroll wheel steps to the next or previous item (`wheel_steps`: on hover outside a scrolling view, once
 focused inside one); `segmented` and `font_picker` do the same.
 
@@ -526,6 +530,10 @@ With the animations off, both take the new state at once.
 |---|---|
 | `tween(key, target, ms, ease, initial) -> f32` | the value goes from where it is to `target` in `ms` along `ease` (`.Linear`; cubic `.Out` and `.In_Out`; `.Sine`, gentler in its middle; `.Emphasized`, cubic-bezier(0.2, 0, 0, 1), a quick start and a long soft landing). A new target sets off from the value shown. The first call shows `target` (or `initial`). While it moves it asks for frames. `anim` eases without an end (what follows the pointer); `tween` has one |
 | `ease_at(ease, p)` | where a curve is at `p` (0..1) |
+| `tween_curve(key, target, ms, curve, initial) -> f32` | `tween` along a program's own `Cubic_Bezier` `{x1, y1, x2, y2}`, CSS's cubic-bezier() (x1 and x2 in 0..1; y1 and y2 free: an overshoot). The debug window's easing editor tunes one (`debug.easing`, [debug.md](debug.md)) |
+| `cubic_bezier_at(curve, p)` | where a `Cubic_Bezier` is at `p` (0..1) |
+| `ease_bezier(ease) -> Cubic_Bezier` | an `Ease` as a cubic-bezier: Linear and Emphasized exactly, Out, In_Out and Sine as CSS approximates them |
+| `bezier_param(x1, x2, x) -> f32` | the parameter of a cubic whose x runs 0, x1, x2, 1 where it reaches `x`: the solver of the two above, for a program's own segments |
 | `swap(id, face, {ms, axis, align}) -> bool` | `if ui.swap(...) { ... }`: a place sized by what is built in it, whose content changes face. Its face is the first box built in it: that box's shape (rect, corners, colour, border) and its content (its words, its children). When `face` changes, over `SWAP_MS` (600, `.Emphasized`): its size glides from the last face's to the new one's and the face is drawn at that size (its round ends, border and relief right at every frame, its words and children at their natural places); one shape carries the old face's colour to the new one's; the old content (a picture of its last frame) fades out as the new face fades in; the main words (the widest text of each face) roll character by character, as an odometer: the old ones rise out of their slots, the new ones come up into theirs, left to right. What is in it keeps its own size, held at the place's start (`align`: `.Start`, `.Center`, `.End`): never squeezed or wrapped. During the change the contents are clipped to the morphing shape: words wider than it are revealed as it grows. Only the face built now takes input |
 | `box_bare(b) -> bool` | while drawing: `b` is a swap's face drawn as content only. A custom draw that paints its own ground (flag `.Custom_Ground`, its ground given as its background) skips it then |
 

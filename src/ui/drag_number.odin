@@ -249,23 +249,31 @@ drag_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		z := math.round(math.lerp(inner.min.x, inner.max.x, max(d.t, d.t0)))
 		draw.rect(dc, {{a, inner.min.y}, {z, inner.max.y}}, d.fill, rad(max(b.radius - inset, 0)))
 	}
+	m := font.metrics(gs().fonts, d.font, d.size)
+	w := font.text_width(gs().fonts, d.font, d.size, d.text)
+	cy := (r.min.y + r.max.y) * 0.5
+	tx := math.round(max(r.max.x - b.text_pad - w, r.min.x + b.text_pad))
+	baseline := math.round(cy + (m.ascent - m.descent) * 0.5)
 	if d.bounded {
 		// (the value's place, seen at 3:1 where the faint bar is not: the theme's accent on its field. Two ticks at its
-		// edges, not a line across: the digits stay whole)
+		// edges, not a line across; over the digits, each stops short of their band (a cap high over the baseline, a
+		// comma's tail under it): a dense field's ticks reached into them, "0.92|0")
 		gw := max(1, math.round(DRAG_GRAB_PX * sc))
 		gh := max(gw, math.round((inner.max.y - inner.min.y) * DRAG_GRAB_SHARE))
 		x := clamp(math.round(math.lerp(inner.min.x, inner.max.x, d.t)) - math.round(gw * 0.5), inner.min.x, inner.max.x - gw)
-		draw.rect(dc, {{x, inner.min.y}, {x + gw, inner.min.y + gh}}, d.grab)
-		draw.rect(dc, {{x, inner.max.y - gh}, {x + gw, inner.max.y}}, d.grab)
+		top, bottom := inner.min.y + gh, inner.max.y - gh
+		if x + gw > tx - inset && x < tx + w + inset {
+			cap_px := m.cap_height > 0 ? m.cap_height : m.ascent * 0.72
+			top = min(top, baseline - math.ceil(cap_px) - inset)
+			bottom = max(bottom, baseline + math.ceil(m.descent * 0.35) + inset)
+		}
+		if top > inner.min.y { draw.rect(dc, {{x, inner.min.y}, {x + gw, top}}, d.grab) }
+		if bottom < inner.max.y { draw.rect(dc, {{x, bottom}, {x + gw, inner.max.y}}, d.grab) }
 	}
 	if d.mark.a > 0 {
 		draw.rect(dc, {inner.min, {inner.min.x + math.round(DRAG_MARK_PX * sc), inner.max.y}}, d.mark)
 	}
-	m := font.metrics(gs().fonts, d.font, d.size)
-	w := font.text_width(gs().fonts, d.font, d.size, d.text)
-	cy := (r.min.y + r.max.y) * 0.5
-	x := max(r.max.x - b.text_pad - w, r.min.x + b.text_pad)
-	draw.text(dc, d.font, d.size, {math.round(x), math.round(cy + (m.ascent - m.descent) * 0.5)}, d.ink, d.text)
+	draw.text(dc, d.font, d.size, {tx, baseline}, d.ink, d.text)
 }
 
 // − (dir -1) or + (dir 1): a step, Shift ten; held it repeats; disabled at its bound.

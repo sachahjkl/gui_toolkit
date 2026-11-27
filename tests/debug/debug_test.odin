@@ -41,6 +41,7 @@ Soldier :: struct {
 	prints:   int,
 	builds:   int,   // the panel's procedure's runs
 	speeds:   ui.Value_History(16),
+	route:    debug.Curve,
 }
 
 soldier_debug :: proc(s: ^Soldier) {
@@ -56,6 +57,7 @@ soldier_debug :: proc(s: ^Soldier) {
 	debug.watch("prints", s.prints)
 	if debug.act("Print") { s.prints += 1 }
 	debug.plot("speeds", &s.speeds)
+	debug.curve("route", &s.route)
 }
 
 @(private = "file")
@@ -115,6 +117,24 @@ a_closed_window_runs_nothing :: proc(t: ^testing.T) {
 	runs := soldier.builds
 	session.frames(s, 30)
 	testing.expect_value(t, soldier.builds, runs)
+}
+
+// A panel's test needs no window: a bare ui.State (no fonts, no theme, no session) runs the List and Apply passes,
+// as a release runner with no display nor offscreen renderer does (docs/debug.md, "A panel's test").
+@(test)
+a_panel_is_tested_on_a_bare_state :: proc(t: ^testing.T) {
+	soldier := Soldier{speed = 1}
+	s: ui.State
+	ui.init(&s, nil, nil)
+	defer ui.destroy(&s)
+	debug.panel(&s, "Soldier", soldier_debug, &soldier)
+	sb := strings.builder_make(context.temp_allocator)
+	debug.list(&s, &sb)
+	testing.expect(t, strings.contains(strings.to_string(sb), `"path":"Soldier/speed","kind":"number","value":1`))
+	testing.expect_value(t, debug.set(&s, "Soldier/speed", "2.5"), "")
+	testing.expect_value(t, soldier.speed, 2.5)
+	testing.expect_value(t, debug.press(&s, "Soldier/Print"), "")
+	testing.expect_value(t, soldier.prints, 1)
 }
 
 @(test)
@@ -468,4 +488,110 @@ the_labels_read_in_both_themes :: proc(t: ^testing.T) {
 		ratio := ui.contrast(label.target_text, ground.target_bg)
 		testing.expectf(t, ratio >= 4.5, "%s light=%v: a label at %.2f:1", c.theme, c.light, ratio)
 	}
+}
+
+Labels :: struct { a, b, c: f32 }
+
+short_labels :: proc(l: ^Labels) {
+	debug.number("a", &l.a)
+	if debug.section("S") { debug.number("bb", &l.b) }
+}
+
+Grown :: struct { a, b: f32, long: bool }
+
+grown_labels :: proc(g: ^Grown) {
+	debug.toggle("long", &g.long)
+	if g.long { debug.number("the drone's speed", &g.b) }
+}
+
+// A window that goes idle keeps no column of a build before: a longer label that comes (the program's data changed,
+// nothing animates) asks for the next build, and shows whole.
+@(test)
+the_label_column_is_right_once_idle :: proc(t: ^testing.T) {
+	g: Grown
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Mid", grown_labels, &g)
+	debug.open(s.state)
+	testing.expect(t, debug.show_panel(s.state, "Mid"))
+	session.wait_box(s, debug.box_name("Mid/long", "row"))
+	session.wait_idle(s)
+	g.long = true
+	session.frame(s)
+	// (wait_idle builds anyway: what is looked at is whether a cut label asks for the next build)
+	first := session.get(s, "label", within = session.get(s, debug.box_name("Mid/the drone's speed", "row")))
+	testing.expect(t, first.ellipsis == {} || ui.needs_frame(s.state), "a label cut by the last build's column asks for the next build")
+	session.wait_idle(s)
+	lb := session.get(s, "label", within = session.get(s, debug.box_name("Mid/the drone's speed", "row")))
+	testing.expectf(t, lb.ellipsis == {}, "the label whole: %v px", lb.rect.max.x - lb.rect.min.x)
+}
+
+long_labels :: proc(l: ^Labels) {
+	debug.number("a", &l.a)
+	debug.number("a label much longer than any column should be", &l.c)
+}
+
+// The labels' column is the panel's longest label's (ui.Dense_Labels): short labels, a narrow column; a long label caps
+// it at DENSE_LABEL_MAX_EM and is cut; the fields of every depth start on one edge.
+@(test)
+the_label_column_is_the_longest_label_s :: proc(t: ^testing.T) {
+	l: Labels
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Short", short_labels, &l)
+	debug.panel(s.state, "Long", long_labels, &l)
+	debug.open(s.state)
+	testing.expect(t, debug.show_panel(s.state, "Short"))
+	session.wait_box(s, debug.box_name("Short/a"))
+	session.frames(s, 3)
+	a := session.get(s, debug.box_name("Short/a"))
+	bb := session.get(s, debug.box_name("Short/S/bb"))
+	row := session.get(s, debug.box_name("Short/a", "row"))
+	em := a.font_size
+	testing.expectf(t, abs(a.rect.min.x - bb.rect.min.x) <= 1, "one edge across sections: %v, %v", a.rect.min.x, bb.rect.min.x)
+	// ("bb" under its section's indent is the widest: a few ems, where the fixed column took seven)
+	testing.expectf(t, a.rect.min.x - row.rect.min.x <= 4 * em, "short labels, a narrow column: %v px", a.rect.min.x - row.rect.min.x)
+	testing.expect(t, debug.show_panel(s.state, "Long"))
+	session.wait_box(s, debug.box_name("Long/a"))
+	session.frames(s, 3)
+	la := session.get(s, debug.box_name("Long/a"))
+	lrow := session.get(s, debug.box_name("Long/a", "row"))
+	col := la.rect.min.x - lrow.rect.min.x
+	testing.expectf(t, col <= ui.DENSE_LABEL_MAX_EM * em + 4 && col > ui.DENSE_LABEL_MIN_EM * em, "a long label caps the column: %v px", col)
+	long := session.get(s, debug.box_name("Long/a label much longer than any column should be"))
+	testing.expect(t, abs(long.rect.min.x - la.rect.min.x) <= 1)
+}
+
+Acts :: struct { pressed: [8]int }
+
+acts_debug :: proc(a: ^Acts) {
+	if debug.act("Print") { a.pressed[0] += 1 }
+	if debug.act("Reset") { a.pressed[1] += 1 }
+	debug.number("n", &a.pressed[7])
+	for i in 2 ..< 7 { if debug.act(fmt.tprintf("A much longer act of the panel %d", i)) { a.pressed[i] += 1 } }
+}
+
+// Acts one after another share a row, as many as it holds, then the next; what is not an act ends their row.
+@(test)
+acts_flow_on_one_row :: proc(t: ^testing.T) {
+	a: Acts
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Acts", acts_debug, &a)
+	debug.open(s.state)
+	testing.expect(t, debug.show_panel(s.state, "Acts"))
+	session.wait_box(s, debug.box_name("Acts/Reset", "act"))
+	session.frames(s, 3)
+	print := session.get(s, debug.box_name("Acts/Print", "act"))
+	reset := session.get(s, debug.box_name("Acts/Reset", "act"))
+	testing.expectf(t, abs(print.rect.min.y - reset.rect.min.y) < 1 && reset.rect.min.x > print.rect.max.x, "Print %v and Reset %v side by side", print.rect, reset.rect)
+	n := session.get(s, debug.box_name("Acts/n", "row"))
+	testing.expect(t, n.rect.min.y >= print.rect.max.y, "a number ends the acts' row")
+	first := session.get(s, debug.box_name("Acts/A much longer act of the panel 2", "act"))
+	last := session.get(s, debug.box_name("Acts/A much longer act of the panel 6", "act"))
+	testing.expect(t, last.rect.min.y > first.rect.min.y, "a full row goes on to the next")
+	body := session.get(s, debug.box_name("Acts/n", "row"))
+	for i in 2 ..< 7 {
+		b := session.get(s, debug.box_name(fmt.tprintf("Acts/A much longer act of the panel %d", i), "act"))
+		testing.expectf(t, b.rect.max.x <= body.rect.max.x + 1, "act %d within the panel: %v", i, b.rect)
+	}
+	session.click(s, debug.box_name("Acts/Reset", "act"))
+	testing.expect_value(t, a.pressed[1], 1)
 }

@@ -104,6 +104,69 @@ fr Ouvre un nouveau ticket avec le rapport ; le rapport entier est aussi copié 
 en Dismiss
 fr Fermer
 
+en Bézier
+fr Bézier
+
+en Linear
+fr Linéaire
+
+en Constant
+fr Constante
+
+en Play (Space)
+fr Lire (Espace)
+
+en Pause (Space)
+fr Pause (Espace)
+
+en Plays once: loop it
+fr Joue une fois : la faire boucler
+
+en Loops: play it once
+fr Boucle : la jouer une fois
+
+en Frame all keys (F)
+fr Cadrer toutes les clés (F)
+
+en Print as Odin source, and copy it
+fr Écrire en source Odin, et la copier
+
+en curve
+fr courbe
+
+en channel
+fr canal
+
+en key
+fr clé
+
+en Smooth handles
+fr Lisser les poignées
+
+en Handles broken: align them
+fr Poignées séparées : les aligner
+
+en Handles aligned: break them
+fr Poignées alignées : les séparer
+
+en Custom
+fr Personnalisée
+
+en easing
+fr courbe d'accélération
+
+en Out
+fr Sortie
+
+en In out
+fr Entrée et sortie
+
+en Sine
+fr Sinus
+
+en Emphasized
+fr Accentuée
+
 en Debug
 fr Débogage
 
@@ -986,9 +1049,6 @@ fr Espace de mélange
 
 en Where colours are mixed: in linear light (correct mixing, what the toolkit is tuned for), or in sRGB values, as web browsers do.
 fr L'endroit où les couleurs se mélangent : en lumière linéaire (un mélange juste, celui pour lequel la boîte à outils est réglée), ou en valeurs sRGB, comme le font les navigateurs web.
-
-en Linear
-fr Linéaire
 
 en Subpixel positions
 fr Positions sous-pixel

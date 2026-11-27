@@ -48,7 +48,7 @@ Refused:
 
 An act is a button. Its arguments are values of the same panel shown before it (`debug.number("count", &d.count);
 if debug.act("Spawn") { spawn(d.count) }`). A tool sets them, then presses. One concept for a person and a tool, and
-no second form of input.
+no second form of input. Acts in a row flow side by side (see "A dense look").
 
 ### Paths
 
@@ -100,12 +100,21 @@ do not follow the page. `ui.dense_scope` holds it:
 - square corners: every box built in a dense scope has none (`State.square_depth`; a shape's radius, `.Fixed_Radius`,
   stays), a check box's mark too, and the window itself (`View_Options.square`: its frame, its header, its body). A
   rounded corner is the person's comfort; on an instrument it is room taken from the values and a softness that
-  reads as a person's screen. Menus and tooltips that open from it keep the program's look: they are the program's
-  overlays, not the instrument;
-- a label and its field on one row (`dense_row`), numbers in the mono face, aligned right. The debug window gives the
-  labels a column of `LABEL_EM` (7) less the indent of the sections, so the fields of every depth line up as one
-  column; with a filter, a wider one (`LABEL_FILTERED_EM`) for the sections' names. A share of the row was refused:
-  an indented row's share is narrower, and the fields of two depths did not line up;
+  reads as a person's screen. Tooltips that open from it keep the program's look; a dropdown's list and a cut text's
+  bubble opened from it are dense (dropdown.md, text-reveal.md): an instrument's list as tall and as loose as a
+  person's covered the values it is about;
+- aligned without losing room: alignment comes from columns shared and sized by their content, never from a fixed
+  width reserved or an empty cell. No gap that is neither content nor a row's tight inset;
+- a label and its field on one row (`dense_row`), numbers in the mono face, aligned right. The labels' column of a
+  panel is as wide as its longest label shown, its sections' indent counted (`ui.Dense_Labels`): every depth's fields
+  start on one edge, and a panel of short labels ("time", "key") has a narrow column. `DENSE_LABEL_MIN_EM` (2.5) at
+  least, `DENSE_LABEL_MAX_EM` (11) at most: a longer label is cut and opens whole (text-reveal.md). A label is measured
+  once, by its text, and kept; a build takes the widest of the last build's labels (one lookup a row, the row being
+  built anyway), so a label that comes or goes moves the column at the next build. With a filter, a label says its
+  sections and is not indented. Refused: a fixed column of 7 ems (a gap before every short label's field), and a share
+  of the row (an indented row's share is narrower: the fields of two depths did not line up);
+- acts one after another share a row, as many as it holds, then the next (Dear ImGui's SameLine, implied): a row
+  each for "Print" and "Reset" was a row of nothing after a short button. What is not an act ends their row;
 - the theme's colours (light or dark, their contrast checked as every theme's), not a fixed dark skin: a dark window
   over a light program reads as another program, and its contrast would be nobody's. A theme's weak ink is made for
   text at its size: a dense label's is moved from its ground until it reads at 4.5:1 (Graphite's dark was 4.4, Midnight's
@@ -149,6 +158,8 @@ in a page of settings is the same trap.
   width, `PLOT_ROWS` rows high, scaled from its lowest to its highest value, with those two and its last at its right.
   A sparkline of a row's height beside the value showed a shape and no number to read it by. The program pushes each frame (a write, compiled out of a release build): a history recorded only while the panel
   shows would be empty when one looks.
+- `curve`, `curves`, `easing`: a value over time and a transition's easing, in an editor as wide as the panel (keys,
+  handles, a playhead on the program's clock). Their design is [curve-editor.md](curve-editor.md).
 - `value(label, &x)`: any Odin value by reflection. A struct is a section of its fields; a number, a bool, an enum, a
   string or a small vector is edited; an array or a slice shows `ITEMS_MAX` items and says how many more; a pointer is
   followed `DEPTH_MAX` levels deep; a map, a union, a procedure are watched as text. A field's tag says more:

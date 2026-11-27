@@ -51,11 +51,17 @@ import "../platform"
 @(private = "file") MENU_PAD_EM :: 0.25
 @(private = "file") MENU_SEPARATOR_GAP_EM :: 0.2
 // The columns of a row, in em (menu_row builds them, menu_row_width measures them: one source for both).
-@(private = "file") MENU_ROW_LEAD_EM :: 0.6    // before the icon column
-@(private = "file") MENU_ICON_EM :: 1.5        // the icon or check column
+// (a light inset: the check close to the row's edge, the words close to the check; the wider columns were stuffing)
+@(private = "file") MENU_ROW_LEAD_EM :: 0.3    // before the icon column
+@(private = "file") MENU_ICON_EM :: 1.2        // the icon or check column
 @(private = "file") MENU_KEY_PAD_EM :: 0.5     // a shortcut's padding on each side, on top of its text_pad
 @(private = "file") MENU_ARROW_EM :: 1.2       // a submenu's arrow
-@(private = "file") MENU_ROW_TRAIL_EM :: 0.5   // after the last column
+@(private = "file") MENU_ROW_TRAIL_EM :: 0.35  // after the last column
+// A dense row: a hair before its check column (the check's place in every density: at its left), the column, a hair
+// after its words
+@(private = "file") MENU_DENSE_LEAD_EM :: 0.25
+@(private = "file") MENU_DENSE_MARK_EM :: 1.0
+@(private = "file") MENU_DENSE_TRAIL_EM :: 0.3
 // A tooltip's size before it was measured.
 @(private = "file") TOOLTIP_FIRST_WIDTH_EM :: 10
 @(private = "file") TOOLTIP_FIRST_HEIGHT_EM :: 3
@@ -119,6 +125,12 @@ Menu_Level :: struct {
 	held:         bool,
 	held_pos:     Vec2,
 	held_width:   f32,
+	// opened from a dense scope (an instrument's dropdown, debug-panel.md): its rows in that scope's text, a dense row
+	// high, the check in its column at the left (menu_row_dense); no least width
+	dense:        bool,
+	// across, the room of what its anchor is shown in (the nearest box that clips it: a view's body, a floating
+	// window's): a list wider than its button, opened near that room's right edge, moves left to stay in it
+	inside:       Rect,
 }
 
 // What was typed in a menu that filters ("" none; a panel with no item filters nothing, whatever came in its first frame).
@@ -180,6 +192,29 @@ Menu_At :: union { Vec2, Rect }
 // toolbar, whose menu then keeps the toolbar's margin from the window's edge).
 Menu_Align :: enum u8 { Start, End }
 
+// The room across of what box `b` is shown in: the nearest box that clips it ({}: none).
+@(private = "file")
+menu_room_of :: proc(b: ^Box) -> Rect {
+	for q := b.parent; q != nil; q = q.parent {
+		if .Clip in q.flags && q.rect.max.x > q.rect.min.x { return q.rect }
+	}
+	return {}
+}
+
+// A level opened by a button follows it: the button and its room, as the last layout placed them (a view that moved,
+// a panel that scrolled while the list is open); a corner held moves by as much. A button no longer built leaves the
+// list where it was.
+@(private = "file")
+menu_anchor_follow :: proc(s: ^State, lv: ^Menu_Level) {
+	if lv.anchor == 0 || lv.around == {} { return }
+	b := s.boxes[lv.anchor] or_else nil
+	if b == nil || b.last_build + 1 < s.build_index { return }
+	// (a list that filters holds its corner while its rows come and go: held by its button, it moves as its button)
+	if lv.held { lv.held_pos += b.rect.min - lv.around.min }
+	lv.around = b.rect
+	lv.inside = menu_room_of(b)
+}
+
 // Opens the menu `id` at `at`, replacing any open menu. `anchor`: the box that opens the menu (dropdown button, menu bar
 // entry): pressing it again is not a press "outside", so the widget can toggle the menu itself. `from_keyboard`: the
 // first enabled item starts selected. Every menu filters what is typed (fuzzy, File Pilot's): a field at its top shows it
@@ -197,6 +232,7 @@ menu_open :: proc(id: string, at: Menu_At, anchor: Key = 0, from_keyboard := fal
 	case Rect: pos, around = {v.min.x, v.max.y}, v
 	}
 	lv := Menu_Level{key = menu_key(id), pos = pos, around = around, align = align, nested = nested, open_build = gs().build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, query = {edited_ms = now_ms()}}
+	if b := gs().boxes[anchor] or_else nil; anchor != 0 && b != nil { lv.inside = menu_room_of(b) }
 	if nested { menu_nest(lv) } else { lv.anchor = anchor; menu_push(lv) }
 }
 
@@ -430,6 +466,12 @@ menu_place :: proc(lv: ^Menu_Level, depth: int, size, window: Vec2, em: f32) -> 
 			gap := em * 0.25
 			pos = {lv.align == .End ? r.max.x - size.x : r.min.x, r.max.y + gap}
 			if pos.y + size.y > window.y && r.min.y - gap - size.y >= 0 { pos.y = r.min.y - gap - size.y }
+			// (within its anchor's room across: a list past a floating view's edge was cut by it to the eye)
+			// (a list wider than the room keeps its place by its button: pinned to the room's left edge, a list aligned
+			// to its button's end ran the other way, past the room it was to stay in)
+			if room := lv.inside; room.max.x - room.min.x >= size.x {
+				pos.x = clamp(pos.x, room.min.x, room.max.x - size.x)
+			}
 		} else {
 			pad := dense(em * MENU_PAD_EM)   // the first row lines up with the item that opened the submenu
 			pos = {r.max.x - 2, r.min.y - pad}
@@ -526,6 +568,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	never_built := lv.built_build == 0
 	lv.built_build = s.build_index
 	lv.activate, lv.open_sub = false, false
+	if depth == 0 { menu_anchor_follow(s, lv) }
 
 	// The pointer's item is the selected one in the frame that sees the pointer there: the rows are built in order, so
 	// a row built before the hovered one would otherwise still be drawn selected (and the hovered one not yet) until the
@@ -618,8 +661,11 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 		}
 	}
 
-	// (the rows are built in the window's style, below: the menu's sizes are in its em, not the caller's)
-	em := s.style_stack[0].font_size
+	// (the rows are built in the window's style, below: the menu's sizes are in its em, not the caller's; a dense
+	// caller's in its own: an instrument's list stays dense)
+	lv.dense = dense_shown()
+	menu_style := lv.dense ? top_style()^ : s.style_stack[0]
+	em := menu_style.font_size
 	id := fmt.tprintf("###menu_%d", u64(lv.key))
 	panel := s.boxes[key_from_string(s.root.key, id)]
 	first := panel == nil
@@ -627,9 +673,10 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	// grows by the room its layout keeps for the scroll bar)
 	lv.scrolls = !first && panel.view_bounds.y > s.window_size.y
 	// As wide as its widest row (measured on the last frame), `width` at least: a width given is a minimum, never a cut.
-	w := max(lv.prev_width, width, em * MENU_MIN_WIDTH_EM)
+	w := max(lv.prev_width, width, lv.dense ? 0 : em * MENU_MIN_WIDTH_EM)
 	if lv.filters {
-		w = max(w, lv.held_width)
+		// (never narrower than its field's hint: a list as narrow as a dense button cut it to "Type t…")
+		w = max(w, lv.held_width, search_band_width(em, f = menu_style.font))
 		lv.held_width = w
 	}
 	// (placed with the width it is built with this frame, its frame added (what the last frame's panel had over the width
@@ -650,7 +697,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	// that opens it)
 	push_parent(s.root)
 	push_tags_isolated("floating")
-	append(&s.style_stack, s.style_stack[0])
+	append(&s.style_stack, menu_style)
 	set_next_axis(.Y)
 	s.next_mod.fixed_x = pos.x
 	s.next_mod.fixed_y = pos.y
@@ -672,7 +719,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 		next({width = px(w)})
 		search_band("menu_search", &lv.query, {owner_keys = true})
 	}
-	spacer(px(em * MENU_PAD_EM))
+	spacer(px(lv.dense ? dense_gap() : em * MENU_PAD_EM))
 	return true
 }
 
@@ -738,15 +785,59 @@ menu_current :: proc() -> (^Menu_Level, int) {
 // the same numbers (its border, the lead, the icon column, the label and its padding, the shortcut's box as the layout
 // sizes it, the arrow, the trail). The room of a scroll bar is not in it: the panel's layout keeps it.
 @(private = "file")
-menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool) -> f32 {
+menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool, dense := false) -> f32 {
 	em, pad := st.font_size, st.text_pad
 	w := 2 * max(1, math.round(gs().scale))   // (the row is always bordered: border_inset)
-	w += em * (MENU_ROW_LEAD_EM + MENU_ICON_EM + MENU_ROW_TRAIL_EM)
+	if dense {
+		w += em * (MENU_DENSE_LEAD_EM + MENU_DENSE_MARK_EM + MENU_DENSE_TRAIL_EM)
+	} else {
+		w += em * (MENU_ROW_LEAD_EM + MENU_ICON_EM + MENU_ROW_TRAIL_EM)
+	}
 	w += text_width(st.font, em, label) + 2 * pad
 	// (the layout ceils a text box: layout_standalone)
 	if shortcut != "" { w += math.ceil(text_width(st.font, em, shortcut) + 2 * (pad + em * MENU_KEY_PAD_EM)) }
-	if submenu && widget_icons() != 0 { w += em * MENU_ARROW_EM }
+	if submenu && widget_icons() != 0 { w += em * (dense ? MENU_DENSE_MARK_EM : MENU_ARROW_EM) }
 	return math.ceil(w)
+}
+
+// A dense level's row's content: a hair, the check or the icon in its column (at the left, as in every density), the
+// label, its shortcut, a submenu's arrow, a hair. The check at the right end sat on the row's edge and, the list as
+// narrow as its button, spilled past its border.
+@(private = "file")
+menu_row_dense :: proc(lv: ^Menu_Level, label, shortcut, icon: string, checked, submenu: bool, icon_font: font.Font_Id, icon_draw: Custom_Draw, icon_user: rawptr) {
+	s := gs()
+	em := font_size()
+	cell := em * MENU_DENSE_MARK_EM
+	spacer(px(em * MENU_DENSE_LEAD_EM))
+	next({width = px(cell), height = pct(1)})
+	if checked && widget_icons() != 0 {
+		if style({font = widget_icons(), text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###chk", ICON_CHECK)) }
+	} else if icon_draw != nil {
+		custom("###ico_img", icon_draw, icon_user)
+	} else if face := icon_font != 0 ? icon_font : (s.menu_icon_font != 0 ? s.menu_icon_font : s.icon_font); icon != "" && face != 0 {
+		if style({font = face, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon)) }
+	} else {
+		build_box({}, "###nochk")
+	}
+	if q := menu_query(lv); q != "" {
+		_, ranges, _ := fuzzy_score(q, label)
+		next({width = fill()})
+		matched_label("###lbl", label, ranges)
+	} else {
+		next({width = fill(), height = pct(1)})
+		build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label))
+	}
+	if shortcut != "" {
+		if tags("weak") {
+			next({width = text_size(em * MENU_KEY_PAD_EM), height = pct(1)})
+			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###key", shortcut))
+		}
+	}
+	if submenu && widget_icons() != 0 {
+		next({width = px(cell), height = pct(1), font = widget_icons(), text_align = .Center})
+		if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf(">###ico%d", parent_box().child_count)) }
+	}
+	spacer(px(em * MENU_DENSE_TRAIL_EM))
 }
 
 // One row: check mark or icon, label, shortcut (weak), submenu arrow. Returns the row's signal.
@@ -755,7 +846,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 	s := gs()
 	em := font_size()
 	label := display_part(text)
-	natural := menu_row_width(top_style(), label, shortcut, submenu)
+	natural := menu_row_width(top_style(), label, shortcut, submenu, lv.dense)
 	lv.width = max(lv.width, natural)
 	width := lv.eff_width
 	sig: Signal
@@ -764,7 +855,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 			if highlight { push_tags("selected") }
 			set_next_axis(.X, .Center)
 			s.next_mod.width = px(width)
-			s.next_mod.height = px(dense(em * s.feel.menu_item_em))
+			s.next_mod.height = px(lv.dense ? dense_row_height() : dense(em * s.feel.menu_item_em))
 			// (a row: its face inset in it, a row's corners: row_face.odin)
 			if s.next_mod.radius == nil { s.next_mod.radius = em * shape_of(.Row) }
 			if !highlight { s.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
@@ -782,7 +873,9 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 				if submenu { info.popup = .Menu; info.expanded = false }
 				a11y_default(b, info)
 			}
-			if parent(b) {
+			if lv.dense {
+				if parent(b) { menu_row_dense(lv, label, shortcut, icon, checked, submenu, icon_font, icon_draw, icon_user) }
+			} else if parent(b) {
 				spacer(px(em * MENU_ROW_LEAD_EM))
 				next({width = px(em * MENU_ICON_EM), height = pct(1)})
 				if checked && widget_icons() != 0 {
