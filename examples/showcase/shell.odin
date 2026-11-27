@@ -91,7 +91,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 				ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 				if ui.column(id = "###settings") { settings_build(app, em) }
 			} else {
-				sidebar(app, size.x, em)
+				if app.tab_demo == .None { sidebar(app, size.x, em) }
 				scene_build(app, page_of(app.scene), em)
 			}
 		}

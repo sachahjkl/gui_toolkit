@@ -72,6 +72,13 @@ editor_build :: proc(app: ^App, em: f32) {
 	ui.dock_begin(&e.dock, "###editor_dock", {
 		title = proc(user: rawptr, id: u32) -> string { return EDITOR_TITLES[id] },
 		user = app, close_buttons = true,
+		// (the files of code on an editor's ground, off the page: what their tabs frame)
+		surface = proc(user: rawptr, id: u32) -> ui.Tab_Surface {
+			if id != EDITOR_WORDS && id != EDITOR_NOTES { return {} }
+			page := ui.color("background")
+			page.a = 1
+			return {ground = ui.luminance(page) > 0.5 ? ui.lighten(page, 0.75) : ui.darken(page, 0.3)}
+		},
 	})
 	if ui.dock_panel(&e.dock, EDITOR_FILES) {
 		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})

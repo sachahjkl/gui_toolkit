@@ -102,6 +102,11 @@ App :: struct {
 	// the editor's scene (editor.odin): its dock
 	editor:         Editor,
 
+	// the tabs' design proposals (tab_design.odin): the style of every row of tabs, the context shown in place of a scene
+	tab_style:      ui.Tab_Style,
+	tab_demo:       Tab_Demo,
+	tab_demo_state: Tab_Demo_State,
+
 	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,   // (its usage memory in memory only: the showcase keeps no file)
 	palette_settings: prefs_page.Palette_Settings,
@@ -155,6 +160,10 @@ open :: proc(o: Open_Options) -> ^App {
 		case strings.has_prefix(a, "--page="): page = a[len("--page="):]
 		case strings.has_prefix(a, "--rounding="):
 			if v, ok := strconv.parse_f64(a[len("--rounding="):]); ok { rounding = v }
+		case strings.has_prefix(a, "--tabs="):
+			for name, v in TAB_STYLE_NAMES { if ascii.equal_fold(name, a[len("--tabs="):]) { app.tab_style = v } }
+		case strings.has_prefix(a, "--tab-demo="):
+			for name, v in TAB_DEMO_NAMES { if name != "" && ascii.equal_fold(name, a[len("--tab-demo="):]) { app.tab_demo = v } }
 		case strings.has_prefix(a, "--views="):
 			for name, v in VIEWS_VARIANT_NAMES { if ascii.equal_fold(name, a[len("--views="):]) { app.views_variant = v } }
 		case strings.has_prefix(a, "--size="):

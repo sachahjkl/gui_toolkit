@@ -1656,11 +1656,47 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 // arrows, never a bar; the chosen tab is brought into view when it changes. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
 // its tab list. `icons` may be nil. Returns true when the selection changed.
 tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
+	return tabs_ex(id, labels, icons, selected).changed
+}
+
+// A tab's own content (Tabs_Options.content): built in its body, in place of its icon and words.
+Tab_Content :: struct {
+	index:   int,
+	on:      bool,   // the chosen tab
+	hot:     bool,   // under the pointer, or something in it
+	box:     ^Box,   // the tab
+	label:   string, // its label (its accessible name)
+}
+
+// What a row of tabs does beyond choosing (tabs_ex).
+Tabs_Options :: struct {
+	content: proc(user: rawptr, t: Tab_Content),   // a tab's own content (nil: its icon and its label)
+	after:   proc(user: rawptr),                    // built after the last tab, on the strip (a "+")
+	user:    rawptr,
+	framed:  bool,   // the strip is a tab_panel's: the panel draws the line
+}
+
+// What happened to a row of tabs this frame.
+Tabs_Result :: struct {
+	changed: bool,
+	menu:    int,    // the tab whose menu was asked (a right click, the Menu key, Shift+F10); -1: none
+	menu_at: Vec2,   // where that menu opens
+	closed:  int,    // the tab a middle click asked to close; -1: none
+}
+
+// ui.tabs with a tab's own content, a slot after the tabs, and the signals a program builds its menus on.
+tabs_ex :: proc(id: string, labels: []string, icons: []string, selected: ^int, o := Tabs_Options{}) -> (res: Tabs_Result) {
+	res.menu, res.closed = -1, -1
+	changed := false
+	defer res.changed = changed
 	em := font_size()
 	if strip(id) {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
-		// (the row's bottom edge a line, out of which the chosen tab rises: tab_box)
-		if outer := parent_box().parent; outer != nil { outer.custom = tab_line_draw }
+		// (the row's bottom edge a line, out of which the chosen tab rises: tab_box; a tab_panel's frame draws its own)
+		if outer := parent_box().parent; outer != nil && !o.framed {
+			outer.custom = tab_line_draw
+			if tab_style() != .Silhouette { outer.custom_user = tab_strip_look({}) }
+		}
 		tab_strip_start()
 		first_tab: ^Box
 		items := make([]^Box, len(labels), frame_allocator())
@@ -1675,16 +1711,23 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 			items[i] = b
 			if parent(b) { if tab_body() {
 				if !on { push_tags("weak") }
-				spacer(px(em))
-				if i < len(icons) { icon(icons[i], em * 1.6) }
-				next({width = tab_title_width(label), height = pct(1)})
-				build_box({.Draw_Text}, label)
-				spacer(px(em))
+				if o.content != nil {
+					o.content(o.user, {index = i, on = on, hot = b.hot_t > 0.5 || hot_within(b.key), box = b, label = label})
+				} else {
+					spacer(px(em))
+					if i < len(icons) { icon(icons[i], em * 1.6) }
+					next({width = tab_title_width(label), height = pct(1)})
+					build_box({.Draw_Text}, label)
+					spacer(px(em))
+				}
 				if !on { pop_tags() }
 			} }
 			sig := signal(b)
 			if sig.focused { on_one = true }
 			if sig.clicked && !on { selected^ = i; changed = true }
+			if sig.right_clicked { res.menu, res.menu_at = i, mouse_pos() }
+			if sig.focused && (key_press(.Menu) || key_press(.F10, {.Shift})) { res.menu, res.menu_at = i, Vec2{b.rect.min.x, b.rect.max.y} }
+			if sig.middle_clicked { res.closed = i }
 			a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
 			if first_tab == nil { first_tab = b }
 		}
@@ -1701,6 +1744,16 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 				if c.a11y == nil || c.a11y.role != .Tab { continue }
 				c.a11y.selected = i == selected^
 				i += 1
+			}
+		}
+		if o.after != nil {
+			// (across the tabs' words: under the strip's ground above an outlined tab, tab_body)
+			outlined := tab_style() == .Silhouette || tab_style() == .Folder
+			next({width = children_sum(0), height = pct(1), axis = .Y})
+			if column(id = "###tabs_after") {
+				if outlined { spacer(pct(TAB_TOP_SHARE)) }
+				next({width = children_sum(0), height = fill(), axis = .X})
+				if row(.Center, id = "###tabs_after_row") { o.after(o.user) }
 			}
 		}
 	}

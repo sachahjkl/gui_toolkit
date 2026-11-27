@@ -33,6 +33,11 @@ FILE_CHOSEN :: 2   // the row the menu was opened on
 
 scene_build :: proc(app: ^App, s: Scene, em: f32) {
 	// (an editor's dock is the whole page, edge to edge: no margin is lost around its panes)
+	ui.set_tab_style(app.tab_style)
+	if app.tab_demo != .None {
+		tab_demo_build(app, em)
+		return
+	}
 	if s == .Editor {
 		editor_build(app, em)
 		return

@@ -304,6 +304,29 @@ whatever its strictness: it scrolls to what it hides. In a view that scrolls the
 (`Allow_Overflow_X`, `Allow_Overflow_Y`), it is held to that view's room. A wide table in a page that scrolls sideways
 scrolls in its own box, and the page does not scroll for it.
 
+## Tabs over a surface of their own
+
+A row of tabs takes its colours from the content it frames, not from the page. Name that content's ground and edge
+once; the toolkit paints the chosen tab, the strip and the frame with them, and the content draws no border of its own:
+
+```odin
+ui.set_tab_style(.Folder)   // .Folder, .Underline, .Segmented, .Header (.Silhouette: the 0.366 look)
+opts := ui.Tab_Panel_Options{surface = {ground = terminal_bg}}
+opts.tabs.content = draw_my_tab                       // a tab's own content (nil: its icon and label)
+opts.tabs.after = new_tab_button                      // after the last tab: a "+"
+if r, ok := ui.tab_panel("###term", titles, nil, &shown, opts); ok {
+	terminal_view(app)
+	if r.menu >= 0 { ui.menu_open("###tab_menu", r.menu_at, 0) }   // a right click, the Menu key, Shift+F10
+}
+```
+
+- `tab_panel(id, labels, icons, &selected, o)`: the strip and the page in one framed box, the page padded by `o.pad`
+  (negative: none). It returns `ui.Tabs_Result`: `changed`, `menu` and `menu_at` (-1: none), `closed` (a middle click).
+- `tabs_ex(id, labels, icons, &selected, o)`: `ui.tabs` with `Tabs_Options` and the same result, for a strip a
+  program frames itself.
+- `tab_surface(sf)`: `if ui.tab_surface(sf) { ... }` gives the surface to the strips built inside (a program's own).
+  A dock asks it per panel: `Dock_Options.surface`, which also paints the panel's body.
+
 ## Your own tab strip
 
 A program whose tabs are its own boxes (a fixed width, a drag that moves or tears off, a drop zone, its own icon, title

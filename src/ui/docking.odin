@@ -90,6 +90,7 @@ Dock_Options :: struct {
 	title:       proc(user: rawptr, panel: u32) -> string,      // a panel's name (its tab, its menus, screen readers)
 	tab:         proc(user: rawptr, t: Dock_Tab),                // the content of a tab (nil: its title)
 	closable:    proc(user: rawptr, panel: u32) -> bool,         // nil: every panel can be closed
+	surface:     proc(user: rawptr, panel: u32) -> Tab_Surface,  // the ground and edge of a panel's content: its body is painted with it and its stack's tabs frame it (nil: the page's)
 	strip_begin: proc(user: rawptr, d: ^Dock, leaf: i32),        // boxes at the start of a stack's strip, before its tabs
 	strip_end:   proc(user: rawptr, d: ^Dock, leaf: i32),        // ... at its end, before its fold and menu buttons (a toolbar)
 	strip_last:  proc(user: rawptr, d: ^Dock, leaf: i32),        // ... after them: the strip's last control (a window's close button)
@@ -496,13 +497,20 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	root := dock_root_of(d, leaf)
 	floating := root != d.main
 	sr := dock_strip_rect(d, leaf)
+	// (the panel shown tells its stack's strip and body the surface it is drawn on: tab_surface)
+	shown_surface: Tab_Surface
+	if d.opts.surface != nil && d.nodes[leaf].active != DOCK_NO_PANEL { shown_surface = d.opts.surface(d.opts.user, d.nodes[leaf].active) }
+	_ = tab_surface(shown_surface)
+	defer tab_surface_end()
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
 	bar: ^Box
 	// (a bar, never a key: its ground flat, its bottom edge a line, the stack's top border, out of which the shown tab
 	// rises: tab_strip_draw)
 	if tags("bar") { bar = build_box({.Clip, .Draw_Background, .Custom_Ground}, dock_leaf_id(leaf)) }
 	bar.custom = tab_strip_draw
-	if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
+	if tab_style() != .Silhouette {
+		bar.custom_user = tab_strip_look(bar.bg)
+	} else if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
 		focus, _ := dock_focus_leaf(d)
 		sd := frame_new(Dock_Strip_Draw)
 		sd^ = {bar = bar.bg, lit = focus == leaf}
@@ -562,6 +570,10 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	br := dock_body_rect(d, leaf)
 	next({fixed_x = br.min.x, fixed_y = br.min.y, width = px(br.max.x - br.min.x), height = px(br.max.y - br.min.y), axis = .Y})
 	body := build_box({.Clip}, dock_body_id(a))
+	if shown_surface.ground.a > 0 || tab_style() != .Silhouette {
+		body.flags += {.Draw_Background}
+		body.bg, body.target_bg = tab_surface_now().ground, tab_surface_now().ground
+	}
 	a11y_set(body, {role = .Tab_Panel, name = dock_title(d, a), labelled_by = dock_tab_key(d, leaf, a)})
 }
 

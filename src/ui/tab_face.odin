@@ -12,14 +12,14 @@ import "../draw"
 // line, filled with the theme's hover step under the pointer.
 
 // Above the chosen tab, a share of the strip's height (the strip's own ground shows there).
-@(private = "file") TAB_TOP_SHARE :: 0.16
+@(private) TAB_TOP_SHARE :: 0.16
 // The line's straight run between a pane's edge and the first tab's left foot (logical px).
 @(private = "file") TAB_LINE_LEAD_PX :: 3
 // A foot's fillet, a share of the tab's top radius.
 @(private = "file") TAB_FOOT_SHARE :: 0.8
 // An unchosen tab's outline: the border's alpha, and how much lower its top is than the chosen tab's (logical px).
 @(private = "file") TAB_SOFT_EDGE_ALPHA :: 0.45
-@(private = "file") TAB_SOFT_DROP_PX :: 2
+@(private) TAB_SOFT_DROP_PX :: 2
 @(private = "file") TAB_SOFT_FOOT_SHARE :: 0.5   // an unchosen tab's fillets, a share of the chosen tab's
 @(private = "file") TAB_SOFT_GAP_PX :: 1   // between an unchosen tab's outline and a chosen tab's foot (logical px)
 // The finish's light at the chosen tab's top: its face a step toward white at the top, its rim (machined, edged).
@@ -34,6 +34,7 @@ tab_radius :: proc() -> f32 { return math.round(font_size() * shape_of(.Control)
 // A row of tabs' line, as the custom draw of the box its tabs stand in: along its bottom, in its border's colour. Not
 // .Draw_Side_Bottom: a box's sides are drawn after its children, and the chosen tab must cover the line under it.
 tab_line_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	if user != nil { tab_strip_paint(b, (^Tab_Strip_Look)(user), dc, false); return }
 	p := px1()
 	bottom := math.round(b.rect.max.y)   // (on whole pixels, as tab_draw puts its own stroke of the line)
 	draw.rect(dc, {{b.rect.min.x, bottom - p}, {b.rect.max.x, bottom}}, b.border)
@@ -44,6 +45,7 @@ tab_line_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // line. A strip is a bar, never a key: the bar's face in a finish with a relief has a lit rim, which framed the strip as
 // a button (Tower's bottom terminal).
 tab_strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	if user != nil { tab_strip_paint(b, (^Tab_Strip_Look)(user), dc, true); return }
 	draw.rect(dc, b.rect, b.bg)
 	tab_line_draw(b, user, dc)
 }
@@ -80,14 +82,21 @@ tab_face :: proc(b: ^Box, on: bool, mark := Color{}) {
 	b.tags_key = current_tags_key(s)
 	b.target_bg, b.target_border, b.target_text = color("background"), color("border"), color("text")
 	pop_tags()
-	b.layout_axis, b.cross = .X, .End   // (its content in tab_body, at its bottom: the visible part of its shape)
+	st := tab_style()
+	sf := tab_surface_now()
+	outlined := st == .Silhouette || st == .Folder
+	b.layout_axis, b.cross = .X, outlined ? .End : .Center   // (its content in tab_body, at its bottom: the visible part of its shape)
 	b.radius = 0
 	td := frame_new(Tab_Draw)
-	td^ = {on = on, radius = tab_radius(), foot = tab_foot(), mark = mark}
+	td^ = {on = on, radius = tab_radius(), foot = tab_foot(), mark = mark, style = st, ground = sf.ground, edge = sf.edge}
+	td.under = tab_strip_ground(st, sf, {})
+	td.accent = color("accent")
 	b.custom, b.custom_user = tab_draw, td
 	b.ring_at = tab_ring   // (the focus goes round the shape a person sees, not the strip's height)
 	// (a strip's view as wide as its tabs would cut the chosen tab's feet at its ends: its clip lets them out)
-	if on && b.parent != nil && .Clip in b.parent.flags { b.parent.clip_overhang = max(b.parent.clip_overhang, td.foot) }
+	if on && outlined && b.parent != nil && .Clip in b.parent.flags { b.parent.clip_overhang = max(b.parent.clip_overhang, td.foot) }
+	// (a switcher's track reaches past its end tabs)
+	if st == .Segmented && b.parent != nil && .Clip in b.parent.flags { b.parent.clip_overhang = max(b.parent.clip_overhang, math.round(TAB_TRACK_PAD_PX * s.scale)) }
 }
 
 // `if parent(tab) { if tab_body() { ... } }`: the row a tab's content goes in, as tall as the visible part of its shape
@@ -95,7 +104,8 @@ tab_face :: proc(b: ^Box, on: bool, mark := Color{}) {
 // not of the strip. Its width is its content's (it gives way with the tab: children_sum(0)).
 @(require_results, deferred_none = pop_parent)
 tab_body :: proc() -> bool {
-	next({width = children_sum(0), height = pct(1 - TAB_TOP_SHARE)})
+	outlined := tab_style() == .Silhouette || tab_style() == .Folder
+	next({width = children_sum(0), height = pct(outlined ? 1 - TAB_TOP_SHARE : 1)})
 	set_next_axis(.X, .Center)
 	push_parent(build_box({}, "###tab_body"))
 	return true
@@ -114,7 +124,15 @@ tab_title_width :: proc(text: string, pad: f32 = 0, text_pad: f32 = -1) -> Size 
 }
 
 @(private)
-Tab_Draw :: struct { on: bool, radius, foot: f32, mark: Color }
+Tab_Draw :: struct {
+	on:           bool,
+	radius, foot: f32,
+	mark:         Color,
+	style:        Tab_Style,
+	ground, edge: Color,   // the surface it frames (tab_surface_now)
+	under:        Color,   // the strip's ground under it (zero: the bar's, box_under)
+	accent:       Color,   // the chosen tab's bar (Underline, Header)
+}
 
 // The accent of a marked chosen tab (tab_face's `mark`): logical pixels along its top.
 @(private = "file") TAB_MARK_PX :: 2
@@ -125,6 +143,14 @@ Tab_Draw :: struct { on: bool, radius, foot: f32, mark: Color }
 tab_ring :: proc(b: ^Box) -> (ring: Rect, radii: [4]f32) {
 	td := (^Tab_Draw)(b.custom_user)
 	r := b.rect
+	if td.style != .Silhouette && !(td.style == .Folder && td.on) {
+		if td.style == .Segmented {
+			inset := math.round((r.max.y - r.min.y) * TAB_KEY_INSET_SHARE)
+			kr := min(td.radius, (r.max.y - r.min.y - 2 * inset) / 2)
+			return {{r.min.x, r.min.y + inset}, {r.max.x, r.max.y - inset}}, {kr, kr, kr, kr}
+		}
+		return r, {}
+	}
 	top := tab_top(r)
 	rad := min(td.radius, (r.max.y - r.min.y) / 3)
 	return {{r.min.x, top}, r.max}, {rad, 0, rad, 0}   // (Corner's order: top left, bottom left, top right, bottom right)
@@ -146,6 +172,11 @@ tab_top :: proc(r: Rect) -> f32 { return math.round(r.min.y + (r.max.y - r.min.y
 @(private)
 tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	td := (^Tab_Draw)(user)
+	if td.under.a <= 0 { td.under = box_under(b) }
+	if td.style != .Silhouette && !(td.style == .Folder && td.on) {
+		tab_draw_style(b, td, dc)
+		return
+	}
 	s := gs()
 	p := px1()
 	r := b.rect
@@ -154,7 +185,7 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	bottom := math.round(strip.max.y)   // the line's bottom edge
 	line := bottom - p * 0.5            // the line's middle: its stroke's centre
 	top := tab_snap(tab_top(r) + p * 0.5, p)
-	edge := face_over(color_from_tags(s, b.tags_key, "border"), box_under(b), s.space)
+	edge := face_over(td.edge, box_under(b), s.space)
 	if td.on {
 		foot := min(td.foot, rad)
 		xl, xr := tab_snap(r.min.x + p * 0.5, p), tab_snap(r.max.x - p * 0.5, p)
@@ -162,7 +193,8 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.push_clip(dc, {{strip.min.x, r.min.y}, {strip.max.x, bottom}})
 		defer draw.pop_clip(dc)
 		// the face: the page, joined to the panel, the finish's light at its top
-		face := color_from_tags(s, b.tags_key, "background")
+		// (the surface the tab frames: the page's unless its content said otherwise, tab_surface)
+		face := td.ground
 		face.a = 1
 		fill := draw.path_make(allocator = context.temp_allocator)
 		draw.path_move_to(&fill, shape.points[0])
@@ -170,7 +202,8 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.path_line_to(&fill, {xr + foot, bottom})
 		draw.path_line_to(&fill, {xl - foot, bottom})
 		draw.path_close(&fill)
-		lit := s.theme != nil && s.theme.relief.sheen
+		// (a folder tab is the surface itself: no light of its own, or its top would not be its page's colour)
+		lit := s.theme != nil && s.theme.relief.sheen && td.style == .Silhouette
 		if lit {
 			draw.push_clip_polygon(dc, fill.points[:])
 			hi := lighten(face, TAB_TOP_LIGHTEN)
@@ -188,7 +221,7 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 		// the finish's rim along the inside of its top (machined, edged): the light a raised face catches. (Every stroke here
 		// is opaque, mixed over what it lies on: a translucent path_stroke draws through a layer of its own.)
-		if machined() && rad > p {
+		if machined() && rad > p && td.style == .Silhouette {
 			rim := draw.path_make(allocator = context.temp_allocator)
 			draw.path_arc(&rim, {xl + rad, top + rad}, {rad - p, rad - p}, 0.5, 0.75)
 			draw.path_arc(&rim, {xr - rad, top + rad}, {rad - p, rad - p}, 0.75, 1)
@@ -245,7 +278,7 @@ tab_line_rect :: proc(b: ^Box, reach: f32) -> Rect {
 // (TAB_LINE_LEAD_PX), as the owner's sketch draws it. Every tab has its whole silhouette, the first included; this room
 // is all a strip gives before it.
 @(private)
-tab_strip_inset :: proc() -> f32 { return tab_foot() + math.round(TAB_LINE_LEAD_PX * scale()) }
+tab_strip_inset :: proc() -> f32 { return tab_style_inset(tab_style()) }
 
 // Built first in a row of tabs' strip (a program's own too): the room before its first tab, its left foot's and a short
 // run of the line.
