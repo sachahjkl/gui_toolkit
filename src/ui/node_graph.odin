@@ -44,6 +44,7 @@ GRAPH_DETAIL_ZOOM :: 0.5
 @(private) GRAPH_MARK_EM         :: 1.2    // the state's mark's room after it (kept for an idle node too)
 @(private) GRAPH_ROW_EM          :: 1.55   // a port's row
 @(private) GRAPH_PAD_EM          :: 0.55
+@(private) GRAPH_BODY_GAP_PAD    :: 0.5    // the widgets' margin above and below them, a share of the pad
 @(private) GRAPH_PORT_EM         :: 0.62   // a port's dot, across
 @(private) GRAPH_THUMB_MAX_EM    :: 8      // a thumbnail's height at most
 @(private) GRAPH_RADIUS_EM       :: 0.45
@@ -455,8 +456,11 @@ node_graph_geometry :: proc(n: ^Graph_Node, em: f32, body: f32, detail: bool, la
 		g.thumb = {{(w - tw) * 0.5, y}, {(w + tw) * 0.5, y + th}}
 		y += th
 	}
-	g.body_top = y + (detail && body > 0 ? g.pad * 0.5 : 0)
+	// (the body's margin, the same above and below it: a widget's frame inside the node reads as centred)
+	gap := detail && body > 0 ? g.pad * GRAPH_BODY_GAP_PAD : 0
+	g.body_top = y + gap
 	if detail { y = g.body_top + body }
+	body_end := y
 	content := g.thumb.max.x > g.thumb.min.x || (detail && body > 0)
 	if edge {
 		// (the edges as long as the content, and a row's room per port at least)
@@ -466,7 +470,9 @@ node_graph_geometry :: proc(n: ^Graph_Node, em: f32, body: f32, detail: bool, la
 	}
 	// (a name stands across the node: it has room where no content is beside it)
 	g.names = detail && !down && (g.rows > 0 || !content)
-	h := y + g.pad * ((g.rows > 0 || edge || g.message_mid > 0 || (detail && body > 0)) ? 0.7 : 0)
+	h := y + g.pad * ((g.rows > 0 || edge || g.message_mid > 0) ? 0.7 : 0)
+	// (the body ends the node, its ports' edge not longer: under it, its margin above)
+	if gap > 0 && y == body_end { h = y + gap }
 	g.rect = {n.pos, n.pos + {w, max(h, g.header)}}
 	return
 }

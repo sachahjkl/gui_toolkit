@@ -298,6 +298,20 @@ the toolkit lacked. The answers, one API per need:
   the build"). Shown, not searched: a detail that every Session command shares would make the session's title find
   them all, and no other source's detail is searched either. A detail read per row in view was refused: the details
   change with what they name (a session switched), rarely, and a version says it.
+- **A command that does not exist in this state is hidden, not disabled** (`Palette_Commands_Options.hidden`, part of
+  the version). Tower's agents differ: one has no "Compact", another no "Fork". A disabled command exists and cannot act
+  now (no selection): greyed, listed, the person learns it. A command the agent lacks is no command of this session:
+  greyed, it promises what never comes. Hidden, it is no item of the answer: not listed, not found, not in Recent, no
+  alias puts it first, its form does not open. The program gives its whole table and `palette_chosen_command` is still
+  its index there (the choice's id finds it: the answer's rows are not the table's). Refused: the program's own compacted
+  copy of its table (Tower's `Palette.offered`): every program that hides a command keeps the index mapping, and a
+  choice read after the copy changed points at another command. Refused: a predicate per command (`when`) asked at the
+  palette's opening: the program already knows what exists when it changes (an agent switched), and a version says it,
+  as for `disabled`; a predicate is a call per command at every opening, and one more state the palette must track.
+  Refused: `Command.hidden`: a table is often a constant, and what exists is the session's state, not the command's.
+- **A hidden command's key does nothing**, and its chord goes on to another reader: the action does not exist in this
+  state. The program reads it with `command_pressed(c, disabled = hidden || disabled)`, one value for the palette and
+  the keys.
 - **`palette_ranked_for(p, text)`** for tests: whether the list shown was ranked for that text. A test reading the
   palette's private state was refused.
 
@@ -320,7 +334,7 @@ the toolkit lacked. The answers, one API per need:
 - **The program decodes every choice** (an index in a concatenated table). It breaks when the table is made again
   before the choice is read. A choice is a source and an id.
 - **Hidden disabled commands** (opencode native today). The person does not learn that the command exists. Greyed and
-  last.
+  last. (A command that does not exist in this state is another thing: it is hidden, see Decisions.)
 - **Settings of the palette per program** (Wren's width, rows, half-life…). They make the palettes differ.
 
 ## Subtle points

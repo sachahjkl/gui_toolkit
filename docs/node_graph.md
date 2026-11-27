@@ -102,7 +102,8 @@ temp allocator too.
   its own node, nor to a port of the same side.
 - `body(user, node, em)`: widgets inside a node, under its ports and its thumbnail. They are built with a font of `em`
   frame pixels: the interface's em times the zoom, so they scale with the graph. Under the zoom `GRAPH_DETAIL_ZOOM`
-  (0.5), they, the port names and the thumbnail are not shown.
+  (0.5), they, the port names and the thumbnail are not shown. Their box sits on whole pixels with the node's: the
+  same gap on the left and the right, and the same margin above and below them.
 - `icon_font`: the font of `Graph_Node.icon`.
 - `snap`: the grid that moves snap to, in graph units (0: none).
 - `direction` (`Graph_Direction`): `.Right` (the default) puts the in ports on a node's left edge and the out ports on

@@ -128,15 +128,19 @@ the matcher does not find stays, after every match.
 
 | Call | Source | Prefix | What choosing does |
 |---|---|---|---|
-| `palette_commands(&p, table, disabled, Palette_Commands_Options{version, choices, initial, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table; a command with arguments opens its form first, and the choice holds their values (`c.arguments`); with Ctrl or Alt, the toolkit sets a key or an alias (below). A move: the toolkit runs it |
+| `palette_commands(&p, table, disabled, Palette_Commands_Options{version, hidden, choices, initial, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table; a command with arguments opens its form first, and the choice holds their values (`c.arguments`); with Ctrl or Alt, the toolkit sets a key or an alias (below). A move: the toolkit runs it |
 | `prefs_page.palette_settings_add(&p, &settings, &prefs, &page, options, open, user)`, once | the settings the pages show, each with its value in use at its right; `options(user) -> Page_Options` is asked each time the source reads or acts (the themes' slice as it is then); a change of the pages bumps `settings.source.version`. It installs the commands' forms too | `:`, plain | a switch flips (`Page_Options.changed` is called) and the palette stays; another setting opens its run mode (below). A setting the policy or the command line fixes is disabled, its reason its detail |
 | `flow_palette(&p, &fp, g, cat, from, version)`, at each build | a node graph's add palette, `Flow_Palette`: one item per kind of the catalog (a kind at its max_count, or with no port that fits `from`, disabled). A chooser: no prefix. `flow_palette_items(g, cat, from, allocator)` gives its items (a test) | none | returned: `c.index` the kind, `c.id` its name |
 
 A command's item id is its `Command.id`, the usage memory's key (`command:<id>`); the keys on its row are its first key
 in effect (the person's, [commands.md](commands.md)); the person's aliases of it are among its tags.
-`Palette_Commands_Options`: `version`, the version of the table and of `disabled` (0: neither changes in place, the
-palette compares their addresses; it never reads `disabled` at a frame; a change of the keymap needs none: the source
-follows its version); `choices(user, index, argument) -> (labels, values)`, the values a String argument of command
+`Palette_Commands_Options`: `version`, the version of the table, `disabled` and `hidden` (0: none changes in place, the
+palette compares their addresses; it never reads `disabled` or `hidden` at a frame; a change of the keymap needs none: the
+source follows its version); `hidden`, by index, the commands that do not exist in this state (an agent that lacks them):
+not listed, not found, not in Recent, not put first by an alias, their form does not open (`palette_open_form` is false).
+A disabled command exists and cannot act now: greyed and listed. A hidden one is not there. Its key does nothing either:
+the program reads it with `command_pressed(c, disabled = hidden[i] || disabled[i])`. The program gives its whole table:
+`palette_chosen_command` is still the index in it; `choices(user, index, argument) -> (labels, values)`, the values a String argument of command
 `index` without its own choices may take (a closed list the program fills: the models), read once when the argument's
 step opens and kept until it closes (a list changed meanwhile shows when the step opens again); `initial(user, index,
 argument, allocator) -> (value, ok)`, the value an argument starts on now (the session's title, the model in use), as

@@ -575,6 +575,72 @@ port_rows_keep_a_row_per_port_before_the_body :: proc(t: ^testing.T) { unwatched
 	testing.expectf(t, body.rect.min.y > last.y, "the body under the rows: %v, the last row %v", body.rect.min.y, last.y)
 }) }
 
+@(private = "file") BODY_FILL :: ui.Color{1, 0, 1, 1}
+
+// Widgets in node 1 only: one box 3 em tall, filled with BODY_FILL across the body's width.
+@(private = "file")
+filled_body :: proc(user: rawptr, node: u64, em: f32) {
+	if node != 1 { return }
+	ui.next({width = ui.fill(), height = ui.px(em * 3), bg = BODY_FILL})
+	_ = ui.build_box({.Draw_Background}, "###fill_one")
+}
+
+// The pixels of the node's face beside the body on the body's middle row, from the body's edge outward on one side
+// (`step` -1 left, +1 right): the run of the colour next to the body, up to the face's edge.
+@(private = "file")
+face_run :: proc(img: session.Image, from: int, y: int, step: int) -> int {
+	face := session.pixel(img, from + step, y)
+	n := 0
+	for x := from + step; x >= 0 && x < img.width; x += step {
+		if !session.near(session.pixel(img, x, y), face, 2) { break }
+		n += 1
+	}
+	return n
+}
+
+// A node's box and its body's box are rounded to whole pixels together: at fractional zooms, scales and positions the
+// body's left and right gaps are equal whole pixels, in its boxes and in the frame's pixels; and the body has the same
+// margin above and below it (its bottom gap is its top gap: the header's bottom is a node without a body's).
+@(test)
+the_body_sits_on_whole_pixels_with_equal_gaps :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r: Run
+	defer run_destroy(&r)
+	append(&r.nodes, ui.Graph_Node{id = 1, title = "Mix", pos = {40.3, 30.7}})
+	append(&r.nodes, ui.Graph_Node{id = 2, title = "Mix", pos = {300.6, 30.7}})
+	r.o.body = filled_body
+	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	for dpi in ([]f32{1, 1.25, 1.75}) {
+		session.set_dpi(s, dpi)
+		for zoom in ([]f32{0.83, 1.17, 1.37}) {
+			r.view.zoom = zoom
+			session.frames(s, 3)
+			node, body := session.get(s, "graph_node_1"), session.get(s, "fill_one")
+			for v in ([]f32{node.rect.min.x, node.rect.max.x, node.rect.min.y, node.rect.max.y, body.rect.min.x, body.rect.max.x, body.rect.min.y, body.rect.max.y}) {
+				testing.expectf(t, v == f32(int(v)), "dpi %v zoom %v: whole pixels: node %v body %v", dpi, zoom, node.rect, body.rect)
+			}
+			left, right := body.rect.min.x - node.rect.min.x, node.rect.max.x - body.rect.max.x
+			testing.expectf(t, left == right && left > 0, "dpi %v zoom %v: the gaps left %v, right %v", dpi, zoom, left, right)
+			img := session.capture(s)
+			mid := int((body.rect.min.y + body.rect.max.y) * 0.5)
+			fill := rgba8(BODY_FILL)
+			testing.expectf(t, session.near(session.pixel(img, int(body.rect.min.x), mid), fill, 2) && session.near(session.pixel(img, int(body.rect.max.x) - 1, mid), fill, 2) &&
+				!session.near(session.pixel(img, int(body.rect.min.x) - 1, mid), fill, 2) && !session.near(session.pixel(img, int(body.rect.max.x), mid), fill, 2),
+				"dpi %v zoom %v: the body's pixels are its box's", dpi, zoom)
+			a, b := face_run(img, int(body.rect.min.x), mid, -1), face_run(img, int(body.rect.max.x) - 1, mid, 1)
+			testing.expectf(t, a == b && a > 0, "dpi %v zoom %v: the face beside the body, left %v px, right %v px", dpi, zoom, a, b)
+			// the same margin above and below, graph units: the header is the bodiless node's height, the node's height is
+			// the header, the body and two margins; the body's top, rounded to a pixel, is the header and one margin
+			k := r.view.scale * zoom
+			header := ui.graph_node_rect(&r.view, &r.nodes[1])
+			whole := ui.graph_node_rect(&r.view, &r.nodes[0])
+			h := header.max.y - header.min.y
+			margin := ((whole.max.y - whole.min.y) - h - (body.rect.max.y - body.rect.min.y) / k) * 0.5
+			top := (body.rect.min.y - node.rect.min.y) / k - h
+			testing.expectf(t, margin > 0 && abs(top - margin) <= 0.5 / k + 1e-3, "dpi %v zoom %v: the margin above %v, below %v", dpi, zoom, top, margin)
+		}
+	}
+}) }
+
 // A colour of the theme (linear) as a frame holds it (sRGB bytes).
 @(private = "file")
 rgba8 :: proc(c: ui.Color) -> session.Color {

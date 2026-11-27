@@ -731,6 +731,53 @@ the_selection_starts_on_a_row_that_acts :: proc(t: ^testing.T) {
 	testing.expect_value(t, selected_id(&r), "beta")
 }
 
+// A hidden command (Palette_Commands_Options.hidden) is not offered: not listed, not found, not in Recent, not put first
+// by its alias. A command after it is chosen by its index in the table, not its row in the answer. Shown again, it is
+// listed again: the version (here, the slice's address) reads the table again.
+@(test)
+a_hidden_command_is_not_offered :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Run{table = SERVICE_COMMANDS[:]}
+	defer run_free(&r)
+	// (Stop chosen first: the usage memory holds it, Recent would list it)
+	open_palette(t, &f, &r, "stop")
+	frame(&f, {key(.Return)}, &r)
+	settle_closed(t, &f, &r)
+	frame(&f, nil, &r)
+	testing.expect_value(t, r.chosen.id, "service.stop")
+	hidden := []bool{false, true, false}
+	r.opts.hidden = hidden
+	open_palette(t, &f, &r)
+	for i in 0 ..< ui.palette_row_count(&r.pal) { testing.expect(t, row_id(&r, i) != "service.stop", "not listed, not in Recent") }
+	testing.expect(t, find_text(&f, "Stop") == nil, "no row says it")
+	frame(&f, {key(.Escape)}, &r)
+	settle_closed(t, &f, &r)
+	open_palette(t, &f, &r, "halt")   // (its tag)
+	testing.expect_value(t, ui.palette_row_count(&r.pal), 0)
+	frame(&f, {key(.Escape)}, &r)
+	settle_closed(t, &f, &r)
+	// an alias typed whole names it: nothing put first
+	km: ui.Keymap
+	defer ui.keymap_destroy(&km)
+	ui.keymap_known(&km, SERVICE_COMMANDS[:])
+	ui.keymap_alias(&km, "k", "service.stop")
+	r.keymap = &km
+	open_palette(t, &f, &r, "k")
+	testing.expect_value(t, row_id(&r, 0), "process.kill")
+	// the command after it: its index in the table (2), not its row in the answer (1)
+	frame(&f, {key(.Return)}, &r)
+	settle_closed(t, &f, &r)
+	frame(&f, nil, &r)
+	testing.expect_value(t, r.chosen.id, "process.kill")
+	testing.expect_value(t, chosen_command(&r), 2)
+	// shown again: listed again, first by its alias
+	r.opts.hidden = nil
+	open_palette(t, &f, &r, "k")
+	testing.expect_value(t, row_id(&r, 0), "service.stop")
+}
+
 // A program's own source in the plain search: merged with the commands in one ranking, a few points behind at an equal
 // score; under its prefix, alone.
 @(test)

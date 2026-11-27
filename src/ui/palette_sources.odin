@@ -12,10 +12,15 @@ import i18n "../i18n"
 // What the commands source takes beside the table. A command's id is its key in the usage memory ("command:<id>"); its
 // keys shown are the keys in effect, the person's (keymap.odin); an alias typed whole puts its command first.
 Palette_Commands_Options :: struct {
-	// the version of the table and of `disabled` as the program counts their changes (ids, labels, groups, tags, icons,
-	// keys, what can act). 0: neither changes in place; the palette knows them by their addresses. A change of the keymap
-	// needs none: the source follows its version
+	// the version of the table, `disabled` and `hidden` as the program counts their changes (ids, labels, groups, tags,
+	// icons, keys, what can act, what exists). 0: none changes in place; the palette knows them by their addresses. A
+	// change of the keymap needs none: the source follows its version
 	version:    u64,
+	// the commands that do not exist in this state (an agent that lacks them), by index; nil: none. Not offered: not
+	// listed, not found, not in Recent, no alias puts one first, its form does not open. Unlike `disabled` (greyed,
+	// listed: it exists but cannot act now). Read when the version changes, never at a frame. Its key does nothing too:
+	// the program reads it with command_pressed(c, disabled = hidden[i] || disabled[i])
+	hidden:     []bool,
 	// the values a String argument without its own choices may take, and their labels (English, i18n.later), for
 	// command `index` (Command.arguments); nil, nil: a free field. Read once when the argument's step opens, kept until
 	// it closes: a list changed meanwhile shows at the step's next opening
@@ -38,9 +43,12 @@ Palette_Commands :: struct {
 	source:   Palette_Source,
 	table:    []Command,   // the program's: valid while the palette is open
 	disabled: [dynamic]bool,
+	hidden:   [dynamic]bool,
+	// each command's index in the last answer, by its index in the table (-1: hidden): an alias's row. Made at a read
+	rows:     [dynamic]int,
 	details:  []string,    // (owned)
 	version:  u64,
-	sources:  [3]rawptr,   // the addresses of the table, `disabled` and `details` (version 0)
+	sources:  [4]rawptr,   // the addresses of the table, `disabled`, `hidden` and `details` (version 0)
 	count:    int,
 	made:     bool,
 	checked:  proc(user: rawptr, index: int) -> bool,
@@ -89,18 +97,21 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 	c.source.runner = p.forms.open != nil ? &p.forms : nil
 	c.checked, c.choices, c.initial, c.user = o.checked, o.choices, o.initial, o.user   // (read at each build or each form: no version)
 	keymap_version := km != nil ? km.version : 0
-	addresses := [3]rawptr{raw_data(table), raw_data(disabled), raw_data(o.details)}
-	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) && km == c.keymap &&
-		keymap_version == c.keymap_version && (o.version != 0 || addresses == c.sources) { return }
+	addresses := [4]rawptr{raw_data(table), raw_data(disabled), raw_data(o.hidden), raw_data(o.details)}
+	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) &&
+		len(o.hidden) == len(c.hidden) && km == c.keymap && keymap_version == c.keymap_version &&
+		(o.version != 0 || addresses == c.sources) { return }
 	resize(&c.disabled, len(disabled))
 	copy(c.disabled[:], disabled)
+	resize(&c.hidden, len(o.hidden))
+	copy(c.hidden[:], o.hidden)
 	palette_strings_free(c.details)
 	c.details = palette_strings_clone(o.details)
 	c.version, c.count, c.made, c.sources = o.version, len(table), true, addresses
 	c.keymap, c.keymap_version = km, keymap_version
 	// (the ids' index, made on a change only: the mark of a row in view and an alias typed are one lookup)
 	clear(&c.index)
-	for cmd, i in table { c.index[cmd.id] = i }
+	for cmd, i in table { if cmd.id != "" { c.index[cmd.id] = i } }
 	c.source.version += 1
 }
 
@@ -109,7 +120,7 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 palette_command_arguments :: proc(p: ^Command_Palette, id: string) -> (index: int, arguments: []config.Def) {
 	c := &p.commands
 	i, ok := c.index[id]
-	if !ok || i >= len(c.table) { return -1, nil }
+	if !ok || i >= len(c.table) || palette_command_hidden(c, i) { return -1, nil }
 	return i, c.table[i].arguments
 }
 
@@ -129,15 +140,21 @@ palette_command_initial :: proc(p: ^Command_Palette, index: int, argument: strin
 	return c.initial(c.user, index, argument, allocator)
 }
 
-// The command an alias typed whole names, by its index in the table (-1: none). The query is the palette's, its prefix
-// left out: `>nf` and `nf` both name the alias "nf".
+// Whether command `i` of the table is hidden (Palette_Commands_Options.hidden).
 @(private)
-palette_alias_first :: proc(p: ^Command_Palette) -> int {
+palette_command_hidden :: proc(c: ^Palette_Commands, i: int) -> bool { return i >= 0 && i < len(c.hidden) && c.hidden[i] }
+
+// The command an alias typed whole names, by its row in the last answer (-1: none, or hidden). The query is the
+// palette's, its prefix left out: `>nf` and `nf` both name the alias "nf".
+@(private)
+palette_alias_first :: proc(p: ^Command_Palette) -> (row: int, id: string) {
 	c := &p.commands
-	if c.keymap == nil || p.query == "" { return -1 }
-	id := keymap_alias_command(c.keymap, p.query)
-	if id == "" { return -1 }
-	return c.index[id] or_else -1
+	if c.keymap == nil || p.query == "" { return -1, "" }
+	id = keymap_alias_command(c.keymap, p.query)
+	if id == "" { return -1, "" }
+	i := c.index[id] or_else -1
+	if i < 0 || i >= len(c.rows) { return -1, "" }
+	return c.rows[i], id
 }
 
 // A choice of the commands source with Ctrl or Alt, the toolkit's in every program while a keymap is in use: Ctrl+Enter
@@ -187,6 +204,8 @@ palette_strings_free :: proc(list: []string) {
 @(private)
 palette_commands_free :: proc(c: ^Palette_Commands) {
 	delete(c.disabled)
+	delete(c.hidden)
+	delete(c.rows)
 	palette_strings_free(c.details)
 	delete(c.index)
 	c^ = {}
@@ -199,7 +218,12 @@ palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Pale
 	c := &p.commands
 	a: Palette_Answer
 	al := palette_answer_allocator(&a)
-	a.items = make([]Palette_Item, len(c.table), al)
+	// (a hidden command is no item: the ranking, Recent and the empty list then never meet it)
+	offered := len(c.table)
+	for h, i in c.hidden { if h && i < len(c.table) { offered -= 1 } }
+	a.items = make([]Palette_Item, offered, al)
+	resize(&c.rows, len(c.table))
+	row := 0
 	// (the aliases by their command: one pass over them, not one per command)
 	aliases: map[string][dynamic]string
 	if c.keymap != nil && len(c.keymap.aliases) > 0 {
@@ -211,6 +235,7 @@ palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Pale
 		}
 	}
 	for cmd, i in c.table {
+		if palette_command_hidden(c, i) { c.rows[i] = -1; continue }
 		label, group, tags := command_shown(cmd)
 		if own, has := aliases[cmd.id]; has && cmd.id != "" {
 			all := make([]string, len(tags) + len(own), context.temp_allocator)
@@ -224,7 +249,9 @@ palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Pale
 			disabled = i < len(c.disabled) && c.disabled[i], stays = cmd.toggle, runs = len(cmd.arguments) > 0,
 			act = cmd.id != "" ? fmt.tprintf("command:%s", cmd.id) : "",
 		}
-		a.items[i] = palette_item_clone(it, al)
+		a.items[row] = palette_item_clone(it, al)
+		c.rows[i] = row
+		row += 1
 	}
 	palette_answer(q, &a)
 }

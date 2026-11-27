@@ -229,8 +229,14 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 		for &n, i in f.nodes {
 			if !visible[i] { continue }
 			g := f.geo[i]
+			// (the node's box in whole pixels, both its edges rounded once: its body's box is cut from it below, so the
+			// two share their pixel grid and the body's gaps are whole and equal. Rounded each on its own, as the layout
+			// rounds a floating box, a gap was off by up to 1.6 px from its other side)
 			lo := node_graph_local(f, g.rect.min)
-			size := (g.rect.max - g.rect.min) * k
+			hi := node_graph_local(f, g.rect.max)
+			// (half up, never away from zero: a node left of or above the area's origin keeps the width it has at the right)
+			lo, hi = {math.floor(lo.x + 0.5), math.floor(lo.y + 0.5)}, {math.floor(hi.x + 0.5), math.floor(hi.y + 0.5)}
+			size := hi - lo
 			nd := frame_new(Node_Graph_Node_Draw)
 			nd^ = {
 				title = node_graph_title_lines(&n, &g, f.font, f.em, k), subtitle = strings.clone(n.subtitle, frame_allocator()),
@@ -270,7 +276,8 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 				if parent(nb) {
 					// (the widgets at the zoom: their em is the graph's)
 					bem := font_size() * z
-					next({fixed_x = g.pad * k, fixed_y = g.body_top * k, fixed_w = (g.rect.max.x - g.rect.min.x - 2 * g.pad) * k, height = children_sum(), axis = .Y})
+					inset := math.round(g.pad * k)
+					next({fixed_x = inset, fixed_y = math.round(g.body_top * k), fixed_w = size.x - 2 * inset, height = children_sum(), axis = .Y})
 					body := build_box({}, NODE_GRAPH_BODY_ID)
 					if parent(body) {
 						if style({font_size = bem}) { f.o.body(f.o.user, n.id, bem) }

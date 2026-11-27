@@ -150,4 +150,9 @@ sheet must list them all the same, or a person never learns them. `shortcuts_she
 
 - Two places can read the same window command (the program's top level and a view's body). The first one takes the key:
   read window commands once, at the top of the build.
+- A command hidden from the palette (`Palette_Commands_Options.hidden`: it does not exist in this state) takes no key:
+  the program passes `hidden || disabled` to `command_pressed`, so its chord goes on to another reader
+  ([palette.md](palette.md)). The sheet takes the same slice (`shortcuts_sheet_open`'s `hidden`) and leaves it out.
+  Refused: `command_pressed` reading the palette's `hidden` itself: it takes a command, not an index, and a program
+  can have no palette or several; the program has the slice at hand.
 - `key_press_any` is the window command's read. It takes the event as `key_press` does: a later reader gets nothing.

@@ -95,6 +95,15 @@ from top to bottom, one link per child, states that change while it is watched).
   fit from a key (F), from the "Back to content" button or from the program avoids it alike. Refused: fitting in the
   whole area and moving the minimap away (a map that jumps between corners is not found again).
 
+- **A node's box and its body's box share their pixels.** The node's box is rounded to whole pixels once, both edges,
+  and its body's box is cut from it: the same whole inset on the left and the right, its top a whole offset from the
+  node's. Each placed as a floating box at fractional positions, the layout rounded them on their own, and the body's
+  gaps differed by up to 1.6 px from one side to the other, which a framed widget inside shows at once.
+- **The body has the same margin above and below it**: half the node's pad. It was half a pad above and 0.7 below, a
+  body that looked low in its node. When the ports' edge is longer than the body, the edge decides the node's height
+  and its own bottom pad stays. Refused: a whole pad above and below (as on the sides): it adds 0.4 em to every node of
+  Tower's swarm, which asked for compact nodes.
+
 ## Subtleties
 
 - The view knows what its last build was laid out with (`em`, `scale`, `direction`, the title font, the minimap):

@@ -118,13 +118,14 @@ palette_run_open :: proc(p: ^Command_Palette, src: ^Palette_Source, it: Palette_
 // Opens the palette over the window being built straight on command `id`'s form, at its first argument: a button that
 // sets what a command sets (a model) opens its form, and the program keeps no chooser of its own. There is no list it
 // came from: Escape at the first argument closes the palette. False, the palette left as it was: the commands source
-// has no such command, it takes no argument, it cannot act now (`disabled`), or no forms runner is installed
+// has no such command, it takes no argument, it cannot act now (`disabled`), it does not exist now (`hidden`), or no
+// forms runner is installed
 // (prefs_page.palette_forms_use).
 palette_open_form :: proc(p: ^Command_Palette, id: string) -> bool {
 	c := &p.commands
 	i, ok := c.index[id]
 	if !ok || i >= len(c.table) || len(c.table[i].arguments) == 0 || c.source.runner == nil { return false }
-	if i < len(c.disabled) && c.disabled[i] { return false }
+	if (i < len(c.disabled) && c.disabled[i]) || palette_command_hidden(c, i) { return false }
 	// (a run open on another item ends as a close the palette did not ask: its value of before put back)
 	palette_run_close(p, true)
 	palette_open(p)

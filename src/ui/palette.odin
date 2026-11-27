@@ -919,7 +919,7 @@ palette_rank_start :: proc(p: ^Command_Palette) {
 		if src == &p.commands.source {
 			// (an alias typed whole: its command first. Not a disabled one: it would be the row Enter cannot choose; the
 			// item's id is compared, the snapshot can be older than the table)
-			if f := palette_alias_first(p); f >= 0 && f < len(snap.items) && !snap.items[f].disabled && snap.items[f].id == p.commands.table[f].id {
+			if f, id := palette_alias_first(p); f >= 0 && f < len(snap.items) && !snap.items[f].disabled && snap.items[f].id == id {
 				j.first = {i32(len(snaps)), i32(f)}
 			}
 		}
@@ -1241,7 +1241,11 @@ palette_choose :: proc(p: ^Command_Palette, v: ^View, i: int, mods: platform.Mod
 	delete(p.chosen.id)
 	delete(p.chosen.query)
 	palette_arguments_free(&p.chosen)
-	p.chosen = {source = src, id = strings.clone(it.id), index = int(r.item), mods = mods, query = strings.clone(p.query)}
+	index := int(r.item)
+	// (a command's index in the table, by its id: the answer leaves the hidden commands out, so its rows are not the
+	// table's. A command without an id, only in a table that fails command_ids_check: its row)
+	if src == &p.commands.source && it.id != "" { index = p.commands.index[it.id] or_else -1 }
+	p.chosen = {source = src, id = strings.clone(it.id), index = index, mods = mods, query = strings.clone(p.query)}
 	if src.act != nil { p.act_due = true } else { p.has_choice = true }
 	// (palette_chosen runs in the program's window's build: a choice made in a view's window wakes it)
 	if root := style_root(gs()); root != gs() { root.anim_busy = true }

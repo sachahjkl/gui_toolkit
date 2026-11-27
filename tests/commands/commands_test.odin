@@ -148,6 +148,31 @@ shortcuts_sheet_lists_the_keys :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.shortcuts_sheet_is_open(&r.sheet), "Escape closes it")
 }
 
+@(private = "file") SHEET_HIDDEN := [?]bool{false, true, false}
+
+// A command hidden from the palette (it does not exist in this state) is not on the sheet either; shown again with
+// another slice, it is listed again.
+@(test)
+the_sheet_leaves_out_a_hidden_command :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Sheet_Run
+	defer ui.shortcuts_sheet_destroy(&r.sheet)
+	sheet :: proc(f: ^Fx, user: rawptr) {
+		r := (^Sheet_Run)(user)
+		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, PALETTE_COMMANDS[:3], hidden = SHEET_HIDDEN[:]) }
+	}
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	testing.expect(t, find_text(&f, "Kill…") == nil && find_text(&f, "Shift+Delete") == nil, "the hidden command is not listed")
+	testing.expect(t, find_text(&f, "Command palette") != nil, "the others are")
+	ui.shortcuts_sheet_set(&r.sheet, PALETTE_COMMANDS[:3])
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	testing.expect(t, find_text(&f, "Kill…") != nil, "listed again")
+}
+
 @(private = "file")
 SHEET_EXTRA := [?]ui.Sheet_Line{
 	{group = "Composer", keys = "Up / Down", label = "Earlier prompts"},

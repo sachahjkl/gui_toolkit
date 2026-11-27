@@ -378,6 +378,7 @@ Shortcuts_Sheet :: struct {
 	listings: int,            // how many times the list was made (a test reads it)
 	commands: []Command,      // shortcuts_sheet_set's: the program's table, valid while the sheet is open
 	extra:    []Sheet_Line,   // shortcuts_sheet_set's: the lines that are no command, valid while the sheet is open
+	hidden:   []bool,         // shortcuts_sheet_set's: the commands not listed, by index (the palette's `hidden`)
 	version:  u64,
 }
 
@@ -398,6 +399,8 @@ Sheet_Key :: struct {
 	count:    int,
 	extra:    rawptr,
 	extra_count: int,
+	hidden:   rawptr,
+	hidden_count: int,
 	version:  u64,
 	keymap:   ^Keymap,
 	keymap_version: u64,
@@ -428,13 +431,15 @@ sheet_instance :: proc(sheet: ^Shortcuts_Sheet) -> string { return fmt.tprintf("
 // their changes (their keys too: a table rebound in place gives one); 0: the table does not change in place. The list
 // of the commands that have a key is kept, and only the lines near the view are built. One open takes these commands.
 // `extra`: lines that are no command (a widget's keys), each after the last command of its group, or under its own
-// heading after them all when no command of its group has a key; `version` counts their changes too.
-shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0, extra: []Sheet_Line = nil) {
+// heading after them all when no command of its group has a key; `version` counts their changes too. `hidden`: by
+// index, the commands that do not exist in this state, not listed (the palette's Palette_Commands_Options.hidden, the
+// same slice); `version` counts its changes too.
+shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0, extra: []Sheet_Line = nil, hidden: []bool = nil) {
 	vs := views()
 	if !view_registered(vs, SHORTCUTS_VIEW) {
 		view_register(vs, SHORTCUTS_VIEW, sheet_view, View_Options{title = "Keyboard shortcuts", width_em = SHEET_WIDTH_EM, quick = true})
 	}
-	shortcuts_sheet_set(sheet, commands, version, extra)
+	shortcuts_sheet_set(sheet, commands, version, extra, hidden)
 	r := view_open_raw(vs, SHORTCUTS_VIEW, sheet, typeid_of(Shortcuts_Sheet), sheet_instance(sheet), nil)
 	delete(r.title, r.allocator)
 	r.title = strings.clone(title, r.allocator)
@@ -443,9 +448,9 @@ shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title
 
 // Gives the sheet another table and other extra lines, open or not, without opening or closing it: a program that
 // makes its table again (another language, a table rebound) hands the new one over, and an open sheet lists it at its
-// next build. `version` and `extra` as shortcuts_sheet_open's: a table rebuilt in place takes another version.
-shortcuts_sheet_set :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, version: u64 = 0, extra: []Sheet_Line = nil) {
-	sheet.commands, sheet.extra, sheet.version = commands, extra, version
+// next build. `version`, `extra` and `hidden` as shortcuts_sheet_open's: a table rebuilt in place takes another version.
+shortcuts_sheet_set :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, version: u64 = 0, extra: []Sheet_Line = nil, hidden: []bool = nil) {
+	sheet.commands, sheet.extra, sheet.hidden, sheet.version = commands, extra, hidden, version
 }
 
 shortcuts_sheet_is_open :: proc(sheet: ^Shortcuts_Sheet) -> bool { return view_is_open(views(), SHORTCUTS_VIEW, sheet_instance(sheet)) }
@@ -457,13 +462,13 @@ sheet_view :: proc(v: ^View, sheet: ^Shortcuts_Sheet) {
 	s := gs()
 	em := font_size()
 	w := em * SHEET_WIDTH_EM
-	key := Sheet_Key{valid = true, count = len(sheet.commands), extra_count = len(sheet.extra), version = sheet.version, keymap = s.keymap}
+	key := Sheet_Key{valid = true, count = len(sheet.commands), extra_count = len(sheet.extra), hidden_count = len(sheet.hidden), version = sheet.version, keymap = s.keymap}
 	if s.keymap != nil { key.keymap_version = s.keymap.version }
-	if sheet.version == 0 { key.commands, key.extra = raw_data(sheet.commands), raw_data(sheet.extra) }
+	if sheet.version == 0 { key.commands, key.extra, key.hidden = raw_data(sheet.commands), raw_data(sheet.extra), raw_data(sheet.hidden) }
 	if key != sheet.kept {
 		sheet.kept = key
 		sheet.listings += 1
-		sheet_list(sheet, sheet.commands, sheet.extra, s.keymap)
+		sheet_list(sheet, sheet.commands, sheet.extra, sheet.hidden, s.keymap)
 	}
 	sheet_body(sheet, sheet.commands, sheet.extra, s.keymap, w, em, s.window_size.y)
 }
@@ -482,13 +487,14 @@ sheet_command :: proc(commands: []Command, i: int) -> Command {
 // (an extra line goes after the last listed command of its group; a group no listed command has gets its own heading
 // after all the commands)
 @(private = "file")
-sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_Line, km: ^Keymap) {
+sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_Line, hidden: []bool, km: ^Keymap) {
 	clear(&sheet.entries)
 	Listed :: struct { rank, i: int }
 	listed := make([dynamic]Listed, 0, len(commands) + 1, context.temp_allocator)
 	rank_of := make(map[string]int, context.temp_allocator)
 	last_of := make(map[string]int, context.temp_allocator)
 	for i in 0 ..= len(commands) {
+		if i < len(hidden) && i < len(commands) && hidden[i] { continue }
 		c := sheet_command(commands, i)
 		if keys_first_text(km, c) == "" { continue }
 		if c.group not_in rank_of { rank_of[c.group] = len(rank_of) }
