@@ -255,7 +255,7 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 		t := anim(key_from_string(row_box.key, "t"), on ? 1 : 0, MARK_RATE)
 		spacer(px(em * 0.4))
 		// (wrapped, the mark stands on the first line: centered in that line's height, as the label's box lays it out)
-		cell := em * 1.4
+		cell := em * MARK_CELL_EM
 		lined := false
 		if wrap {
 			st := top_style()
@@ -299,6 +299,36 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 checkbox :: proc(id: string, text: string, value: ^bool, wrap := false) -> (changed: bool) {
 	sig := mark_row(id, text, value^, false, wrap)
 	if sig.clicked { value^ = !value^; a11y_state_toggled(sig.box, value^); changed = true }
+	return
+}
+
+// A check box's mark, in font sizes: its box is the mark (mark_face draws over the whole box).
+@(private = "file") MARK_CELL_EM :: 1.4
+
+// `if check_mark("###id", &on) { ... }`: a check box with no words, its mark alone. Its box is the mark, a check box's
+// size, so it sits where the caller puts it, as a value does (the debug panel's toggle at its row's end, under the
+// numbers' last digits). `checkbox` is a row: its mark at its start, room for its words after it. Clicked, Space or
+// a screen reader's press toggles `value`; true when it changed.
+check_mark :: proc(id: string, value: ^bool) -> (changed: bool) {
+	_ = widget_icons()   // (the check is drawn in it: loaded before the draw)
+	em := font_size()
+	cell := math.round(em * MARK_CELL_EM)
+	next_default({width = px(cell), height = px(cell)})
+	b := build_box({.Clickable, .Focusable}, id)
+	a11y_default(b, {role = .Check_Box, toggled = value^ ? .True : .False})
+	sig := signal(b)
+	d := frame_new(Mark_Draw)
+	d.t = anim(key_from_string(b.key, "t"), value^ ? 1 : 0, MARK_RATE)
+	d.accent = color("accent")
+	d.check = mark_check_color(d.accent)
+	d.row = b
+	d.ring = color("text")
+	d.ring.a = MARK_RING_ALPHA
+	d.ring = tuned(d.ring)
+	d.size = em * 0.95
+	d.square = gs().square_depth > 0
+	b.custom, b.custom_user = mark_draw, d
+	if sig.clicked { value^ = !value^; a11y_state_toggled(b, value^); changed = true }
 	return
 }
 

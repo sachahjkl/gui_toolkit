@@ -357,8 +357,11 @@ bool_any :: proc(label: string, ptr: rawptr, ti: ^runtime.Type_Info, read_only: 
 	case .Build:
 		if read_only { watch_row(p, label, key, on ? "true" : "false"); return }
 		if row_start(p, label, key) {
-			ui.next({width = ui.fill(), height = ui.pct(1)})
-			if ui.checkbox(widget_id(key, "check"), "", &on) { bool_set(ptr, ti, on); changed = true }
+			// (its mark where a row's value ends, as a watch's words and a number's digits: at the row's end, in from it
+			// by a value's text inset. At the column's start it stood in the middle of the row, beside nothing)
+			ui.spacer(ui.fill())
+			if ui.check_mark(widget_id(key, "check"), &on) { bool_set(ptr, ti, on); changed = true }
+			ui.spacer(ui.px(ui.top_style().text_pad))
 		}
 	case .List:
 		list_open(p, label, "bool")

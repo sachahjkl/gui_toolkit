@@ -136,7 +136,11 @@ do not follow the page. `ui.dense_scope` holds it:
   person's covered the values it is about;
 - aligned without losing room: alignment comes from columns shared and sized by their content, never from a fixed
   width reserved or an empty cell. No gap that is neither content nor a row's tight inset;
-- a label and its field on one row (`dense_row`), numbers in the mono face, aligned right. The labels' column of a
+- a label and its field on one row (`dense_row`), numbers in the mono face, aligned right. A row's value ends at the
+  row's end, in from it by a value's text inset: a watch's words, a number's digits, a toggle's mark
+  (`ui.check_mark`). Refused: the mark at the start of the values' column, as Dear ImGui's check box. Here the
+  values are right-aligned, and the mark stood in the middle of the row, beside nothing, out of line with the
+  watches under it (socle's Apply panel). The labels' column of a
   panel is as wide as its longest label shown, its sections' indent counted (`ui.Dense_Labels`): every depth's fields
   start on one edge, and a panel of short labels ("time", "key") has a narrow column. `DENSE_LABEL_MIN_EM` (2.5) at
   least, `DENSE_LABEL_MAX_EM` (11) at most: a longer label is cut and opens whole (text-reveal.md). A label is measured

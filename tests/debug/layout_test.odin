@@ -53,7 +53,8 @@ apply_debug :: proc(a: ^Apply) {
 blank :: proc(s: ^session.Session) {}
 
 // In a panel with a section that holds a toggle, two watches and two acts, then an act after it, no two rows overlap,
-// the acts start where the labels of their depth start, and every watch shows its value (a dark theme, at 3x).
+// the acts start where the labels of their depth start, a toggle's mark ends where the watches' words end (a row's
+// value at its end), and every watch shows its value (a dark theme, at 3x).
 @(test)
 a_panel_of_rows_and_acts_lays_out :: proc(t: ^testing.T) {
 	a := Apply{built = "0 of 2", doing = "nothing", failure = "simulated by the debug panel", kept = 1500, said = 4500}
@@ -97,6 +98,17 @@ a_panel_of_rows_and_acts_lays_out :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(add.rect.min.x - inside) < 1, "Add lines at %.1f, the section's labels at %.1f", add.rect.min.x, inside)
 	fail := session.get(s, debug.box_name("Apply/Fail the build", "act"))
 	testing.expectf(t, abs(fail.rect.min.x - outside) < 1, "Fail the build at %.1f, the panel's labels at %.1f", fail.rect.min.x, outside)
+
+	// a toggle's mark is a row's value: it ends where every watch's words end, centred on its row
+	mark := session.get(s, debug.box_name("Apply/Log/open", "check"))
+	open_row := session.get(s, debug.box_name("Apply/Log/open", "row"))
+	for path in APPLY_WATCHES {
+		v := session.get(s, debug.box_name(path, "watch"))
+		words_end := v.rect.min.x + (v.rect.max.x - v.rect.min.x) - v.text_pad
+		testing.expectf(t, abs(mark.rect.max.x - words_end) < 1, "the toggle's mark ends at %.1f, %s's words at %.1f", mark.rect.max.x, path, words_end)
+	}
+	mid, row_mid := (mark.rect.min.y + mark.rect.max.y) * 0.5, (open_row.rect.min.y + open_row.rect.max.y) * 0.5
+	testing.expectf(t, abs(mid - row_mid) < 1, "the mark centred on its row: %.1f, the row's middle %.1f", mid, row_mid)
 
 	// every watch shows its value: its words in the window, inked
 	img := session.capture(s)

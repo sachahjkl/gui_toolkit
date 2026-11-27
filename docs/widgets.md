@@ -417,7 +417,7 @@ colour. They belong to dense instruments (`ui.dense_scope`, the debug window): a
 ## What a value widget returns
 
 Every widget that edits a value of the caller's returns `changed: bool`, true in the frame the value changed:
-`checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
+`checkbox`, `check_mark`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
 (`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
 
 `color_picker(id, &cp, text = true)`: with `text` false, no format switch and no text field, for a caller whose own
@@ -425,6 +425,10 @@ field holds the colour's text (the palette's run mode: the text said once).
 
 `checkbox(id, text, &value, wrap)` and `toggle(id, text, &value, wrap)`: with `wrap`, a label longer than the row goes
 on to the next lines, the row as tall as they are, the box or the switch on the first line.
+
+`check_mark(id, &value)`: a check box with no words, its mark alone: its box is the mark, a check box's size, and
+it sits where the caller puts it, as a value does. `checkbox` is a row, its mark at its start and room for its words
+after it; a mark at a row's end, under a column of right-aligned values, is a `check_mark` after a `spacer(fill())`.
 
 `dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
 padding and its arrow (`dropdown_width(items)`), so a header's tools or any row as wide as its children shows it whole.
