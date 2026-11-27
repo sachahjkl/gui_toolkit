@@ -35,7 +35,19 @@ pointer, and a person who works with the keys could not reach its menus.
   keep in step).
 - **F10 and Alt alone light the bar** (its first entry): Windows has both, GTK has F10. Alt alone counts only when
   nothing was pressed while it was down (`alt_alone`, set by the press, cleared by any other key or a press of the
-  pointer, read at its release): Alt+Left is no tap.
+  pointer, read at its release): Alt+Left is no tap. Neither is an Alt whose release the system made as the focus
+  left (Alt+Tab: an Activate clears it, and an inactive window's release counts for nothing, in either order of the
+  two), an Alt across a pointer leave (a window manager's Alt+drag takes the pointer, its press never comes), an Alt
+  with the wheel, nor an Alt across a click whose repeats Windows sends while it is held.
+- **AltGr is no Alt.** On Linux `ISO_Level3_Shift` is no `Key.Alt` (it was: a tap of it lit the bar, AltGr held
+  underlined the letters); on Windows AltGr is Ctrl+Alt, and Ctrl held shows no letter. AltGr+E types € and opens
+  nothing on both.
+- **A widget that claims the keys keeps them** (`keys_claim`: a shortcut recorder, a terminal): Alt+letter, F10 and
+  Alt alone are then its, not the bar's, until the bar is lit (by the pointer). Without that, the bar, built first, took
+  Alt+F from a recorder that had to record it.
+- **Windows' own menu mode is off** (`WM_SYSCOMMAND` `SC_KEYMENU`, as GLFW and SDL do): Alt or F10 let go alone
+  started the system's modal menu loop on the window's menu, which then took the bar's arrows (Down opened the
+  window's menu). Alt+Space still opens that menu.
 - **The bar has no begin nor end**: the first entry of a build reads the keys against the last build's entries (an
   entry's box, its menu, its letter). A key that opens a menu sets `bar.open`; that entry opens it when it is built:
   an entry built before the menu that took the key opens a build later (a frame), with no state of its own across

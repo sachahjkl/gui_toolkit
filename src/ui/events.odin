@@ -55,6 +55,8 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mouse_valid = true
 		case .Mouse_Leave:
 			s.mouse_valid = false
+			// (a window manager's Alt+drag takes the pointer away: the Alt let go after it is no tap)
+			s.bar.alt_alone = false
 		case .Mouse_Press:
 			s.bar.alt_alone = false
 			s.mouse = e.pos
@@ -113,6 +115,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.active_key[e.button] = 0
 			s.buttons_down -= {e.button}
 		case .Scroll:
+			s.bar.alt_alone = false
 			s.mouse = e.pos
 			s.mouse_valid = true   // (the wheel is where its event says: a first notch with no move before it scrolls too)
 			s.mods = e.mods        // (what a wheel steps by: line_edit_num_step)
@@ -135,9 +138,12 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods
 			s.keys_held -= {e.key}
 			// (Alt pressed and let go with nothing between: the menu bar's key, menu_bar.odin)
-			if e.key == .Alt && s.bar.alt_alone { s.bar.alt_tapped = true }
+			// (a release the system makes as the focus leaves, Alt+Tab's, is no tap: the window is inactive by then)
+			if e.key == .Alt && s.bar.alt_alone && (s.window == nil || s.window.active) { s.bar.alt_tapped = true }
 			s.bar.alt_alone = false
 		case .Activate:
+			// (the window lost or took the keyboard: an Alt held across it was for another window, Alt+Tab's)
+			s.bar.alt_alone, s.bar.alt_tapped = false, false
 			if s.window != nil && !s.window.active { left = true }
 		case .Frame_Press:
 			left = true
@@ -145,7 +151,8 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods
 			s.typed_mods += e.mods
 			if e.key != .None { s.keys_held += {e.key} }
-			s.bar.alt_alone = e.key == .Alt && e.mods - {.Alt} == {}
+			// (Windows repeats a held Alt: a repeat keeps what came between, a click or a key)
+			if !(e.repeat && e.key == .Alt) { s.bar.alt_alone = e.key == .Alt && e.mods - {.Alt} == {} }
 			if act := zoom_key_action(e.key, e.mods); zoom_keys && act != .None {
 				// the zone that holds the keyboard focus, else the window (zoom-zones.md)
 				if z := zoom_zone_of_focus(s); z != nil {

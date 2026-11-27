@@ -123,10 +123,13 @@ menu_bar_read_keys :: proc(s: ^State) {
 	if s.bar.focus != 0 && menu_bar_index(s, s.bar.focus) < 0 { s.bar.focus = 0 }
 	if n == 0 || len(s.menus) > 0 || keys_held_by_dialog(s) { return }
 	if s.pressed_any[.Left] || s.pressed_any[.Right] || s.pressed_any[.Middle] { s.bar.focus = 0 }
-	toggle := s.bar.alt_tapped
+	// (a widget that claims the keys, a shortcut recorder or a terminal, keeps Alt alone, F10 and Alt+letter: the bar
+	// takes them only once it is lit)
+	toggle := s.bar.alt_tapped && (s.bar.focus != 0 || !keys_claimed(s, Chord{.Alt, {}}))
 	for e, i in s.events.list {
 		if s.events.consumed[i] || e.kind != .Key_Press { continue }
 		lit := s.bar.focus != 0
+		if !lit && keys_claimed(s, Chord{e.key, e.mods}) { continue }
 		at := menu_bar_index(s, s.bar.focus)
 		taken := true
 		switch {
@@ -201,7 +204,8 @@ menu_bar_button :: proc(id: string) -> string {
 	pop_tags()
 	append(&s.bar.entries, Menu_Bar_Entry{box = b.key, menu = menu_key(menu_id), mnemonic = mnemonic})
 	// (the access letter underlined while Alt is held, the bar lit or a menu of it opened by the keyboard)
-	if at >= 0 && (.Alt in s.keys_held || s.bar.focus != 0 || s.bar.keyboard) {
+	// (Ctrl with Alt is AltGr on Windows: a character, no access letter)
+	if at >= 0 && ((.Alt in s.keys_held && .Ctrl not_in s.mods) || s.bar.focus != 0 || s.bar.keyboard) {
 		_, w := utf8.decode_rune_in_string(shown[at:])
 		d := frame_new(Fuzzy_Draw)
 		d.ranges = make([]Fuzzy_Range, 1, frame_allocator())

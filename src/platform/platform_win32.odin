@@ -1204,6 +1204,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		if key == .Print { push(w, {kind = .Key_Press, key = key, mods = current_mods(), super = super_held()}) }
 		if key != .None && key_changes(w, key, false) { push(w, {kind = .Key_Release, key = key, mods = current_mods()}) }
 
+	case win.WM_SYSCOMMAND:
+		// Alt or F10 let go alone, and Alt+letter, ask for the system's menu mode: a loop that would take the next keys
+		// from the toolkit's menu bar (ui/menu_bar.odin), or a beep. Alt+Space still opens the window's menu.
+		if wparam & 0xFFF0 == win.SC_KEYMENU && lparam != win.LPARAM(' ') { return 0 }
+
 	case win.WM_CHAR:
 		c := u16(wparam)
 		if c >= SURROGATE_HIGH_FIRST && c < SURROGATE_LOW_FIRST { w.high_surrogate = c; return 0 }
