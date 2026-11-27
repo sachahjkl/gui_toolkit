@@ -1799,10 +1799,12 @@ form_row_end :: proc() {
 	line := parent_box()
 	if lbl := line.first; lbl != nil && lbl.next != nil {
 		w := lbl.next
-		// the row's label names its widget (the first box after it) unless the app named it
-		if w.a11y == nil || (w.a11y.name == "" && w.a11y.labelled_by == 0) { a11y_set(w, {labelled_by = lbl.key}) }
 		// (a widget shorter than a line, a progress bar, sits centred on the label's line, not on its top)
 		if h := w.pref[.Y]; h.kind == .Pixels && h.value < lbl.pref[.Y].value { line.cross = .Center }
+		// the row's label names its widget (the first box after it) unless the app named it; a plain box that holds a
+		// field and its note under it: the field, its first box
+		for w.a11y == nil && (.Focusable not_in w.flags) && w.first != nil { w = w.first }
+		if w.a11y == nil || (w.a11y.name == "" && w.a11y.labelled_by == 0) { a11y_set(w, {labelled_by = lbl.key}) }
 	}
 	pop_parent()
 	r := parent_box()

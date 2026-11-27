@@ -37,7 +37,9 @@ form: their labels are a column as wide as the longest label and a gap (`CONTROL
 x, whether it fills the row (the default) or has a width of its own. The column is at most 40 % of the form: a longer
 label wraps on more lines, never cut. The label is one control tall and sits on its
 field's first line; a field of several lines grows the row downward, and a widget shorter than a line is centred on
-the label's line.
+the label's line. A field with a note under it (a hint, a validation message): build both in a box of their own,
+one under the other, as the row's widget. The note then starts at the field's left edge, and the label still names the
+field (the first box in that box).
 
 `Button_Options`:
 

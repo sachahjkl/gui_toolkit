@@ -48,6 +48,20 @@ start_fidget :: proc(t: ^testing.T, args: []string, loc := #caller_location) -> 
 @(private = "file")
 zoom_pct :: proc(app: ^fidget.App) -> int { return int(math.round(ui.zoom(&app.ui_state) * 100)) }
 
+// A field's note ("We never share it.", then "Looks good.") starts at its field's left edge, under it, and the row's
+// label still names the field.
+@(test)
+fidget_field_notes_start_at_their_field :: proc(t: ^testing.T) {
+	s, _ := start_fidget(t, INPUTS_ARGS)
+	pairs := [?][2]string{{"in_email", "hint_We nev"}, {"in_num", "hint_Try ty"}}
+	for p in pairs {
+		field, note := session.get(s, p[0]), session.get(s, p[1])
+		testing.expectf(t, abs(note.rect.min.x - field.rect.min.x) < 0.5, "%s starts at its field's x: %v and %v", p[1], note.rect.min.x, field.rect.min.x)
+		testing.expectf(t, note.rect.min.y >= field.rect.max.y - 0.5, "%s under its field", p[1])
+		testing.expectf(t, field.a11y != nil && field.a11y.labelled_by != 0, "%s named by its row's label", p[0])
+	}
+}
+
 // The line edits, the clipboard, Tab and Shift+Tab.
 @(test)
 fidget_line_edits_clipboard_and_tab :: proc(t: ^testing.T) {

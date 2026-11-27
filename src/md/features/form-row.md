@@ -44,6 +44,16 @@ Refused:
   tall. The room above and below the line is two spacers in the row (`###frow_%s` is a column, `###frow_line` the
   line in it).
 
+## A field and its note
+
+A hint or a validation message under a field belongs to the field: it starts at the field's left edge, not under the
+label nor centred in the row. The program builds the field and its note in a box of their own, one under the other, as
+the row's widget: the top alignment keeps the label on the field's first line. `form_row_end` names the field by the
+label through such a plain box (no accessible node, not a Tab stop): its first box. Refused: a note slot in
+`form_row`. A box the program builds already holds it, and a slot would fix where the note goes and what it holds.
+Fidget's first version put its notes in rows of their own after the form row, behind a spacer of the old 34 %:
+centred under the whole row, read as the form's and not the field's.
+
 ## The tests
 
 `tests/scenarios/form_row_test.odin`:
@@ -51,5 +61,7 @@ Refused:
 - Three rows (a dropdown 150 px wide, a `fill()` line edit, a text edit 120 px tall): every field starts at one x,
   at the end of its label; every label's top is its field's top; the longest label's words end one `CONTROL_GAP`
   (± 1 px) before its field; the row of the text edit is as tall as the text edit.
+- `tests/examples/fidget_test.odin`, `fidget_field_notes_start_at_their_field`: a note's box starts at its field's
+  x, under it, and the field is named by its row's label.
 - A form 360 px wide with a label longer than its cap: the label wraps on more than one line, the column is within
   40 % of the form, the fields still start at one x.

@@ -352,18 +352,23 @@ page_inputs :: proc(app: ^App) {
 					email_ok := email_valid(&app.email)
 					num_ok := number_valid(&app.number)
 					if ui.form_row("Name") { ui.line_edit("###in_name", &app.name, {placeholder = "Your name"}) }
+					// (the field and its note are the row's widget, one under the other: the note starts at the field's edge)
 					if ui.form_row("Email") {
-						if len(app.email.buf) > 0 && !email_ok { ui.push_tags("bad") }
-						ui.line_edit("###in_email", &app.email, {placeholder = "you@example.com"})
-						if len(app.email.buf) > 0 && !email_ok { ui.pop_tags() }
+						if field_with_note("###email_field") {
+							if len(app.email.buf) > 0 && !email_ok { ui.push_tags("bad") }
+							ui.line_edit("###in_email", &app.email, {placeholder = "you@example.com"})
+							if len(app.email.buf) > 0 && !email_ok { ui.pop_tags() }
+							hint(app, em, len(app.email.buf) == 0 ? 0 : (email_ok ? 1 : 2), "We never share it.", "Looks good.", "Needs an @ and a domain.")
+						}
 					}
-					hint(app, em, len(app.email.buf) == 0 ? 0 : (email_ok ? 1 : 2), "We never share it.", "Looks good.", "Needs an @ and a domain.")
 					if ui.form_row("Number") {
-						if len(app.number.buf) > 0 && !num_ok { ui.push_tags("bad") }
-						ui.line_edit("###in_num", &app.number, {placeholder = "digits only"})
-						if len(app.number.buf) > 0 && !num_ok { ui.pop_tags() }
+						if field_with_note("###num_field") {
+							if len(app.number.buf) > 0 && !num_ok { ui.push_tags("bad") }
+							ui.line_edit("###in_num", &app.number, {placeholder = "digits only"})
+							if len(app.number.buf) > 0 && !num_ok { ui.pop_tags() }
+							hint(app, em, len(app.number.buf) == 0 ? 0 : (num_ok ? 1 : 2), "Try typing letters.", "Valid integer.", "Not a number.")
+						}
 					}
-					hint(app, em, len(app.number.buf) == 0 ? 0 : (num_ok ? 1 : 2), "Try typing letters.", "Valid integer.", "Not a number.")
 					if ui.tags("weak") {
 						ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.2))})
 						ui.label("Arrows, Home/End, Ctrl+arrows, Shift = select, Ctrl+A/C/X/V.")
@@ -506,15 +511,21 @@ page_inputs :: proc(app: ^App) {
 }
 
 @(private)
+// `if form_row(label) { if field_with_note(id) { field; hint(...) } }`: a field and its note one under the other, as
+// the row's widget.
+@(require_results, deferred_none = ui.pop_parent)
+field_with_note :: proc(id: string) -> bool {
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+	ui.push_parent(ui.build_box({}, id))
+	return true
+}
+
+// A field's note under it (in field_with_note): what to type, then whether it is right.
 hint :: proc(app: ^App, em: f32, state: int, s0, s1, s2: string) {
-	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.8))})
-	if ui.row(.Center, id = fmt.tprintf("###hint_%s", s0[:6])) {
-		ui.spacer(ui.pct(0.34, 1))
-		tag := state == 0 ? "weak" : (state == 1 ? "good" : "bad")
-		if ui.tags(tag) {
-			ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.85)})
-			ui.label(state == 0 ? s0 : (state == 1 ? s1 : s2))
-		}
+	tag := state == 0 ? "weak" : (state == 1 ? "good" : "bad")
+	if ui.tags(tag) {
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.8)), font_size = math.round(em * 0.85), text_align = .Left})
+		ui.label(fmt.tprintf("%s###hint_%s", state == 0 ? s0 : (state == 1 ? s1 : s2), s0[:6]))
 	}
 }
 
