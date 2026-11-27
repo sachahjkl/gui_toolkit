@@ -1532,12 +1532,13 @@ palette_quiet_rows :: proc(p: ^Command_Palette, row_h: f32) {
 }
 
 // The foot: the prefixes the program has (a click types one; while one is typed, that one alone), and at the right the
-// keys of the selected row.
+// keys of the selected row. In a narrow palette the keys give their room first, cut with an ellipsis (strictness 0);
+// the prefixes stay whole, and the foot clips what still does not fit.
 @(private = "file")
 palette_hint_row :: proc(p: ^Command_Palette, foot_h: f32) {
 	em := font_size()
 	next({width = fill(), height = px(foot_h), axis = .X, cross = .Center})
-	if row(.Center, {.Draw_Side_Top}, "###palette_foot") {
+	if row(.Center, {.Draw_Side_Top, .Clip}, "###palette_foot") {
 		spacer(px(em * 0.7))
 		for x in Palette_Prefix {
 			// (none in the run mode: the field is the control's, a prefix typed there means nothing)
@@ -1557,7 +1558,7 @@ palette_hint_row :: proc(p: ^Command_Palette, foot_h: f32) {
 		spacer(fill())
 		if p.run.level != .Closed {
 			if tags("weak") {
-				next({width = text_size(), height = pct(1), font_size = em * 0.85})
+				next({width = text_size(0, 0), height = pct(1), font_size = em * 0.85})
 				label(fmt.tprintf("%s###palette_keys", palette_run_hints(p)))
 			}
 		} else if src, _, ok := palette_selected(p); ok && src != nil {
@@ -1572,7 +1573,7 @@ palette_hint_row :: proc(p: ^Command_Palette, foot_h: f32) {
 			// (go to, only for an item whose place can be shown)
 			if palette_reachable(p, src, it) { append(&parts, fmt.tprintf("%s %s", chord_text({.Return, {.Shift}}), i18n.tr("Go to"))) }
 			if tags("weak") {
-				next({width = text_size(), height = pct(1), font_size = em * 0.85})
+				next({width = text_size(0, 0), height = pct(1), font_size = em * 0.85})
 				label(fmt.tprintf("%s###palette_keys", strings.join(parts[:], "   ", context.temp_allocator)))
 			}
 		}

@@ -146,7 +146,7 @@ run_build :: proc(s: ^session.Session) {
 }
 
 @(private = "file")
-run_start :: proc(t: ^testing.T, app: ^Run_App, defs: []config.Def = nil) -> ^session.Session {
+run_start :: proc(t: ^testing.T, app: ^Run_App, defs: []config.Def = nil, size := [2]int{1200, 700}) -> ^session.Session {
 	app.prefs = config.prefs_make()
 	config.register(&app.prefs, defs != nil ? defs : RUN_DEFS[:])
 	if app.pages == nil { app.pages = RUN_PAGES[:] }
@@ -155,7 +155,7 @@ run_start :: proc(t: ^testing.T, app: ^Run_App, defs: []config.Def = nil) -> ^se
 		app.opened += 1
 		app.shown = true
 	}, app)
-	return session.start(t, {size = {1200, 700}, build = run_build, user = app})
+	return session.start(t, {size = size, build = run_build, user = app})
 }
 
 @(private = "file")
@@ -218,6 +218,25 @@ a_theme_changed_in_the_palette_shows_on_the_page_in_the_same_frame :: proc(t: ^t
 	testing.expect_value(t, app.page_saw, "Graphite")
 	testing.expect_value(t, app.split, 0)
 	testing.expect(t, ui.palette_is_open(&app.pal), "Escape stepped back to the list, the palette stays")
+}
+
+// A narrow palette: its foot (the prefixes, the keys of the selected row) stays inside its box; what does not fit is
+// cut with an ellipsis, never drawn past the edge.
+@(test)
+the_foot_stays_inside_a_narrow_palette :: proc(t: ^testing.T) {
+	app := Run_App{commands = true, shown = true}
+	defer run_end(&app)
+	s := run_start(t, &app, size = {250, 500})
+	app.show, app.typed = true, ":"
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return !app.show && !ui.palette_busy(&app.pal) && ui.palette_row_count(&app.pal) > 0 }, "the list")
+	session.frames(s, 2)
+	session.save_png(s, "narrow_foot.png")
+	foot := session.get(s, "palette_foot")
+	keys := session.get(s, "palette_keys", within = foot)
+	testing.expect(t, keys.rect.max.x > keys.rect.min.x, "the keys show, cut if they must")
+	for c := foot.first; c != nil; c = c.next {
+		testing.expectf(t, c.rect.min.x >= foot.rect.min.x - 0.5 && c.rect.max.x <= foot.rect.max.x + 0.5, "%q inside the foot: %v in %v", c.text, c.rect, foot.rect)
+	}
 }
 
 // Day-one test 2: Enter on an unfolded row while its source's table is made again (another order of its pages) acts on

@@ -166,7 +166,10 @@ Rules:
 - With something typed: one ranked list, each row with its group or its source's title after the title.
 - **The hint row** is the foot: the prefixes that the program has, each with its name (`> Commands  @ Sessions
   : Settings`), and at the right the keys of the selected row (`Enter Run`, the alternates of its source). A click on a
-  prefix types it. While a prefix is typed, the hint row shows that source alone.
+  prefix types it. While a prefix is typed, the hint row shows that source alone. In a narrow palette the keys give
+  their room first, cut with an ellipsis: they repeat what the person can press anyway, while a prefix is a target to
+  click. The foot clips what still does not fit. Refused: wrapping the foot to two lines (the list's room changes
+  under the pointer as the selection moves and its keys grow).
 - **Nothing matches**: one weak row. With a prefix and a source still reading: "Reading sessions…" instead.
 
 ## Ranking

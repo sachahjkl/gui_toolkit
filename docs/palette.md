@@ -271,7 +271,8 @@ rankings dropped: a test reads them.
 - With nothing typed: Recent (the heaviest choices among the items of the answers), then the commands under their
   groups, the disabled last in each. A prefix alone lists its sources' items. A palette of one source without a prefix
   is a chooser: no Recent, no hint row.
-- The hint row at the foot: the prefixes, each with its name (a click types it), and the keys of the selected row.
+- The hint row at the foot: the prefixes, each with its name (a click types it), and the keys of the selected row. In a
+  narrow palette the keys are cut with an ellipsis; nothing is drawn past the palette's edge.
 
 ## Threads
 
