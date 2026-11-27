@@ -87,6 +87,11 @@ every program, with the View tab; each panel the program registers adds a tab. E
 own window and its own key. A window opened without `gt:host` gets the surface when a panel is registered on its
 State (`debug.panel`), or by `debug.attach`; a window that `devtools.service` serves gets it too.
 
+The debug window sent to a window of its own is in a view's window, which has its own surface too. There the key acts
+on the debug window that the window shows (`Surface.shows`, set when the window builds it): it closes it, as in its
+owner's window. Before, it opened a debug window of the debug window, and the one the person wanted to close stayed
+(`tests/host`). A pinned panel's window does the same.
+
 Why: the surface came with the first panel, and most programs never registered one. The key did nothing there, and
 the View tab (the wireframe, the exploded view, the frame times) was missing where it was wanted (Tower). The window
 is `gt:host`'s: it opens every window, so the attach is in one place and no program has to remember it.

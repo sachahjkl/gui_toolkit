@@ -35,9 +35,18 @@ views_register :: proc(vs: ^ui.Views) {
 	})
 }
 
+// The State building the debug window of `sf` now: in a view's own window (gt:host gives that window a surface of its
+// own), its key acts on `sf`, the window it shows. A debug window of the debug window is nobody's wish, and the key
+// that opened it must close it from where the person is.
+@(private = "file")
+window_shown_in :: proc(sf: ^Surface) {
+	if own := surface_of(ui.current_state()); own != nil && own != sf { own.shows = sf }
+}
+
 @(private)
 window_build :: proc(v: ^ui.View, sf: ^Surface) {
 	s := sf.state
+	window_shown_in(sf)
 	vs := ui.state_views(s)
 	// (a pinned panel whose view closed is a tab again)
 	for p in sf.panels {
@@ -145,6 +154,7 @@ first_tab :: proc(sf: ^Surface) -> int {
 
 @(private)
 pinned_build :: proc(v: ^ui.View, p: ^Panel) {
+	window_shown_in(p.surface)
 	name := p == p.surface.panels[0] ? i18n.tr(VIEW_PANEL) : p.name
 	ui.view_title(v, name)
 	if ui.dense_scope() {

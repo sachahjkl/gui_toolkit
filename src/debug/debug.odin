@@ -72,6 +72,7 @@ Surface :: struct {
 	easing_anim_t:     f64,
 	easing_anim_end:   f64,
 	easing_anim_build: u64,
+	shows:     ^Surface,               // in a view's own window: the surface whose debug window it shows (its key acts there)
 }
 
 // The frames the View panel's graph shows.
@@ -180,7 +181,9 @@ surface_of :: proc(s: ^ui.State) -> ^Surface {
 @(private)
 hook_toggle :: proc(s: ^ui.State, data: rawptr) {
 	sf := (^Surface)(data)
-	if shown(s) { close(s) } else { window_open(sf) }
+	// (a window that shows a debug window, its own window: the key closes that one, or opens it again)
+	if sf.shows != nil { sf = sf.shows }
+	if shown(sf.state) { close(sf.state) } else { window_open(sf) }
 }
 
 @(private)
