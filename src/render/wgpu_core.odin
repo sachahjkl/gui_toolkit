@@ -485,6 +485,9 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	wgpu.AdapterRequestDevice(g.adapter, &dd, {mode = .AllowSpontaneos, callback = device_cb, userdata1 = &req})
 	if !wait_request(g, &req) { return init_fail(r, .Failed, request_why(&req, "the adapter gave no device")) }
 	g.device = req.device
+	// (the errors said so far were the device before this one's, a device lost and its calls after: the first submit of
+	// this one is not skipped for them, wgpu_submit)
+	if g.shared != nil { g.errors_seen = sync.atomic_load(&g.shared.errors) }
 	g.queue = wgpu.DeviceGetQueue(g.device)
 	if g.queue == nil { return init_fail(r, .Failed, "the device has no queue") }
 	// (what the device was given, not the adapter: the defaults unless WGPU_ADAPTER_LIMITS or GL asked for the adapter's)

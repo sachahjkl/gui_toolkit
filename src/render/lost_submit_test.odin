@@ -86,3 +86,25 @@ a_heap_whose_copy_is_skipped_keeps_its_pictures :: proc(t: ^testing.T) {
 		testing.expect(t, grew && h.cap > cap, "the next grow copies it")
 	}
 }
+
+// Errors said while the device was gone (calls on a lost device) are that device's: the device recovered draws its first
+// frame, not skipped for them. (Direct3D 12 on WARP: the frame after the recovery read black.)
+@(test)
+a_recovered_device_draws_its_first_frame :: proc(t: ^testing.T) {
+	when USE_WGPU {
+		r: Renderer
+		if !testing.expect(t, init_offscreen(&r, LOST_TEST_SIZE, warp = true, space = .Srgb), "init_offscreen") { return }
+		defer destroy(&r)
+		frame_begin(&r, {1, 0, 0, 1})
+		frame_end(&r)
+		simulate_device_loss(&r)
+		sync.atomic_add(&r.wg.shared.errors, 3)   // (what the calls on the lost device said)
+		frame_begin(&r, {0, 1, 0, 1})
+		frame_end(&r)
+		testing.expect(t, !r.lost, "recovered")
+		px := read_pixels(&r)
+		defer delete(px)
+		if !testing.expect_value(t, len(px), LOST_TEST_SIZE.x * LOST_TEST_SIZE.y * 4) { return }
+		testing.expect_value(t, [3]u8{px[0], px[1], px[2]}, [3]u8{0, BYTE_MAX, 0})
+	}
+}

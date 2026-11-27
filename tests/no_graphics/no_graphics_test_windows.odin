@@ -25,13 +25,15 @@ BOX_TITLE :: "no graphics box"
 WINDOWS_CHILD_LIMIT :: 60 * time.Second
 WINDOWS_EXIT_NO_WINDOW :: 1
 WINDOWS_EXIT_OPENED :: 3
+EVERY_DEVICE :: 1 << 20   // (a machine with no device: whatever asks for one, and however often)
 
-// The child: both devices refused (the hardware's, then WARP's), then what a program's main does.
+// The child: every device refused (the one host_open asks for early, then the init's hardware and WARP ones), then what
+// a program's main does.
 @(init)
 windows_child :: proc "contextless" () {
 	context = runtime.default_context()
 	if _, is_child := os.lookup_env(WINDOWS_CHILD_ENV, context.temp_allocator); !is_child { return }
-	render.fault_arm(.D3D_Device, 0, 2)
+	render.fault_arm(.D3D_Device, 0, EVERY_DEVICE)
 	sh: host.Shared
 	h: host.Host
 	if host.host_open(&h, &sh, {title = BOX_TITLE, size = {320, 200}}, proc(h: ^host.Host, size: host.Vec2) {}) {

@@ -42,7 +42,8 @@ the next frame is drawn whole, not composed over a frame that never reached it (
 The skip is not only the frame's: the copy of a retained heap that grows is a submit too. A skipped copy leaves the old
 heap in place and refuses the picture, as a buffer the device refuses: adopting the new heap would lose every picture
 in it. The error counter does not say which command made the error, so one error costs one submit, whichever comes
-next; an error on every frame loses every frame (the log says each).
+next; an error on every frame loses every frame (the log says each). A new device starts with the count as it is: the
+errors of the device before it (its calls once lost) never skip the first frame of the one recovered.
 
 ## The cull before the GPU
 

@@ -1,6 +1,7 @@
 #+build linux, darwin, freebsd, openbsd, netbsd
 package fsx
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:c/libc"
 import "core:os"
@@ -64,7 +65,7 @@ write_over :: proc(tmp, target: string, data: []byte, o: Write_Options, rep: ^Wr
 		rep.kept = fchown(fd, old.st_uid, old.st_gid) == .OK
 		if !rep.kept { _ = fchown(fd, ~posix.uid_t(0), old.st_gid) }
 		// (private: 0600 whatever the file had; a mode refused leaves 0600, narrower, never the content lost)
-		if !o.private && posix.fchmod(fd, transmute(posix.mode_t)(transmute(u32)old.st_mode & MODE_BITS)) != .OK { rep.kept = false }
+		if !o.private && posix.fchmod(fd, transmute(posix.mode_t)(transmute(Mode_Bits)old.st_mode & MODE_BITS)) != .OK { rep.kept = false }
 	}
 	if ok && o.flush { ok = posix.fsync(fd) == .OK }
 	if posix.close(fd) != .OK { ok = false }
@@ -75,6 +76,8 @@ write_over :: proc(tmp, target: string, data: []byte, o: Write_Options, rep: ^Wr
 
 // The permission bits of a mode (with set-user-ID, set-group-ID and sticky), not its type.
 @(private = "file") MODE_BITS :: 0o7777
+// (mode_t's integer: u32 on Linux, u16 on macOS)
+@(private = "file") Mode_Bits :: intrinsics.type_bit_set_underlying_type(posix.mode_t)
 
 @(private = "file")
 write_fd :: proc(fd: posix.FD, data: []byte) -> bool {

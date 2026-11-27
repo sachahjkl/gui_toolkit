@@ -50,8 +50,8 @@ stat_follow_follows_a_junction :: proc(t: ^testing.T) {
 	link := fmt.tprintf("%s\\junction_dir", root)
 	testing.expect(t, os.write_entire_file(file, transmute([]byte)string("12345")) == nil)
 	testing.expect(t, fsx.make_dirs(target))
-	state, _, _, err := os.process_exec(os.Process_Desc{command = {"cmd.exe", "/c", "mklink", "/J", link, target}}, context.temp_allocator)
-	if !testing.expect(t, err == nil && state.exit_code == 0, "mklink /J") { return }
+	state, out, errs, err := os.process_exec(os.Process_Desc{command = {"cmd.exe", "/c", "mklink", "/J", link, target}}, context.temp_allocator)
+	if !testing.expectf(t, err == nil && state.exit_code == 0, "mklink /J %s %s: %v %v\n%s%s", link, target, err, state.exit_code, string(out), string(errs)) { return }
 	testing.expect_value(t, fsx.path_kind(link), fsx.Path_Kind.Link)
 	kind, size := fsx.stat_follow(link)
 	testing.expect_value(t, kind, fsx.Path_Kind.Directory)

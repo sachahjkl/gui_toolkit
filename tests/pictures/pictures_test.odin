@@ -238,11 +238,13 @@ large_answers_of_one_build_share_its_upload_budget :: proc(t: ^testing.T) {
 	rows := st.p[0].upload.row + st.p[1].upload.row
 	testing.expectf(t, rows == band, "one band at that build for both: %d rows (a band %d)", rows, band)
 
+	// (the decodes answer in either order: the one that answered first uploads first)
+	lead := st.p[0].upload.row > 0 ? st.p[0] : st.p[1]
 	session.frame(s)
-	testing.expect_value(t, st.p[0].upload.row, 2 * band)
+	testing.expect_value(t, lead.upload.row, 2 * band)
 	s.renderer.device_generation += 1   // (as a recovered device: its textures came back empty)
 	session.frame(s)
-	testing.expectf(t, st.p[0].upload.row == band, "again from the top: %d rows", st.p[0].upload.row)
+	testing.expectf(t, lead.upload.row == band, "again from the top: %d rows", lead.upload.row)
 
 	session.wait_until(s, st, proc(s: ^session.Session, st: ^Two) -> bool { return st.p[0].state != .Pending && st.p[1].state != .Pending }, "both uploads")
 	testing.expect(t, st.p[0].state == .Ready && st.p[1].state == .Ready)

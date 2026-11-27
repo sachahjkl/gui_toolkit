@@ -17,7 +17,8 @@ SIZE_SHORT :: 4096
 READS :: 20000
 
 fresh_dir :: proc(name: string) -> string {
-	root := fmt.tprintf("%s/%s", fsx.temp_dir(context.temp_allocator), name)
+	// (joined by the system's separator: a path given to cmd.exe holds no "/", which its commands read as a switch)
+	root := fsx.path_join(fsx.temp_dir(context.temp_allocator), name, allocator = context.temp_allocator)
 	fsx.remove_tree(root)
 	fsx.make_dirs(root)
 	return root
