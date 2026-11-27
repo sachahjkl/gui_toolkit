@@ -214,6 +214,8 @@ App :: struct {
 	editor:  ui.Text_Edit,
 	editor_tab_indents: bool,
 	composer: ui.Text_Edit,   // a chat composer: wraps, grows from 1 to 5 lines
+	team:     int,            // the small form: a dropdown of its own width
+	about:    ui.Text_Edit,   // the small form: a field of several lines
 	settings_in: string,   // Open_Options.settings_dir
 	integrated:  bool,   // --integrated: the menu bar is the window's title bar (ui.title_bar, ui.window_buttons)
 	tags:    [dynamic]string,

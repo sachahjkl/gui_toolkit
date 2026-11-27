@@ -32,6 +32,13 @@ row, a settings line) keeps room between two controls. Every control with a face
 of a control (`ui.shape_of(.Control)`, 0.45 em unless the theme says another: [themes.md](themes.md), "A theme's
 shape"), scaled by the rounding setting (`appearance.rounding`); the showcase's test checks every page for a square one.
 
+`if ui.form_row(label) { widget }` puts a label and its widget on one row of a form. The rows of one parent box are one
+form: their labels are a column as wide as the longest label and a gap (`CONTROL_GAP`), so every field starts at one
+x, whether it fills the row (the default) or has a width of its own. The column is at most 40 % of the form: a longer
+label wraps on more lines, never cut. The label is one control tall and sits on its
+field's first line; a field of several lines grows the row downward, and a widget shorter than a line is centred on
+the label's line.
+
 `Button_Options`:
 
 - **`intent`** (`Intent`: Neutral, Primary, Info, Success, Warning, Danger): what the act means, and so its

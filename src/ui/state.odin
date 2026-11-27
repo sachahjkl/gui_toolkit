@@ -139,6 +139,7 @@ destroy :: proc(s: ^State) {
 	delete(s.strip_stack)
 	delete(s.card_stack)
 	delete(s.strips)
+	delete(s.form_labels)
 	delete(s.radios)
 	delete(s.radios_last)
 	menus_destroy(s)
@@ -285,6 +286,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.anim_busy = false
 	s.wake_ms = 0
 	clear(&s.strips)
+	clear(&s.form_labels)
 	s.radios, s.radios_last = s.radios_last, s.radios
 	clear(&s.radios)
 	s.menu_close_pending = false
@@ -396,6 +398,7 @@ end_build :: proc() {
 	toasts_build()   // (over everything the program built, under its menus)
 	keymap_end_build(s)   // (every reader of keys is past: the pending chord ends or shows its bubble)
 	menus_raise(s)
+	form_columns(s)   // (every form's rows built, its dialogs' too: before a tool's edits, which win)
 	if len(s.edits) > 0 { box_edits_apply(s) }
 	t_layout := real_ms()
 	s.metrics.build_ms = t_layout - s.build_start

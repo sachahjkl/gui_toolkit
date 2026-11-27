@@ -68,6 +68,10 @@ fidget_line_edits_clipboard_and_tab :: proc(t: ^testing.T) {
 	session.key(s, .V, {.Ctrl})
 	testing.expect_value(t, ui.line_edit_string(&app.bio), "Grace Hopper")
 	session.key(s, .Tab)
+	testing.expect_value(t, session.focused_name(s), "in_team")
+	session.key(s, .Tab)
+	testing.expect_value(t, session.focused_name(s), "in_about")
+	session.key(s, .Tab)
 	testing.expect_value(t, session.focused_name(s), "ck_agree")
 	session.key(s, .Space)
 	testing.expect(t, app.agree, "Space activates the checkbox")
@@ -77,7 +81,7 @@ fidget_line_edits_clipboard_and_tab :: proc(t: ^testing.T) {
 	session.key(s, .Up)
 	testing.expect_value(t, session.focused_name(s), "ck_agree")
 	session.key(s, .Up)
-	testing.expect_value(t, session.focused_name(s), "in_bio")
+	testing.expect_value(t, session.focused_name(s), "in_about")
 }
 
 // The multi-line editor: typing, Enter, undo, redo, Delete of a selection, Esc.

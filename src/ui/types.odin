@@ -583,6 +583,7 @@ State :: struct {
 	strip_stack:     [dynamic]Strip_Build,  // strips being built (strip.odin)
 	card_stack:      [dynamic]^Box,         // the .Plate boxes of the cards being built, innermost last (card_box)
 	strips:          [dynamic]Strip_Build,  // the strips of this build, for strips_settle after its layout
+	form_labels:     [dynamic]^Box,         // the form rows' labels of this build, for form_columns before its layout
 	// the radio buttons of this build and of the last, each with its group (its `selected`): a group is one Tab stop, the
 	// arrows move its choice (radio)
 	radios:          [dynamic]Radio_Slot,

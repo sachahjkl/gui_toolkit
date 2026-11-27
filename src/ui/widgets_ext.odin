@@ -1720,38 +1720,93 @@ card_end :: proc() {
 	card_close(CARD_PAD)
 }
 
-// `if form_row("Name") { widget }`: label on the left (34 %, at least its words on one line: never cut), the widget
-// fills the rest. Widgets inside default to full width and 2.3 em height.
+// `if form_row("Name") { widget }`: label on the left in the form's label column, the widget fills the rest; its top at
+// the label's top. The rows of one parent box are one form: its column is as wide as its longest label and a gap
+// (CONTROL_GAP), FORM_LABEL_MIN_EM at least, FORM_LABEL_CAP of the form's width at most (a longer label wraps). Widgets
+// inside default to full width and one control's height (control_height). The intent: src/md/features/form-row.md.
 @(require_results, deferred_none = form_row_end)
 form_row :: proc(label_text: string) -> bool {
 	em := font_size()
-	// as tall as its widget (at least one line): wrapped content grows the row
-	set_next_axis(.X, .Center)
+	line_h := control_height()
+	// (a row a line and a half tall keeps the room between two controls of a form: its half above, its half below the line)
+	room := max(0, math.round((dense(em * FORM_ROW_EM) - line_h) * 0.5))
+	set_next_axis(.Y)
 	gs().next_mod.width = fill()
 	gs().next_mod.height = children_sum()
 	r := build_box({}, fmt.tprintf("###frow_%s", label_text))
 	push_parent(r)
+	if room > 0 { spacer(px(room), exact = true) }
+	// as tall as its widget (at least one line): a widget of several lines grows the row downward, its label on its first
+	set_next_axis(.X)
+	gs().next_mod.width = fill()
+	gs().next_mod.height = children_sum()
+	push_parent(build_box({}, "###frow_line"))
 	if tags("weak") {
-		next({width = pct(0.34), height = px(dense(em * 2.5))})
 		lbl := build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label_text))
-		// (a label the user must read is never cut: its words on one line are its least, the widget gives way; a
-		// window or a dialog that grows to what is in it counts them, natural_width)
-		lbl.pref[.X].least = math.ceil(lbl.text_dim.x + 2 * lbl.text_pad)
+		// (its own column until form_columns gives it the form's, after every row of the build: a dialog's measure
+		// during the build counts its words whole)
+		lbl.pref = {.X = px(form_label_need(lbl)), .Y = px(line_h)}
+		append(&gs().form_labels, lbl)
 	}
 	push_style_copy()
-	top_style().pref = {.X = fill(), .Y = px(control_height())}
+	top_style().pref = {.X = fill(), .Y = px(line_h)}
 	return true
+}
+
+// A form's label column: its least in font sizes, its most a share of the form's width. A form row's height with a
+// widget of one line, in font sizes.
+@(private = "file") FORM_LABEL_MIN_EM :: 3
+@(private = "file") FORM_LABEL_CAP :: 0.4
+@(private = "file") FORM_ROW_EM :: 2.5
+
+// What a form row's label asks of the column: its inset, its words on one line, the gap before its field.
+@(private = "file")
+form_label_need :: proc(lbl: ^Box) -> f32 {
+	return math.ceil(lbl.text_pad + lbl.text_dim.x) + math.round(lbl.font_size * CONTROL_GAP)
+}
+
+// Each form's label column, once its rows are built (end_build, before the layout): the rows of one parent box share
+// the widest need, so every field of the form starts at one x and no label leaves a void before its field. One pass
+// over the labels built: the words were measured when their boxes were built. The cap is of the form's width in the
+// last layout (none before its first); a label longer than the column wraps, its first line where a label of one
+// line sits (a label a user must read is never cut).
+@(private)
+form_columns :: proc(s: ^State) {
+	if len(s.form_labels) == 0 { return }
+	form_of :: proc(lbl: ^Box) -> ^Box { return lbl.parent.parent.parent }   // the label, its line, its row, the form
+	widest := make(map[^Box]f32, 8, context.temp_allocator)
+	for l in s.form_labels {
+		f := form_of(l)
+		widest[f] = max(widest[f], form_label_need(l))
+	}
+	for l in s.form_labels {
+		f := form_of(l)
+		col := max(widest[f], math.round(l.font_size * FORM_LABEL_MIN_EM))
+		if room := f.size.x - content_pad(f, .X); room > 0 { col = min(col, math.floor(room * FORM_LABEL_CAP)) }
+		line_h := l.pref[.Y].value
+		l.pref[.X] = px(col)
+		if form_label_need(l) > col {
+			// (as tall as its lines, its first line where one line sits in a control's height)
+			l.flags += {.Text_Wrap}
+			l.pref[.Y] = text_size(max(0, (line_h - line_height_of(l)) * 0.5 - l.text_pad))
+		}
+	}
 }
 
 @(private)
 form_row_end :: proc() {
 	pop(&gs().style_stack)
-	// the row's label names its widget (the first box after it) unless the app named it
-	r := parent_box()
-	if lbl := r.first; lbl != nil && lbl.next != nil {
+	line := parent_box()
+	if lbl := line.first; lbl != nil && lbl.next != nil {
 		w := lbl.next
+		// the row's label names its widget (the first box after it) unless the app named it
 		if w.a11y == nil || (w.a11y.name == "" && w.a11y.labelled_by == 0) { a11y_set(w, {labelled_by = lbl.key}) }
+		// (a widget shorter than a line, a progress bar, sits centred on the label's line, not on its top)
+		if h := w.pref[.Y]; h.kind == .Pixels && h.value < lbl.pref[.Y].value { line.cross = .Center }
 	}
+	pop_parent()
+	r := parent_box()
+	if first := r.first; first != nil && first != line { spacer(px(first.pref[.Y].value), exact = true) }
 	pop_parent()
 }
 

@@ -35,6 +35,8 @@ reset_values :: proc(app: ^App) {
 	ui.line_edit_clear(&app.search)
 	ui.line_edit_clear(&app.tag_input)
 	ui.line_edit_clear(&app.bio)
+	app.team = 0
+	ui.text_edit_set(&app.about, "")
 	ui.line_edit_clear(&app.filter)
 	ui.text_edit_set(&app.editor, "# Notes\n\nA multi-line editor from gui_toolkit:\n  - Enter keeps the indentation\n  - Ctrl+Z / Ctrl+Y undo and redo\n  - Up / Down keep the column\n  - Tab moves the focus (or indents, see below)\n")
 	// every tag is heap-owned (removing one deletes its string)
@@ -455,6 +457,15 @@ page_inputs :: proc(app: ^App) {
 				if ui.card("A small form", ICON_CLIPBOARD) {
 					can_submit := len(app.name.buf) > 0 && email_valid(&app.email) && app.agree
 					if ui.form_row("Title") { ui.line_edit("###in_bio", &app.bio, {placeholder = "Engineer, designer, ..."}) }
+					if ui.form_row("Team") {
+						teams := [?]string{"Design", "Engine", "Research"}
+						ui.next({width = ui.px(math.round(em * 9))})
+						ui.dropdown("###in_team", teams[:], &app.team)
+					}
+					if ui.form_row("About") {
+						ui.next({height = ui.px(math.round(ui.dense(em * 5.5)))})
+						ui.text_edit("###in_about", &app.about, {placeholder = "A few lines on what you do", wrap = true})
+					}
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.3))})
 					ui.checkbox("###ck_agree", "I agree to the terms", &app.agree)
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
