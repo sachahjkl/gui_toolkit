@@ -5,6 +5,34 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.367.0] - 2026-11-27 18:31
+
+### Added
+- **`fsx.same_entry`, `fsx.same_volume` and `fsx.entry_identity`**: whether two paths are one entry (a change of a name's case on a disk that ignores case), whether a rename can move between two folders, and an entry's volume and number, a link itself, on Linux and Windows.
+- **`Line_Edit_Options.suffix`**: a short weak text inside a field's end, before its cross or eye, such as what a search found ("12 found"). The text typed never runs under it, and the field keeps the width of its row.
+- **`Rich_Style.edge`**: a rich run can have a 1 px line round its background; the words a plugin's view highlights (`highlight`) take the find's light fill and edge, their letters in their own colour.
+- **`fsx.Ignore`**: the rules of `.gitignore` files (`ignore_add`, `ignore_match`, `glob_match`), for a walk that leaves out what a repository ignores.
+- **`ui.tree` and `ui.file_tree`**: a tree view for every program, as dense and aligned as a code editor's explorer. Rows of one line with an indent per level in pixels, indent guides (the current branch's lit), chevrons that turn, an icon, the label cut at its end with the whole name in a tooltip, and a slot at the row's end (a git letter, a count). Only the rows in view are built: 100 000 nodes scroll as fast as ten. The keys of every tree (Right opens then goes in, Left closes then goes up, Enter and Space, type-ahead), several rows with Ctrl and Shift, a reveal that brings a row into view, levels and positions for screen readers, and hooks for a context menu, a rename in place and drag and drop. `ui.file_tree` shows a folder: each folder read when it is opened, off the interface's thread, folders first then in natural order, an icon per file type, hidden files on request, the open file marked, and the folders shown followed as they change on disk.
+  - A filter (Ctrl+F) finds names in the whole folder, even in folders never opened, leaves out what git ignores, lights the letters matched, opens the folders on the way and gives the earlier ones back on Escape.
+  - A menu and keys for the usual file acts: new file and folder, rename in place, duplicate, move to the trash with an undo, cut, copy and paste with other file managers, copy the path, show in the file manager, open with, open in a terminal, expand and collapse, refresh. The same acts are commands for the palette. Every failure says why in a toast. A rename never replaces another file, and a name the system refuses is said at once (`ui.file_name_problem`, Windows' rules from any system); a move refused for another reason than another disk copies nothing, and a failed copy leaves nothing half made.
+  - Drag rows onto a folder to move them (Ctrl copies), out of the window to another program, or drop another program's files into a folder.
+
+### Changed
+- **A find's matches keep the text's colours**: each match is a light fill of the find's colour inside a 1 px edge (the current one a 2 px edge), and its letters are drawn in their own colours: a grey comment stays readable in a code view, where the opaque amber with dark letters hid it. The edge reaches 3:1 on the page and on a selected row in every theme; the theme entries are `find_match background`, `find_match border`, `find_current background`, `find_current border` (`find_text` and `ui.find_match_ink` are gone), and the ticks on the scroll bar take the edge's colour.
+- **Tabs read as tabs**: in `ui.tabs`, a dock's stacks, a stack of views and the debug window, a line runs along the strip's bottom and the chosen tab rises out of it as one shape with its panel (concave fillets at its feet, rounded top corners in the theme's control radius, the page's colour with the finish's light), no line between them; the other tabs are a faint rounded outline, filled under the pointer, in place of the raised button the chosen tab was. Every tab has its whole silhouette; the first starts a few pixels from the pane's edge, the room of its left foot, and the words sit in the middle of the shape. `ui.dock_content_inset()` says where the first tab's words start from the stack's edge, for a panel's content to line up with them; `ui.tab_line_draw` draws the line across a program's own row that holds `ui.tabs`.
+
+### Fixed
+- **No crash after a file tree or a picker goes**: the thread that follows their folders freed itself, at its end, with the allocator of the code that opened them; when that was a test's tracking allocator or another short-lived one, already gone, the program crashed (seen on Windows). The thread now takes the process's heap.
+- **A folder followed misses no change made as it is opened**: a file made in a folder just opened in `ui.file_tree` (or the picker's folder) at once came only at the next change, or never; a folder is now read again once its watch begins. On Windows, setting the folders followed no longer loses a change made at that moment in a folder already followed.
+- **A program a tool starts draws on the CPU, never the GPU**: `toolbox.program_session_start` gives the program Mesa's lavapipe as its only Vulkan driver and turns the implicit layers off, so a program's live tests and pictures no longer take the machine's graphics card (an NVIDIA one included) and match the CI's. A machine without lavapipe does not start the program and says why; `Program_Options.gpu` keeps the machine's own driver for a demo a person watches.
+- **A stack's strip of views is a bar again**: in a finish with a relief (machined, edged), the strip of a docked stack of views (a bottom terminal's, any zone's) was drawn as one big button, with a rim and a bevel, since its double click and right click came in 0.366; its ground is now flat, and only its tabs have a face. The dock's strips have the same flat ground.
+- **A watched folder removed and made again is watched again.** `fsx.Watch` on Linux kept the dead watch of a removed folder, so a folder made again at its path (a build folder cleaned) was never followed; it is now watched again at the next `watch_set`. A `watch_set` during a change's quiet time no longer reports paths it had freed.
+- **A one-line rich text is cut between letters, as a label is.** `rich_paragraph(max_lines = 1)` (a name with the letters a filter matched lit) cut a name a little too wide back at its last break, so "tree-view.md" showed as "tree-…" with room to spare; it now keeps every letter that fits before the "…".
+- **`Toolkit.waitFor`, `Toolkit.click` and `Toolkit.waitIdle` after a stall**: a window that stalled longer than a wait's time (its first frames on a slow device) no longer fails the wait from the tree it had before the stall: the wait looks at the builds made after it, so a text on the screen is found.
+
+### Security
+- **`desktop.open_terminal` on Windows no longer reads the folder's name as a command.** Windows Terminal took a `;` in the folder's path as the start of another of its commands, and both terminals were looked for in the folder opened first, where a planted `wt.exe` or `cmd.exe` would run. The folder is now the terminal's starting folder, never a word of its command line, and each program is found by its whole path (`PATH`, the system's folder). On Linux the folder is passed after `--`.
+
 ## [0.366.0] - 2026-11-27 14:15
 
 ### Added
@@ -5210,6 +5238,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.367.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.367.0
 [0.366.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.366.0
 [0.365.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.365.0
 [0.364.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.364.0
