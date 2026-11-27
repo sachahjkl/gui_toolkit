@@ -24,6 +24,8 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 | `slider` | a step | arrows, Home, End, Page | yes | slider | program's | gen. | gen. | yes | — (D2) | `default`: double click |
 | `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | `default`: double click, both ends |
 | `number` | a step | Up, Down, Page; Ctrl, Alt | the field | spin button | Reset (with `default`) | `disabled`, gen. | gen. | yes | yes | `default`: menu, track |
+| `drag_number`, `drag_vector` | a step, even in a view that scrolls (debug-panel.md) | Up, Down, Page; Ctrl, Alt; Enter types | the field | spin button | — | `o.disabled`, gen. | gen. | yes (drag: slower) | double click, Ctrl+click, Enter | — |
+| `tree_header` | — | Space, Enter, Left, Right | yes | button, expanded | program's | gen. | gen. | — | — | — |
 | `color_picker` | — | its fields' | its fields | its parts | program's | gen. | gen. | — | hex, numbers | — |
 | `hotkey_field` | — | records the keys | yes | its text | program's | gen. | gen. | — | the keys | — |
 | `line_edit` | — | editing | yes | text field | edit menu | `.Read_Only`, gen. | gen. | — | yes | — |

@@ -364,6 +364,14 @@ State :: struct {
 	wheel_rest:  map[Key]f32,     // wheel_steps: per box, the notches not yet a whole step (a touchpad sends fractions)
 	number_edit: Line_Edit,      // the text typed in the field of a `number` that has the keyboard (one at a time has it)
 	number_key:  Key,             // that field's box (0: none is typed in)
+	drag_edit:     Line_Edit,     // the text typed in a drag_number's field (one at a time has it)
+	drag_edit_key: Key,           // that field's box (0: none is typed in)
+	drag_edit_new: bool,          // the typing just began: all of the text is selected at the field's first build
+	drag_moved:    Key,           // the drag_number whose last press dragged: its next press is no double click
+	dense_depth:   int,           // dense_scope: how many are open where the build is
+	dense_saved:   f32,           // the density outside them
+	square_depth:  int,           // dense scopes and square views open where the build is: every box's corners square
+	debug_hook:    Debug_Hook,    // the debug surface of gt:debug (debug_hook.odin)
 	arena:       virtual.Arena,
 	build_index: u64,
 	zoom:        f32,                // user zoom factor (Ctrl+wheel, Ctrl +/-/0); multiplies the DPI scale
@@ -481,6 +489,8 @@ State :: struct {
 	press_kept:   map[Press_Data_Key]Press_Data, // press_data: what each gesture keeps on its press
 	scroll_delta: Vec2,
 	scroll_key:   Key,
+	wheel_latch:    Key,   // the view the wheel scrolls while it turns (wheel_latched): 0 at rest
+	wheel_latch_ms: f64,   // when the wheel last turned for it
 	swipe_delta:  Vec2,   // the part of scroll_delta that fingers on a touchpad made (swipe_step)
 	swipe_end:    bool,   // the fingers left the touchpad in this build's events
 	last_click_key:  Key,

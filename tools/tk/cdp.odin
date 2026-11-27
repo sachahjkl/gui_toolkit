@@ -23,6 +23,9 @@ package tk
 //   audit                        what a screen reader cannot name
 //   demos                        the program's demo states (devtools.demo_state)
 //   demo <name>                  enters one: a screen that needs an account, for a picture
+//   debug                        the program's debug panels and their values, a line each (docs/debug.md)
+//   debug-set <path> <value>     sets one: debug-set Drone/Transform/position 1,2,3
+//   debug-press <path>           presses an act: debug-press Drone/Print
 //   record <file>                records what a person does until Enter, as a script for `play`
 //   record [<file>] --timeline <dir>   the same with a picture after each action: dir/index.html, timeline.json, trace.json
 //   play <file>                  runs a script: a command per line, # for comments
@@ -157,6 +160,20 @@ cdp_command :: proc(c: ^cdp.Client, command: string, args: []string) -> string {
 		if !ok { return failed(c) }
 		for n in names { fmt.println(n) }
 		if len(names) == 0 { fmt.println("no demo state") }
+	case "debug":
+		r, ok := cdp.debug_panels(c)
+		if !ok { return failed(c) }
+		res, _ := r.(json.Object)
+		panels, _ := res["panels"].(json.Array)
+		for pv in panels {
+			p, _ := pv.(json.Object)
+			items, _ := p["items"].(json.Array)
+			for iv in items {
+				it, _ := iv.(json.Object)
+				value := it["value"]
+				fmt.printfln("%s  %s  %s", plain(it["path"]), plain(it["kind"]), value == nil ? "" : debug_value_text(value))
+			}
+		}
 	case "record":
 		return record(c, &o)
 	case "play":
@@ -256,6 +273,13 @@ print_json :: proc(c: ^cdp.Client, method, params: string, pretty: bool) -> stri
 // A number as JavaScript prints it.
 @(private = "file")
 num :: proc(v: json.Value) -> string { return cdp.json_number(cdp.number(v)) }
+
+// A debug value as JSON writes it ([1,2,3], "Hover", true).
+@(private = "file")
+debug_value_text :: proc(v: json.Value) -> string {
+	data, err := json.marshal(v, allocator = context.temp_allocator)
+	return err == nil ? string(data) : "?"
+}
 
 @(private = "file")
 plain :: proc(v: json.Value) -> string {

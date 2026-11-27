@@ -81,6 +81,7 @@ destroy :: proc(s: ^State) {
 	file_pickers_destroy(s)
 	mark_dialog_destroy(s)
 	views_state_gone(s)
+	debug_hook_destroy(s)   // (after the views: its window's view is closed with them)
 	box_edits_clear(s)
 	delete(s.edits)
 	draw.damage_memory_destroy(&s.damage)
@@ -99,6 +100,7 @@ destroy :: proc(s: ^State) {
 	delete(s.anims)
 	delete(s.wheel_rest)
 	line_edit_destroy(&s.number_edit)
+	line_edit_destroy(&s.drag_edit)
 	delete(s.timers)
 	for _, m in s.toolbars {
 		for g in m.groups { delete(g.items) }
@@ -331,6 +333,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	keymap_begin_build(s)   // (a sequence's second press, taken before any reader: keymap.odin)
 	wireframe_keys(s)       // (the devtools' key: wireframe.odin)
 	exploded_keys(s)        // (the devtools' key: exploded.odin)
+	debug_keys(s)           // (the devtools' key: debug_hook.odin)
 	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	overlay_capture_keys(s, p.events)
@@ -510,8 +513,12 @@ boxes_built :: proc(s: ^State) -> int { return s.boxes_built }
 DENSITY_COMPACT :: 0.78
 DENSITY_MIN :: 0.6
 DENSITY_MAX :: 1.2
-density :: proc(s: ^State) -> f32 { return s.density }
-set_density :: proc(s: ^State, d: f32) { s.density = clamp(d, DENSITY_MIN, DENSITY_MAX) }
+// (inside a dense scope, the density is the scope's: the person's is kept aside, and a change goes there)
+density :: proc(s: ^State) -> f32 { return s.dense_depth > 0 ? s.dense_saved : s.density }
+set_density :: proc(s: ^State, d: f32) {
+	if s.dense_depth > 0 { s.dense_saved = clamp(d, DENSITY_MIN, DENSITY_MAX); return }
+	s.density = clamp(d, DENSITY_MIN, DENSITY_MAX)
+}
 dense :: proc(v: f32) -> f32 { return math.round(v * gs().density) }
 
 // The interface's zoom stays within these; a step of it is Feel.zoom_step.
@@ -660,6 +667,8 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.text_pad = st.text_pad
 	b.text_align = st.text_align
 	b.radius = st.radius
+	// (an instrument's corners are square: dense_scope, a square view, debug-panel.md; a shape's radius, a dot's, stays)
+	if s.square_depth > 0 && .Fixed_Radius not_in b.flags { b.radius = 0 }
 	b.transparency = st.transparency
 	b.squish = st.squish
 	b.cursor = st.cursor

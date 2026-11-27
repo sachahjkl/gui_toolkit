@@ -169,7 +169,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	s.hot_key = (active == 0 || hit == active) ? hit : 0
 	s.front_key = s.mouse_valid && s.root != nil ? front_test_box(s.root, s.mouse, s.root.rect) : 0
 	scrollbar_drag(s)
-	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? scroll_hit_test(s, s.mouse, scroll_view_delta(s)) : 0
+	s.scroll_key = (s.scroll_delta != {} && s.mouse_valid) ? wheel_latched(s, scroll_hit_test(s, s.mouse, scroll_view_delta(s))) : 0
 	if s.hot_key != s.hover_key { s.hover_key = s.hot_key; s.hover_since_ms = s.time_ms }
 	autoscroll_handle_input(s)   // middle-click autoscroll (autoscroll_region.odin): after hit tests, may swallow clicks
 }
@@ -285,6 +285,29 @@ scroll_view_delta :: proc(s: ^State) -> Vec2 {
 	d := s.scroll_delta
 	if .Shift in s.mods && d.x == 0 { return {d.y, 0} }
 	return d
+}
+
+// A wheel that turns on with no rest of this long scrolls the view it scrolled.
+WHEEL_LATCH_MS :: 350
+
+// A scroll in progress keeps its view. While the wheel turns on, a box inside that view that takes the wheel itself (an
+// instrument's field, debug-panel.md) and slides under a still pointer does not take it: the view goes on scrolling. A
+// wheel that starts after a rest goes where the pointer is, and a box that has the keyboard takes it at once: the person
+// chose it.
+@(private)
+wheel_latched :: proc(s: ^State, hit: Key) -> Key {
+	hit := hit
+	l := s.boxes[s.wheel_latch] if s.wheel_latch != 0 else nil
+	if l != nil && hit != 0 && hit != s.wheel_latch && hit != s.focus_key && s.time_ms - s.wheel_latch_ms < WHEEL_LATCH_MS && draw.rect_contains(l.rect, s.mouse) {
+		if b := s.boxes[hit]; b != nil && .Scroll_Self in b.flags && is_descendant(b, l) { hit = s.wheel_latch }
+	}
+	hb := s.boxes[hit] if hit != 0 else nil
+	if hb != nil && hb.flags & {.View_Scroll_X, .View_Scroll_Y} != {} {
+		s.wheel_latch, s.wheel_latch_ms = hit, s.time_ms
+	} else {
+		s.wheel_latch = 0
+	}
+	return hit
 }
 
 // The box the wheel scrolls: the innermost under `p` that scrolls the way `d` goes (mostly sideways: .View_Scroll_X, else

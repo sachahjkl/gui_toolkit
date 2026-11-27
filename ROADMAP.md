@@ -120,6 +120,21 @@
 
 ## Later
 
+- **A frame scrubber in the debug window.** The last seconds of a program's panel values kept per frame, and a timeline
+  to step back and forth through them: a glitch is seen again frame by frame. Intent:
+  [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
+- **A curve and keyframe editor in the debug window.** A panel's value animated over time: keyframes on a timeline,
+  Bézier handles dragged, the curve played on the program's object live and printed as Odin source to paste back.
+  Intent: [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
+- **A log console in the debug window.** The program's log (`gt:log`) as a tab: filtered by level and words, the last
+  lines kept in a ring, a line's source opened. Intent: [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
+- **A value recorder in the debug window.** Any number of a panel plotted over time on demand, with no
+  `ui.Value_History` written by the program: the surface samples the values it is asked to follow each frame.
+  Intent: [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
+- **Debug panels of a program on another machine.** The debug window of one program drives the panels of the same
+  program on another machine through the devtools' `Toolkit.debug*` over `gt:remote`. Intent:
+  [src/md/features/debug-panel.md](src/md/features/debug-panel.md).
+
 - **Natural order that folds Latin accents.** Names sort as a French reader expects ("été" before "Étude"): a
   sibling of `ascii.compare_natural` folds Latin-1 and Latin Extended-A for display order, and classeur drops its own
   `fs.name_compare`. It needs an entry in `tools/unicode_case_allowed.txt`.

@@ -128,6 +128,7 @@ Tools and tests
   testing.md          Testing
   testkit.md          testkit
   devtools.md         devtools
+  debug.md            debug: a program's debug panels
   cdp.md              cdp: DevTools protocol client
   site.md             site: a project's website
   toolbox.md          toolbox: what tools share

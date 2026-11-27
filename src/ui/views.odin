@@ -70,6 +70,10 @@ View_Options :: struct {
 	// drawn first in the view's box, under its header and its body (a blur of the window behind a dialog)
 	backdrop:       proc(v: ^View, data: rawptr),
 	under_children: bool,                       // its external window gets a native child window (step 4)
+	square:         bool,                       // its floating window square: its frame, header and body (an instrument: the debug window)
+	// its floating window's header as small as a dense body (an instrument: the debug window): a dense row's text, no
+	// title (it stays the window's accessible name), the body's tools (view_header_tools) first, the moves at the end
+	dense:          bool,
 	moved:          proc(data: rawptr, win: ^platform.Window),   // it is now built in `win` (step 4); nil: none
 }
 

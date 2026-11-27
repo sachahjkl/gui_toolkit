@@ -85,6 +85,9 @@ SHOWCASE_SHOTS := []Shot {
 	{name = "showcase_graph_light", example = "showcase", args = {"--headless", "--scene=graph", "--theme=Glacier", "--light", "--finish=edged"}, webp = true},
 	{name = "showcase_toasts", example = "showcase", args = {"--headless", "--scene=toasts", "--theme=Dracula"}, ms = 1500, webp = true},
 	{name = "showcase_themes", example = "showcase", args = {"--headless", "--scene=themes", "--theme=Graphite", "--size=1280x590"}, webp = true},
+	// (examples/debug_panel: the drone and its panel in the debug window, the time held)
+	{name = "debug_panel", example = "debug_panel", args = {"--headless", "--still", "--debug"}, webp = true},
+	{name = "debug_panel_light", example = "debug_panel", args = {"--headless", "--still", "--debug", "--theme=Glacier", "--light"}, webp = true},
 }
 
 SHOTS := []Shot {

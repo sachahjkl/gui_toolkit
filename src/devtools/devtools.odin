@@ -241,7 +241,7 @@ service :: proc(srv: ^Server, s: ^ui.State, r: ^render.Renderer) {
 		screenshots_poll(srv, s, r)
 		if s != nil {
 			cast_poll(srv, s, r)
-			if srv.captured != s { ui.a11y_capture(s, true); srv.captured = s }
+			if srv.captured != s { ui.a11y_capture(s, true); srv.captured = s; debug_attach(s) }
 			rec_poll(srv, s)
 			waits_poll(srv, s)
 			dom_sync(srv, s)
@@ -590,6 +590,10 @@ cmd_toolkit :: proc(c: ^Cmd) -> Answer {
 		if e := demo_enter(srv, str(p["name"])); e != "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, e); return .Sent }
 		cast_touch(srv)   // (the screencast's next frame shows the state)
 		strings.write_string(sb, "{}")
+	case "Toolkit.debugPanels", "Toolkit.debugSet", "Toolkit.debugPress":
+		if s == nil { error_reply(to, CDP_ERROR_SERVER, "this program serves no interface"); return .Sent }
+		if e := debug_command(sb, s, c.method, p); e != "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, e); return .Sent }
+		cast_touch(srv)   // (the screencast's next frame shows the change)
 	case "Toolkit.state":
 		d := dpi(srv)
 		fmt.sbprintf(sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g,"encoding":%d}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d, sync.atomic_load(&srv.encoding))

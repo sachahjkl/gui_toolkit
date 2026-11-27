@@ -104,6 +104,15 @@ fr Ouvre un nouveau ticket avec le rapport ; le rapport entier est aussi copié 
 en Dismiss
 fr Fermer
 
+en Debug
+fr Débogage
+
+en Pin: this panel in a view of its own
+fr Épingler : ce panneau dans une vue à part
+
+en Filter
+fr Filtrer
+
 en ok
 fr ok
 
@@ -2180,9 +2189,6 @@ fr Dossier parent (Retour arrière)
 
 en A folder's path
 fr Le chemin d'un dossier
-
-en Filter
-fr Filtrer
 
 en In subfolders
 fr Dans les sous-dossiers

@@ -186,6 +186,7 @@ STEPS := []Step{
 	{name = "status_line", one = true, oses = EVERYWHERE, text = true},   // (ui.Status_Line on the session's clock)
 	{name = "states", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "stepper", one = true, oses = EVERYWHERE, text = true},
+	{name = "debug", one = true, oses = EVERYWHERE, text = true},   // (gt:debug: the debug panel, the dense drag field)
 	{name = "chrome", wgpu = .Ci1},
 	{name = "ui_robust", one = true, wgpu = .Ci1},
 	{name = "a11y", one = true},

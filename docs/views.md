@@ -135,7 +135,9 @@ of the first opening), `float_edge` (an internal window of no rect of its own op
 `MODAL_MARGIN_EM` in: `.Right` at the top right, a tool window; nil: centred), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em` (a dialog's least; a side panel's least before its zone folds), `min_height_em`,
 `resizable` (grips; the size is remembered), `top` (the dialog's top at this fraction of the window), `no_header`,
 `backdrop` (drawn first, under the header and the body), `extent_em`, `extent_frac`, `tabs_always`, `new_tab`,
-`new_tab_label`, `under_children` and `moved` (the later presentations).
+`new_tab_label`, `under_children` and `moved` (the later presentations), `square` (a floating window with no rounded
+corner: an instrument), `dense` (a floating window's header as small as a dense row of tabs, with no title: the body
+puts its tabs there with `view_header_tools`; the title stays its accessible name).
 
 ## The Dialog presentation
 

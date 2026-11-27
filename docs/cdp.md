@@ -50,6 +50,9 @@ cdp.shot(&c, "out.png")
 - `demo_state(c, name)`: enters the program's demo state `name` (`Toolkit.demoState`), a screen that needs an account,
   for a picture; wait for its box or for rest before the picture. An unknown name fails, and `c.failure` lists the
   names. `demo_states(c)` gives the names ([devtools.md](devtools.md), "Demo states").
+- `debug_set(c, path, value)`, `debug_press(c, path)`, `debug_panels(c)`: the program's debug panels (`Toolkit.debug*`,
+  [debug.md](debug.md)): a value set by its path as text ("1, 2, 3"), an act pressed, every value listed. In a script:
+  `debug-set <path> <value>` and `debug-press <path>`.
 - `screenshot` (the PNG's bytes) and `shot` (a file), optionally a `Clip` in CSS pixels. `window_size`.
 - `json.quote(text)` of `gt:json` ([json.md](json.md)) writes a string as JSON for a call's parameters. `number`,
   `integer` and `str` read a JSON value. `stringify` writes a value as

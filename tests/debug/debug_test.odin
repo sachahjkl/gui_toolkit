@@ -1,0 +1,471 @@
+// The debug panel (src/md/features/debug-panel.md): a program's panel built in the window, a drag that changes the
+// program's variable, an act that calls its code, the tools' list, set and press (in the process and over the
+// devtools protocol), nothing run while the window is closed, the key, the filter, a pin, reflection and Odin source;
+// the dense drag field of ui.
+//   odin run tools/run_tests -- debug
+package debug_test
+
+import "core:encoding/json"
+import "core:fmt"
+import "core:mem"
+import "core:strings"
+import "core:testing"
+import "gt:debug"
+import "gt:devtools"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
+
+WINDOW :: [2]int{1000, 700}
+// A drag of this many pixels; a float with no step moves ui.DRAG_FLOAT_SPEED a pixel.
+DRAG_PX :: 50
+EPS :: 0.02
+
+Look :: struct {
+	scale:  f32 `debug:"0..4"`,
+	name:   string,
+	secret: int `debug:"-"`,
+	seen:   int `debug:"ro"`,
+	tint:   ui.Color,
+}
+
+Kind :: enum { Soldier, Archer, Knight }
+
+Soldier :: struct {
+	model:    int,
+	kind:     Kind,
+	speed:    f32,
+	alive:    bool,
+	position: [3]f32,
+	look:     Look,
+	prints:   int,
+	builds:   int,   // the panel's procedure's runs
+	speeds:   ui.Value_History(16),
+}
+
+soldier_debug :: proc(s: ^Soldier) {
+	s.builds += 1
+	debug.number("model", &s.model, lo = 0, hi = 7)
+	debug.choice("kind", &s.kind)
+	debug.number("speed", &s.speed)
+	debug.toggle("alive", &s.alive)
+	if debug.section("Transform") {
+		debug.vector("position", &s.position, step = 0.5)
+	}
+	debug.value("look", &s.look)
+	debug.watch("prints", s.prints)
+	if debug.act("Print") { s.prints += 1 }
+	debug.plot("speeds", &s.speeds)
+}
+
+@(private = "file")
+page :: proc(s: ^session.Session) {
+	ui.label("The page###page")
+}
+
+@(private = "file")
+open_with_soldier :: proc(t: ^testing.T, soldier: ^Soldier) -> ^session.Session {
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Soldier", soldier_debug, soldier)
+	debug.open(s.state)
+	testing.expect(t, debug.show_panel(s.state, "Soldier"))
+	session.wait_box(s, debug.box_name("Soldier/speed"))
+	return s
+}
+
+@(test)
+a_drag_changes_the_programs_variable :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	b := session.get(s, debug.box_name("Soldier/speed"))
+	at := session.center(b)
+	session.drag(s, at, at + {DRAG_PX, 0})
+	testing.expectf(t, abs(soldier.speed - DRAG_PX * ui.DRAG_FLOAT_SPEED) < EPS, "a drag of %d px: %v", DRAG_PX, soldier.speed)
+	// (a vector's component, rounded to its step)
+	c := session.center(session.get(s, debug.box_name("Soldier/Transform/position", "c1")))
+	session.drag(s, c, c + {DRAG_PX, 0})
+	testing.expect_value(t, soldier.position, [3]f32{0, 0.5 * DRAG_PX, 0})
+}
+
+@(test)
+an_act_pressed_calls_the_program :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	session.click(s, debug.box_name("Soldier/Print", "act"))
+	testing.expect_value(t, soldier.prints, 1)
+}
+
+@(test)
+a_closed_window_runs_nothing :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+	session.frames(s, 30)
+	testing.expect_value(t, soldier.builds, 0)
+	testing.expect(t, !debug.shown(s.state))
+	// the key opens it, the panel's procedure runs while its tab shows, the key closes it
+	session.key(s, .D, {.Ctrl, .Alt, .Shift})
+	testing.expect(t, debug.shown(s.state))
+	testing.expect(t, debug.show_panel(s.state, "Soldier"))
+	session.frames(s, 3)
+	testing.expect(t, soldier.builds > 0)
+	session.key(s, .D, {.Ctrl, .Alt, .Shift})
+	testing.expect(t, !debug.shown(s.state))
+	session.frames(s, 3)
+	runs := soldier.builds
+	session.frames(s, 30)
+	testing.expect_value(t, soldier.builds, runs)
+}
+
+@(test)
+the_tools_list_set_and_press :: proc(t: ^testing.T) {
+	soldier := Soldier{speed = 1}
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+	sb := strings.builder_make(context.temp_allocator)
+	debug.list(s.state, &sb)
+	listed := strings.to_string(sb)
+	for want in ([]string{`"path":"Soldier/speed","kind":"number","value":1`, `"path":"Soldier/Transform/position","kind":"vector"`,
+		`"path":"Soldier/kind","kind":"choice","value":"Soldier","choices":["Soldier","Archer","Knight"]`, `"path":"Soldier/Print","kind":"act"`,
+		`"path":"Soldier/look/scale","kind":"number","value":0,"min":0,"max":4`, `"path":"Soldier/look/seen","kind":"number","value":0,"integer":true,"readOnly":true`,
+		`"path":"View/wireframe","kind":"bool"`}) {
+		testing.expectf(t, strings.contains(listed, want), "the list holds %s", want)
+	}
+	testing.expect(t, !strings.contains(listed, "secret"), "a field tagged - is hidden")
+	testing.expect_value(t, soldier.builds, 1)
+	// (closed sections are open to a tool: the window was never opened)
+	testing.expect_value(t, debug.set(s.state, "Soldier/speed", "2.5"), "")
+	testing.expect_value(t, soldier.speed, 2.5)
+	testing.expect_value(t, debug.set(s.state, "Soldier/model", "12"), "")
+	testing.expect_value(t, soldier.model, 7)   // (held to its bounds)
+	testing.expect_value(t, debug.set(s.state, "Soldier/Transform/position", "[1.2, 2, 3]"), "")
+	testing.expect_value(t, soldier.position, [3]f32{1, 2, 3})   // (to its step)
+	testing.expect_value(t, debug.set(s.state, "Soldier/kind", "knight"), "")
+	testing.expect_value(t, soldier.kind, Kind.Knight)
+	testing.expect_value(t, debug.set(s.state, "Soldier/alive", "true"), "")
+	testing.expect(t, soldier.alive)
+	testing.expect_value(t, debug.set(s.state, "Soldier/look/name", "Ann"), "")
+	testing.expect_value(t, soldier.look.name, "Ann")
+	testing.expect_value(t, debug.set(s.state, "Soldier/look/tint", "#ff000080"), "")
+	testing.expect(t, soldier.look.tint.r == 1 && abs(soldier.look.tint.a - 128.0 / 255) < 1e-4)
+	testing.expect_value(t, debug.press(s.state, "Soldier/Print"), "")
+	testing.expect_value(t, soldier.prints, 1)
+	testing.expect_value(t, debug.set(s.state, "View/wireframe", "true"), "")
+	testing.expect(t, s.state.wireframe)
+	// what is refused says why
+	testing.expect(t, strings.contains(debug.set(s.state, "Soldier/look/seen", "3"), "read only"))
+	testing.expect(t, strings.contains(debug.set(s.state, "Soldier/nothing", "3"), "no \"nothing\""))
+	testing.expect(t, strings.contains(debug.press(s.state, "Archer/Print"), "known: View, Soldier"))
+	testing.expect(t, strings.contains(debug.press(s.state, "Soldier/speed"), "a value"))
+	testing.expect(t, strings.contains(debug.set(s.state, "Soldier/speed", "fast"), "not a number"))
+}
+
+@(test)
+the_devtools_protocol_reaches_the_panels :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+	srv := devtools.start_local(s.win, "debug")
+	defer devtools.stop(srv)
+	c := devtools.local_connect(srv)
+	defer devtools.local_close(c)
+	ask :: proc(s: ^session.Session, srv: ^devtools.Server, c: devtools.Local_Client, id: int, method, params: string) -> string {
+		devtools.local_send(c, fmt.tprintf(`{{"id":%d,"method":%q,"params":%s}}`, id, method, params))
+		for _ in 0 ..< 10 {
+			devtools.service(srv, s.state, nil)
+			for m in devtools.local_take(c, context.temp_allocator) {
+				if strings.contains(m, fmt.tprintf(`"id":%d,`, id)) || strings.contains(m, fmt.tprintf(`"id":%d}}`, id)) { return m }
+			}
+			session.frame(s)
+		}
+		return ""
+	}
+	listed := ask(s, srv, c, 1, "Toolkit.debugPanels", "{}")
+	testing.expect(t, strings.contains(listed, `"path":"Soldier/Transform/position"`), listed)
+	testing.expect(t, strings.contains(ask(s, srv, c, 2, "Toolkit.debugSet", `{"path":"Soldier/Transform/position","value":[1,2,3]}`), `"result":{}`))
+	testing.expect_value(t, soldier.position, [3]f32{1, 2, 3})
+	testing.expect(t, strings.contains(ask(s, srv, c, 3, "Toolkit.debugSet", `{"path":"Soldier/speed","value":0.75}`), `"result":{}`))
+	testing.expect_value(t, soldier.speed, 0.75)
+	testing.expect(t, strings.contains(ask(s, srv, c, 4, "Toolkit.debugPress", `{"path":"Soldier/Print"}`), `"result":{}`))
+	testing.expect_value(t, soldier.prints, 1)
+	refused := ask(s, srv, c, 5, "Toolkit.debugSet", `{"path":"Soldier/nothing","value":1}`)
+	testing.expect(t, strings.contains(refused, `"error"`), refused)
+	// (the reply parses as JSON)
+	_, err := json.parse_string(listed, allocator = context.temp_allocator)
+	testing.expect_value(t, err, json.Error.None)
+}
+
+@(test)
+the_filter_shows_the_rows_that_match :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	testing.expect(t, session.find(s, debug.box_name("Soldier/model", "row")) != nil)
+	session.click(s, "debug_filter")
+	session.type_text(s, "pos")
+	session.wait_gone(s, debug.box_name("Soldier/model", "row"))
+	session.wait_box(s, debug.box_name("Soldier/Transform/position", "row"))
+	testing.expect(t, session.find_text(s, "Transform › position") != nil, "the row says its section")
+}
+
+@(test)
+a_section_closes_and_keeps_its_state :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	session.click(s, debug.box_name("Soldier/Transform", "section"))
+	session.wait_gone(s, debug.box_name("Soldier/Transform/position", "row"))
+	session.key(s, .D, {.Ctrl, .Alt, .Shift})
+	session.key(s, .D, {.Ctrl, .Alt, .Shift})
+	session.wait_box(s, debug.box_name("Soldier/speed"))
+	testing.expect(t, session.find(s, debug.box_name("Soldier/Transform/position", "row")) == nil, "still closed")
+}
+
+@(test)
+a_pinned_panel_is_a_view_of_its_own :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	session.click(s, "debug_pin")
+	session.frames(s, 3)
+	testing.expect(t, ui.view_is_open(ui.state_views(s.state), debug.DEBUG_PANEL_VIEW, fmt.tprintf("%x/Soldier", uintptr(s.state))))
+	// (its rows are built once, in its own view)
+	testing.expect(t, session.find(s, debug.box_name("Soldier/speed")) != nil)
+	testing.expect(t, session.find(s, debug.box_name("Soldier/speed"), 1) == nil)
+}
+
+@(test)
+a_value_is_written_as_odin :: proc(t: ^testing.T) {
+	soldier := Soldier{model = 2, kind = .Archer, position = {0, 1.5, 0}, look = {name = "Ann"}}
+	text := debug.odin_text(soldier.look)
+	testing.expect_value(t, text, `Look{scale = 0, name = "Ann", secret = 0, seen = 0, tint = {0, 0, 0, 0}}`)
+	testing.expect(t, strings.has_prefix(debug.odin_text(soldier), `Soldier{model = 2, kind = .Archer, speed = 0, alive = false, position = {0, 1.5, 0}, look = {scale = 0`))
+}
+
+// A drag with modifiers held, as the system gives it: each event of the pointer says them.
+@(private = "file")
+drag_with :: proc(s: ^session.Session, from, to: [2]f32, mods: platform.Modifiers) {
+	session.move(s, from)
+	s.buttons += {.Left}
+	session.event(s, {kind = .Mouse_Press, button = .Left, pos = from, mods = mods})
+	session.frame(s)
+	for i in 1 ..= session.DRAG_STEPS {
+		at := from + (to - from) * f32(i) / f32(session.DRAG_STEPS)
+		s.pointer = at
+		session.event(s, {kind = .Mouse_Move, pos = at, mods = mods})
+		session.frame(s)
+	}
+	s.buttons -= {.Left}
+	session.event(s, {kind = .Mouse_Release, button = .Left, pos = to, mods = mods})
+	session.frames(s, 2)
+}
+
+// ui.drag_number alone: Shift slower, Ctrl faster, a double click types it, the wheel and the keys step it, bounds hold.
+@(test)
+a_dragged_number_moves_as_asked :: proc(t: ^testing.T) {
+	App :: struct { v: f32, n: int, p: [3]f32 }
+	app: App
+	s := session.start(t, {size = {400, 200}, user = &app, build = proc(s: ^session.Session) {
+		app := (^App)(s.user)
+		if ui.dense_scope() {
+			ui.next({width = ui.px(200)})
+			ui.drag_number("###v", &app.v)
+			ui.next({width = ui.px(200)})
+			ui.drag_number("###n", &app.n, lo = 0, hi = 10)
+			ui.next({width = ui.px(300)})
+			ui.drag_vector("###p", &app.p, step = 0.5)
+		}
+	}})
+	at := session.center(session.get(s, "v"))
+	drag_with(s, at, at + {DRAG_PX, 0}, {.Shift})
+	testing.expectf(t, abs(app.v - DRAG_PX * ui.DRAG_FLOAT_SPEED * ui.DRAG_SLOW) < EPS * ui.DRAG_SLOW, "Shift: %v", app.v)
+	app.v = 0
+	session.advance(s, session.SEPARATE_CLICK_MS)
+	drag_with(s, at, at + {DRAG_PX, 0}, {.Ctrl})
+	testing.expectf(t, abs(app.v - DRAG_PX * ui.DRAG_FLOAT_SPEED * ui.DRAG_FAST) < EPS * ui.DRAG_FAST, "Ctrl: %v", app.v)
+	// typed
+	session.advance(s, session.SEPARATE_CLICK_MS)
+	session.click(s, "v", count = 2)
+	session.type_text(s, "7.25")
+	session.key(s, .Return)
+	testing.expect_value(t, app.v, 7.25)
+	// the wheel over it, the keys while it has the keyboard; held at its bounds
+	n := session.center(session.get(s, "n"))
+	session.wheel(s, n, {0, -3})
+	testing.expect_value(t, app.n, 3)
+	session.click(s, "n")
+	session.key(s, .Up)
+	testing.expect_value(t, app.n, 4)
+	session.advance(s, session.SEPARATE_CLICK_MS)
+	session.drag(s, n, n + {300, 0})
+	testing.expect_value(t, app.n, 10)
+	// a vector: each component its own field, rounded to the step
+	y := session.center(session.get(s, "1", within = session.get(s, "p")))
+	session.drag(s, y, y + {4, 0})
+	testing.expect_value(t, app.p, [3]f32{0, 2, 0})
+}
+
+// Floating, the window's header is the row of its tabs, as tall as a dense body's tabs: no title bar over them.
+@(test)
+the_floating_window_s_header_is_its_tabs :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	head := session.get(s, "view_header")
+	tabs := session.get(s, "debug_tabs")
+	testing.expectf(t, tabs.rect.min.y >= head.rect.min.y && tabs.rect.max.y <= head.rect.max.y, "the tabs %v in the header %v", tabs.rect, head.rect)
+	row := session.get(s, debug.box_name("Soldier/speed", "row"))
+	h, rh := head.rect.max.y - head.rect.min.y, row.rect.max.y - row.rect.min.y
+	testing.expectf(t, h <= rh * 1.4, "the header %v px, a row %v px", h, rh)
+	testing.expect(t, session.find(s, "view_header_title") == nil, "no title in a dense header")
+	testing.expect(t, session.find(s, "view_close") != nil, "its close is there")
+}
+
+// A plot takes the field's width, a little taller than a row, with its highest and lowest values.
+@(test)
+a_plot_spans_its_field :: proc(t: ^testing.T) {
+	soldier: Soldier
+	for v in ([]f32{1, 4, 2, 8, 3}) { ui.value_history_push(&soldier.speeds, v) }
+	s := open_with_soldier(t, &soldier)
+	row := session.get(s, debug.box_name("Soldier/speeds", "row"))
+	graph := session.get(s, debug.box_name("Soldier/speeds", "graph"))
+	field := session.get(s, debug.box_name("Soldier/speed"))
+	rh := session.get(s, debug.box_name("Soldier/speed", "row")).rect
+	testing.expectf(t, row.rect.max.y - row.rect.min.y > (rh.max.y - rh.min.y) * 1.5, "a plot's row %v, a row %v", row.rect, rh)
+	testing.expectf(t, graph.rect.min.x <= field.rect.min.x + 1 && graph.rect.max.x > field.rect.min.x + (field.rect.max.x - field.rect.min.x) * 0.6, "the graph %v in the field's place %v", graph.rect, field.rect)
+	testing.expect(t, session.find_text(s, "8.00") != nil, "its highest")
+	testing.expect(t, session.find_text(s, "1.00") != nil, "its lowest")
+}
+
+// A section closed by the person is still open to a tool: its values are set and its acts pressed by their paths.
+@(test)
+a_closed_section_is_open_to_the_tools :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := open_with_soldier(t, &soldier)
+	session.click(s, debug.box_name("Soldier/Transform", "section"))
+	session.wait_gone(s, debug.box_name("Soldier/Transform/position", "row"))
+	testing.expect_value(t, debug.set(s.state, "Soldier/Transform/position", "1, 2, 3"), "")
+	testing.expect_value(t, soldier.position, [3]f32{1, 2, 3})
+	session.frames(s, 2)
+	testing.expect(t, session.find(s, debug.box_name("Soldier/Transform/position", "row")) == nil, "still closed")
+}
+
+// What a tool sets that is no finite number never reaches the program.
+@(test)
+a_tool_s_infinity_is_refused :: proc(t: ^testing.T) {
+	soldier := Soldier{speed = 1}
+	s := session.start(t, {size = WINDOW, build = page})
+	debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+	for bad in ([]string{"inf", "nan", "-Inf", "1e999"}) {
+		testing.expectf(t, debug.set(s.state, "Soldier/speed", bad) != "", "%q refused", bad)
+	}
+	testing.expect(t, debug.set(s.state, "Soldier/Transform/position", "1, nan, 2") != "")
+	testing.expect_value(t, soldier.speed, 1)
+	testing.expect_value(t, soldier.position, [3]f32{})
+}
+
+Nest :: struct { state: ^ui.State, runs: int }
+
+nest_debug :: proc(n: ^Nest) {
+	n.runs += 1
+	// (a panel's procedure that registers and removes panels: the passes walk the panels while it runs)
+	debug.panel(n.state, "Inner", nest_debug, n)
+	debug.panel_remove(n.state, "Nest")
+	debug.number("runs", &n.runs)
+}
+
+// A panel's procedure that registers or removes a panel changes nothing: the list it runs in stays whole.
+@(test)
+a_panel_s_procedure_cannot_change_the_panels :: proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, build = page})
+	nest := Nest{state = s.state}
+	debug.panel(s.state, "Nest", nest_debug, &nest)
+	for _ in 0 ..< 2 {
+		sb := strings.builder_make(context.temp_allocator)
+		debug.list(s.state, &sb)
+		listed := strings.to_string(sb)
+		testing.expect(t, strings.contains(listed, `"path":"Nest/runs"`), listed)
+		testing.expect(t, !strings.contains(listed, "Inner"), listed)
+	}
+	testing.expect_value(t, nest.runs, 2)
+}
+
+// The window closed, a panel costs nothing per frame: no byte allocated, its procedure never run.
+@(test)
+a_closed_window_allocates_nothing :: proc(t: ^testing.T) {
+	soldier: Soldier
+	s := session.start(t, {size = WINDOW, build = page})
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, s.ctx.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	was := s.ctx.allocator
+	s.ctx.allocator = mem.tracking_allocator(&track)
+	defer s.ctx.allocator = was
+	measure :: proc(s: ^session.Session, track: ^mem.Tracking_Allocator) -> (count: i64, bytes: i64) {
+		session.frames(s, 10)
+		c, b := track.total_allocation_count, track.total_memory_allocated
+		session.frames(s, 30)
+		return track.total_allocation_count - c, track.total_memory_allocated - b
+	}
+	count, bytes := measure(s, &track)
+	debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+	debug.attach(s.state)
+	with_count, with_bytes := measure(s, &track)
+	testing.expectf(t, with_count == count && with_bytes == bytes, "30 frames: %d allocations, %d bytes; with a panel, %d, %d", count, bytes, with_count, with_bytes)
+	testing.expect_value(t, soldier.builds, 0)
+}
+
+// A scroll in progress keeps scrolling: a dense field that slides under a still pointer does not take the wheel. A wheel
+// that starts after a rest, over a field, steps it.
+@(test)
+a_scroll_in_progress_keeps_scrolling :: proc(t: ^testing.T) {
+	ROWS :: 40
+	App :: struct { v: [ROWS]int }
+	app: App
+	s := session.start(t, {size = {300, 200}, user = &app, build = proc(s: ^session.Session) {
+		app := (^App)(s.user)
+		if ui.dense_scope() {
+			ui.next({width = ui.fill(), height = ui.fill()})
+			if ui.scroll_y("###list") {
+				ui.next({width = ui.fill(), height = ui.px(80)})
+				ui.build_box({}, "###top")
+				for i in 0 ..< ROWS {
+					if ui.dense_row(fmt.tprintf("v%d", i), fmt.tprintf("###row%d", i)) { ui.drag_number(fmt.tprintf("###f%d", i), &app.v[i]) }
+				}
+			}
+		}
+	}})
+	// (over the field's column, in the top box: the wheel scrolls the list)
+	at := [2]f32{250, 40}
+	slid := false
+	for _ in 0 ..< 8 {
+		for i in 0 ..< ROWS {
+			if b := session.find(s, fmt.tprintf("f%d", i)); b != nil && at.x >= b.rect.min.x && at.x < b.rect.max.x && at.y >= b.rect.min.y && at.y < b.rect.max.y { slid = true }
+		}
+		session.wheel(s, at, {0, 1})
+	}
+	testing.expect(t, slid, "a field slid under the pointer during the scroll")
+	testing.expect_value(t, app.v, [ROWS]int{})
+	// a rest, then a wheel over a field: it steps
+	session.advance(s, 2 * ui.WHEEL_LATCH_MS)
+	session.wheel(s, at, {0, 1})
+	stepped := 0
+	for v in app.v { stepped += abs(v) }
+	testing.expect_value(t, stepped, 1)
+}
+
+// The labels read on the window's ground (WCAG AA, 4.5) in a dark and a light theme.
+@(test)
+the_labels_read_in_both_themes :: proc(t: ^testing.T) {
+	Case :: struct { theme: string, light: bool }
+	for c in ([]Case{{"Graphite", false}, {"Glacier", true}, {"Midnight", false}, {"Midnight", true}}) {
+		soldier: Soldier
+		s := session.start(t, {size = WINDOW, build = page, palette = ui.palette_of(c.theme, light = c.light)})
+		debug.panel(s.state, "Soldier", soldier_debug, &soldier)
+		debug.open(s.state)
+		testing.expect(t, debug.show_panel(s.state, "Soldier"))
+		row := session.wait_box(s, debug.box_name("Soldier/model", "row"))
+		label := session.get(s, "label", within = row)
+		ground := row.parent
+		for ground != nil && !(.Draw_Background in ground.flags) { ground = ground.parent }
+		if !testing.expect(t, ground != nil, "the row lies on a ground") { continue }
+		ratio := ui.contrast(label.target_text, ground.target_bg)
+		testing.expectf(t, ratio >= 4.5, "%s light=%v: a label at %.2f:1", c.theme, c.light, ratio)
+	}
+}

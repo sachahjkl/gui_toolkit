@@ -397,6 +397,14 @@ arrows a step, Home / End to its ends (the other thumb is one), Page Up / Page D
 moves the active thumb (none: the one nearest the pointer). `format` is each value's ("%.0f": "20-80"; "": no text).
 It shares its keys, its rounding and its drawing with `slider`.
 
+### A number dragged in its field
+
+`ui.drag_number(id, &value, lo, hi, step, o)` is the instrument's number: the value inside its field, changed by a
+horizontal drag (Shift slower, Ctrl faster), the wheel over it, Up and Down; a double click, Ctrl+click or Enter types
+it. With both bounds it fills as a slider's track. `ui.drag_vector` puts N of them on one row, each marked by its axis's
+colour. They belong to dense instruments (`ui.dense_scope`, the debug window): a person's settings take `ui.number`.
+[debug.md](debug.md), "The dense look", has the rest.
+
 ## What a value widget returns
 
 Every widget that edits a value of the caller's returns `changed: bool`, true in the frame the value changed:

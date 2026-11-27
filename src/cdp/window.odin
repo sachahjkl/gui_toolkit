@@ -116,6 +116,25 @@ demo_states :: proc(c: ^Client) -> (names: []string, ok: bool) {
 	return out, true
 }
 
+// Sets the program's debug value at `path` (Toolkit.debugSet, docs/debug.md): "Drone/Transform/position" and "1, 2, 3",
+// a number, true or false, an enum's name, a string, "#rrggbbaa": the text as the program reads it. !ok: refused
+// (c.failure says why).
+debug_set :: proc(c: ^Client, path, value: string) -> bool {
+	_, ok := call(c, "Toolkit.debugSet", fmt.tprintf(`{{"path":%s,"value":%s}}`, tk_json.quote(path), tk_json.quote(value)))
+	return ok
+}
+
+// Presses the program's debug act at `path` (Toolkit.debugPress): its code runs before the program's next build.
+debug_press :: proc(c: ^Client, path: string) -> bool {
+	_, ok := call(c, "Toolkit.debugPress", fmt.tprintf(`{{"path":%s}}`, tk_json.quote(path)))
+	return ok
+}
+
+// The program's debug panels as the protocol gives them (Toolkit.debugPanels): {"panels":[{"name","items":[...]}]}.
+debug_panels :: proc(c: ^Client) -> (panels: json.Value, ok: bool) {
+	return call(c, "Toolkit.debugPanels")
+}
+
 type_text :: proc(c: ^Client, text: string) -> bool {
 	_, ok := call(c, "Input.insertText", fmt.tprintf(`{{"text":%s}}`, tk_json.quote(text)))
 	return ok

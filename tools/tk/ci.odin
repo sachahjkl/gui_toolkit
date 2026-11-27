@@ -14,9 +14,9 @@ EXE :: ".exe" when ODIN_OS == .Windows else ""
 gt_collection :: proc(root: string) -> string { return fmt.tprintf("-collection:gt=%s", join({root, "src"})) }
 
 // The examples, and the ones the CI builds on each system.
-EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase", "plugins"}
-CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase", "plugins"}
-CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew", "showcase", "plugins"}
+EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase", "plugins", "debug_panel"}
+CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase", "plugins", "debug_panel"}
+CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew", "showcase", "plugins", "debug_panel"}
 // gt:js and its sub-packages, checked for freestanding_wasm32 too (Wren's target for them).
 JS_WASM_PACKAGES :: [?]string{"js", "js/bigint", "js/datetime", "js/frontend", "js/numconv", "js/regexp", "js/unicode"}
 

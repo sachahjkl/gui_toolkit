@@ -120,7 +120,7 @@ prev_box :: proc(id: string) -> ^Box { return box_from_key(key_from_string(paren
 
 // A check box's or a radio's mark: `t` how far it is checked, `row` its row (the row is the target, the mark is what
 // reacts: its states are read when the mark is drawn, end_build having stepped them), its colours.
-Mark_Draw :: struct { t: f32, row: ^Box, accent, check, ring: Color, size: f32, radio: bool }
+Mark_Draw :: struct { t: f32, row: ^Box, accent, check, ring: Color, size: f32, radio: bool, square: bool }   // square: a dense scope's check box
 
 // Foreground colour of a check box's check on its accent fill: the theme's `accent_text`, else `ink_on(accent)` when
 // that does not reach WCAG AA (4.5), so a bright accent on a dark theme never draws a white check on white.
@@ -159,7 +159,7 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) { mark_face(dc, b, b
 mark_face :: proc(dc: ^draw.Context, b: ^Box, r: Rect, d: ^Mark_Draw) {
 	s := gs()
 	w := r.max.x - r.min.x
-	radius := d.radio ? w * 0.5 : rad(w * MARK_BOX_RADIUS_FRACTION)
+	radius := d.radio ? w * 0.5 : (d.square ? 0 : rad(w * MARK_BOX_RADIUS_FRACTION))
 	st := face_state(d.row)
 	ring := d.ring
 	ring.a = min(1, ring.a * (1 + MARK_RING_HOT_ALPHA / MARK_RING_ALPHA * st.hot))
@@ -278,6 +278,7 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 		d.ring = tuned(d.ring)
 		d.size = em * 0.95
 		d.radio = radio
+		d.square = gs().square_depth > 0
 		custom("mark", mark_draw, d)
 		if lined { pop_parent() }
 		spacer(px(em * 0.6))
@@ -731,12 +732,19 @@ shift_steps :: proc(mods: platform.Modifiers) -> f32 { return .Shift in mods ? f
 // the wheel when the pointer is over it; in a view that scrolls (a page of settings), only once it has the keyboard
 // (`focused`), so that the wheel over it scrolls the view as it passes. Fractions of a notch (a touchpad) add up.
 wheel_steps :: proc(b: ^Box, focused: bool) -> f32 {
-	s := gs()
 	scrolls := false
 	for p := b.parent; p != nil; p = p.parent {
 		if .View_Scroll_Y in p.flags || .View_Scroll_X in p.flags { scrolls = true; break }
 	}
 	if scrolls && !focused { b.flags -= {.Scroll_Self}; return 0 }
+	return wheel_take(b)
+}
+
+// Whole notches of the wheel turned over `b` this frame, up positive, whatever is around it: `b` takes the wheel from
+// now on. An instrument's field (drag_number) takes it so even in a view that scrolls (debug-panel.md).
+@(private)
+wheel_take :: proc(b: ^Box) -> f32 {
+	s := gs()
 	// (the flag is read by the next frame's hit test: taken from now on)
 	b.flags += {.Scroll_Self}
 	if s.scroll_key != b.key { return 0 }

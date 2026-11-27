@@ -359,6 +359,8 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	push_parent(s.root)
 	push_tags_isolated("floating")   // (a window is a window, whatever the tags where it is built)
 	push_style_copy()
+	// (a square window: its frame, its header and its body, no rounded corner)
+	if k.o.square { s.square_depth += 1 }
 	next({fixed_x = rect.min.x, fixed_y = rect.min.y, width = px(w), height = h > 0 ? px(h) : children_sum(), axis = .Y,
 		radius = shape_of(.Dialog) * em, transparency = unseen ? 1 : 0})
 	frame := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate, .Clip}, fmt.tprintf("###internal_%s", r.modal_name))
@@ -391,6 +393,7 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 		view_internal_grips(r, frame, w, h, em)
 	}
 	pop_parent()   // frame
+	if k.o.square { s.square_depth -= 1 }
 	pop(&s.style_stack)
 	pop_tags_isolated()
 	pop_parent()   // root
@@ -625,6 +628,9 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	icon, icon_font := view_icon_shown(r)
 	panel := parent_box()
 	h := math.round(dense(em * DIALOG_HEADER_EM))
+	// (an instrument's floating window: a strip as tall as a dense body's tabs, debug-panel.md)
+	small := view_header_dense(r, p)
+	if small { em = math.round(em * DENSE_FONT_SCALE); h = math.round(em * DENSE_HEADER_EM) }
 	if p == .Dialog {
 		// (the close cross in the dialog's corner, the same margin from its top and right edges: modal_end builds it)
 		m := &s.modal_stack[len(s.modal_stack) - 1]
@@ -634,7 +640,8 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		m.close, m.close_label = true, labels.close
 	}
 	shade := frame_new(Color)
-	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
+	// (a dense strip wears the well, as the dense headers under it: a dialog's dark step is a block in a light theme)
+	shade^ = small ? color("well") : srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
 	// (Clickable: it is dragged; its right click opens its menu. In a window of its own with the program's decorations,
 	// it is the window's title bar instead: a caption the system drags and maximises, rule 2c)
 	caption := p == .External && view_window_integrated(r)
@@ -648,6 +655,12 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	a11y_default(b, {role = caption ? A11y_Role.Title_Bar : A11y_Role.Heading, name = title})
 	r.header = b.key
 	push_parent(b)
+	if small {
+		// (no title: the tools the body puts here come first, the free part after them moves the window)
+		spacer(px(math.round(em * 0.3)))
+		pop_parent()
+		return
+	}
 	spacer(px(em * 1.0))
 	if icon != "" {
 		next({width = px(em * 1.4), height = px(h), font = icon_font, font_size = em * 1.1, text_align = .Center, text_pad = 0, fg = color("accent")})
@@ -682,12 +695,20 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		}
 		dialog_header_end()   // (clear of the close cross; pops the strip)
 	case .Internal:
+		// (a dense strip: its free part after the body's tools, its moves at the dense text's size)
+		small := view_header_dense(r, p)
+		if small {
+			spacer(fill())
+			push_style_copy()
+			top_style().font_size = math.round(em * DENSE_FONT_SCALE)
+		}
 		if !at_home && view_header_icon("view_reattach", lucide.UNDO_2, labels.reattach, true) { view_apply(vs, r, {kind = .Reattach}) }
 		if view_header_icon("view_window", lucide.EXTERNAL_LINK, labels.window, views_windows_ready(vs)) {
 			view_apply(vs, r, {kind = .Present, as = .External})
 		}
 		if view_header_icon("view_close", lucide.X, labels.close, true) { r.flag = false }
-		spacer(px(em * 0.5))
+		spacer(px(math.round(em * (small ? 0.25 : 0.5))))
+		if small { pop(&s.style_stack) }
 		pop_parent()
 	case .External:
 		view_window_header_buttons(vs, r, at_home)

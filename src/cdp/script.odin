@@ -127,6 +127,10 @@ act :: proc(c: ^Client, command: string, args: []string) -> (known, ok: bool) {
 		return true, type_text(c, strings.join(o.rest[:], " ", context.temp_allocator))
 	case "demo":
 		return true, len(o.rest) > 0 && demo_state(c, o.rest[0])
+	case "debug-set":
+		return true, len(o.rest) > 1 && debug_set(c, o.rest[0], strings.join(o.rest[1:], " ", context.temp_allocator))
+	case "debug-press":
+		return true, len(o.rest) > 0 && debug_press(c, o.rest[0])
 	case "wait":
 		time.sleep(time.Duration(arg(&o, 0) * f64(time.Millisecond)))
 		return true, true
