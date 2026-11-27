@@ -251,9 +251,9 @@ Refused:
   button a square key of the relief centred in its box, its glyph drawn as shapes in the theme's `text`.
 
 The band is the title bar's box's custom drawing, over its face and under its children. The window says which stops
-apply (`Window.active`; no window, a test's: active). The buttons' boxes keep the system's width
-(`CAPTION_BUTTON_WIDTH`): the window's hit tests, Snap Layouts over the maximise button, the chrome tests stay. A `Keys`
-button is a key in that box, not the box.
+apply (`Window.active`; no window, a test's: active). The buttons' boxes keep the caption button's width
+(`caption_button_size`, [caption-buttons.md](caption-buttons.md)): the window's hit tests, Snap Layouts over the
+maximise button, the chrome tests stay. A `Keys` button is a key in that box, not the box.
 
 A dialog's title strip (`title_strip`) is a caption too: under a theme with a band, its face is the band, active.
 

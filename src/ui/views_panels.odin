@@ -989,11 +989,11 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 	// a stack too narrow for its moves and its window-sized buttons (a side zone of a few ems; the tabs never give way
 	// past their largest one, strip.md): no moves (the view's menu and the palette have them), and its Minimise,
 	// Maximise and Close as small icons, so they stay whole in it
-	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale
+	button_w, _ := caption_button_size(s)
 	stack_w := sp.stacks[e][k].max.x - sp.stacks[e][k].min.x
 	moves_w := 3 * (math.round(em * VIEW_DETACH_EM) + em * 0.3) + em * 0.8
 	least_tabs := em * VIEW_STRIP_TABS_LEAST_EM
-	wide := stack_w <= 0 || stack_w >= 3 * math.round(CAPTION_BUTTON_WIDTH * dpi) + moves_w + least_tabs
+	wide := stack_w <= 0 || stack_w >= 3 * button_w + moves_w + least_tabs
 	spacer(px(em * 0.4))
 	if wide {
 		if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, shown) }

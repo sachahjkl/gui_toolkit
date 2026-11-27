@@ -22,7 +22,8 @@ import "../platform"
 // Snap Layouts over the maximize button (Windows 11), the system menu on a right click and the resize band along the
 // top behave as with the system's title bar.
 
-// Logical size of a caption button (Windows 10 / 11: 46 x 32 px at 100 %); its height is the title bar's.
+// Logical size of a caption button (Windows 10 / 11: 46 x 32 px at 100 %); its height is the title bar's. It follows
+// the interface scale, zoom included (caption_button_size, features/caption-buttons.md).
 CAPTION_BUTTON_WIDTH :: 46
 CAPTION_GLYPH_SIZE   :: 10
 CAPTION_CLOSE_HOT    :: 0xc42b1cff   // the system's close button under the pointer
@@ -119,7 +120,7 @@ Caption_Draw :: struct {
 }
 
 // The caption buttons (minimize, maximize or restore, close) in the current row, as tall as it, at the system's width
-// and with its colours (the close button red under the pointer; dimmed glyphs while the window is inactive). Clicks
+// times the person's zoom (caption_button_size) and with the system's colours (the close button red under the pointer; dimmed glyphs while the window is inactive). Clicks
 // act on Build_Params.window; the button clicked is returned too (`ok` false: none). Nothing when the window's title bar
 // is the system's (platform.set_integrated_title false): the system draws them there.
 window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
@@ -143,6 +144,12 @@ window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 	return
 }
 
+// The width of a caption button of `s` and the size of its glyph, in pixels: the system's (46 and 10 at 100 %) times the
+// interface scale (the system's DPI times the person's zoom), as the rest of the interface. Its height is its row's.
+caption_button_size :: proc(s: ^State) -> (width, glyph: f32) {
+	return math.round(CAPTION_BUTTON_WIDTH * s.scale), math.round(CAPTION_GLYPH_SIZE * s.scale)
+}
+
 // Caption buttons in the current row, as tall as it, drawn as the window's (window_buttons) whatever they act on: the
 // window's own, or a stack's of panels (its strip's right end: one look for both). `shown`: the ones built, in
 // the order minimise, maximise or restore (`maxed`), close. `names`: what screen readers call them (minimise, maximise,
@@ -150,8 +157,8 @@ window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 @(private)
 caption_row :: proc(ids: [platform.Caption_Button]string, shown: bit_set[platform.Caption_Button], maxed, active: bool, names: [4]string) -> (clicked: platform.Caption_Button, ok: bool, keys: [platform.Caption_Button]Key) {
 	s := gs()
-	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale   // the system's size: the UI zoom does not apply
-	w := math.round(CAPTION_BUTTON_WIDTH * dpi)
+	w, _ := caption_button_size(s)
+	dpi := s.scale
 	if !s.caption_font_tried {
 		s.caption_font_tried = true
 		// Windows 11's icon font, else Windows 10's; without either the glyphs are drawn as shapes
@@ -204,7 +211,7 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		else if press > CAPTION_STATE_EPS { glyph.a = 1 - CAPTION_GLYPH_PRESS_DIM * press }
 	}
 	if hot + press > CAPTION_DRAWN_EPS && !(d.button == .Close && edged()) { draw.rect(dc, b.rect, bg) }
-	glyph_size := math.round(CAPTION_GLYPH_SIZE * d.dpi)
+	glyph_size := math.round(CAPTION_GLYPH_SIZE * d.dpi)   // (caption_button_size's glyph)
 	c := draw.rect_center(b.rect)
 	if d.glyph_font != 0 {
 		cp: rune
@@ -232,7 +239,7 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 
 // A caption button of the theme's keys (Caption_Buttons.Keys): a square key of the relief in the middle of its box, its
 // glyph drawn as shapes in the theme's text, a pixel down and right while held (the key went in). The box keeps the
-// system's width: it is the window's hit region (Snap Layouts over the maximise button).
+// caption button's width: it is the window's hit region (Snap Layouts over the maximise button).
 @(private = "file")
 caption_key_draw :: proc(b: ^Box, d: ^Caption_Draw, dc: ^draw.Context) {
 	s := gs()

@@ -41,9 +41,9 @@ close :: proc(f: ^Fx) {
 }
 
 @(private = "file")
-frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr), user: rawptr, size := WINDOW) {
+frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr), user: rawptr, size := WINDOW, dpi: f32 = 1) {
 	ui.begin_build(&f.s, {
-		window_size = size, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		window_size = size, events = events, dt = 1.0 / 60, animations = false, dpi_scale = dpi,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
 	})
 	body(f, user)
@@ -175,6 +175,59 @@ title_bar_regions :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.hit_test_chrome(c, {400, 20}, size, 8, 16, {}), platform.Hit.Caption)
 	mx := c.buttons[.Maximize]
 	testing.expect_value(t, platform.hit_test_chrome(c, {(mx.min.x + mx.max.x) / 2, 20}, size, 8, 16, {}), platform.Hit.Maximize)
+}
+
+// The caption buttons follow the interface scale, the person's zoom included, as the toolbar beside them: at 100 % the
+// system's 46 px and 10 px glyph, wider with a larger glyph at 125 % and 150 % (zoom or system DPI alike). The maximize
+// button the window hit tests (Snap Layouts) is the one drawn, edge for edge, at every scale.
+@(test)
+caption_buttons_follow_the_interface_scale :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f)) { return }
+	defer close(f)
+	body :: proc(f: ^Fx, user: rawptr) {
+		ui.next({width = ui.fill(), height = ui.px(32)})
+		if ui.title_bar("###tb") {
+			ui.spacer(ui.fill())
+			_, _ = ui.window_buttons()
+		}
+	}
+	Case :: struct { dpi, zoom, width, glyph: f32 }
+	cases := [?]Case{
+		{1, 1, 46, 10},          // the system's metrics at 100 %
+		{1, 1.25, 58, 13},
+		{1, 1.5, 69, 15},
+		{1.25, 1, 58, 13},       // the system at 125 %, no zoom: as the zoom
+		{1.25, 1.2, 69, 15},
+	}
+	last_width: f32
+	for cs in cases {
+		ui.set_zoom(&f.s, cs.zoom)
+		for _ in 0 ..< 2 { frame(f, nil, body, nil, WINDOW, cs.dpi) }
+		w, glyph := ui.caption_button_size(&f.s)
+		testing.expectf(t, w == cs.width && glyph == cs.glyph, "dpi %v zoom %v: %v x %v, want %v x %v", cs.dpi, cs.zoom, w, glyph, cs.width, cs.glyph)
+		c := ui.chrome_regions(&f.s)
+		for b in platform.Caption_Button {
+			box := ui.box_from_key(f.s.caption_keys[b])
+			if !testing.expect(t, box != nil) { return }
+			testing.expect_value(t, box.rect.max.x - box.rect.min.x, cs.width)
+			// what the window answers is the box drawn
+			testing.expect_value(t, c.buttons[b], platform.Region{box.rect.min, box.rect.max})
+		}
+		testing.expect_value(t, c.buttons[.Close].max.x, WINDOW.x)
+		mx := c.buttons[.Maximize]
+		size := [2]f32{WINDOW.x, WINDOW.y}
+		y := (mx.min.y + mx.max.y) / 2
+		testing.expect_value(t, platform.hit_test_chrome(c, {mx.min.x + 0.5, y}, size, 8, 16, {}), platform.Hit.Maximize)
+		testing.expect_value(t, platform.hit_test_chrome(c, {mx.max.x - 0.5, y}, size, 8, 16, {}), platform.Hit.Maximize)
+		testing.expect(t, platform.hit_test_chrome(c, {mx.min.x - 0.5, y}, size, 8, 16, {}) != platform.Hit.Maximize)
+		testing.expect(t, platform.hit_test_chrome(c, {mx.max.x + 0.5, y}, size, 8, 16, {}) != platform.Hit.Maximize)
+		if cs.dpi == 1 { testing.expect(t, w > last_width, "wider with the zoom"); last_width = w }
+	}
+	ui.set_zoom(&f.s, 1)
 }
 
 // The caption buttons' names are a window's: translated in one State, the other window's keep theirs.

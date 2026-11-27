@@ -136,7 +136,8 @@ as on the standard bar. Every bar takes it, a text area's too.
 | `bold` | what is built in the bar takes the bold face of the style's font, unless it gives its own |
 | `buttons` | `System` (Windows 10's caption buttons) or `Keys`: a square key of the relief (8 : 7, 0.62 of the bar's height) in the middle of each button's box, its glyph drawn as shapes |
 
-The buttons' boxes keep `CAPTION_BUTTON_WIDTH`: they are the window's hit regions. A dialog's `title_strip` takes the
+The buttons' boxes keep the caption button's width (`caption_button_size(s)`: 46 px and a 10 px glyph times the
+interface scale, the person's zoom included): they are the window's hit regions. A dialog's `title_strip` takes the
 band too, active.
 
 A program that draws its own title bar (a row of tabs with `window_buttons`, in place of `title_bar`) takes the band
