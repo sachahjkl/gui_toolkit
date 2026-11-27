@@ -22,7 +22,6 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../draw"
-import "../platform"
 import turn "../turn"
 
 // A row's parts, in the text's ems: the inset before depth 0's chevron, a level's indent, the chevron's cell, the icon's
@@ -86,6 +85,7 @@ Tree :: struct {
 	drop_row:      int,
 	drop_over:     bool,
 	dragging:      bool,              // a drag of rows began and the button is held
+	drag_spent:    bool,              // this press's drag ended (it went out of the window): no other until it is let go
 	drop_outside:  bool,              // a drag from elsewhere (another program) is over the tree: tree_drop_hover
 	// The rename in place:
 	renaming:      bool,
@@ -284,6 +284,7 @@ tree_open :: proc(id: string, t: ^Tree, rows: []Tree_Row, version: u64) -> (show
 	}
 
 	// a drag of rows: where it would go, a branch it rests on opened, its end
+	if .Left not_in s.buttons_down { t.drag_spent = false }
 	if t.dragging {
 		if .Left not_in s.buttons_down {
 			t.dragging, t.drag_released = false, true
@@ -509,9 +510,8 @@ tree_row :: proc(t: ^Tree, i: int, o := Tree_Row_Options{}) -> Signal {
 		tree_act(t, i, sig.second_click)
 	}
 	if sig.right_clicked { t.menu, t.menu_at, t.menu_keyboard = i, mouse_pos(), false }
-	if sig.dragging && !t.dragging && .Left in s.buttons_down {
-		th := platform.drag_threshold(s.window)
-		if abs(sig.drag_delta.x) >= th.x || abs(sig.drag_delta.y) >= th.y {
+	if sig.dragging && !t.dragging && !t.drag_spent && .Left in s.buttons_down {
+		if drag_past_threshold(sig) {
 			t.dragging = true
 			t.drop_row, t.drop_over = -1, false
 			if selected && t.multi && list_selected_count(&t.list) > 1 {

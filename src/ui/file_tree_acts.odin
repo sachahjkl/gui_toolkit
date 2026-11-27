@@ -44,6 +44,7 @@ File_Tree_Acts_State :: struct {
 	undo_serial: u64,
 	paste_into:  string,            // (owned) where an asked paste goes
 	drag_paths:  [dynamic]string,   // (owned) the paths of the rows dragged
+	drag_out:    Drag_Out,          // the drags out of the window (offscreen: recorded, a test reads them)
 	rename_path: string,            // (owned) the entry whose name is edited in its row
 	new_path:    string,            // (owned) an entry made by New: its name is edited once its row shows
 	ops:         int,               // operations under way
@@ -56,6 +57,7 @@ file_tree_acts_destroy :: proc(t: ^File_Tree) {
 	delete(t.menu_paths)
 	file_tree_strings_clear(&t.drag_paths)
 	delete(t.drag_paths)
+	drag_out_destroy(&t.drag_out)
 	file_trashed_clear(&t.undo)
 	delete(t.undo)
 	delete(t.menu_folder, a)
@@ -425,12 +427,13 @@ file_tree_drags :: proc(t: ^File_Tree) {
 	if t.dragging && len(t.drag_paths) > 0 && s.window != nil {
 		m := s.mouse
 		if m.x < 0 || m.y < 0 || m.x >= s.window_size.x || m.y >= s.window_size.y {
-			t.dragging = false
+			// (one drag a press: a drag that ended at once, refused by the system or recorded, does not start again)
+			t.dragging, t.drag_spent = false, true
 			tree_drop_leave(&t.tree)
 			d: platform.Drag_Data
 			d.files = make([dynamic]string, 0, len(t.drag_paths), context.temp_allocator)
 			for p in t.drag_paths { append(&d.files, p) }
-			effect, ok := platform.drag_start(s.window, d, {.Copy, .Move})
+			effect, ok := drag_out_start(&t.drag_out, d, {.Copy, .Move})
 			if e, done := effect.?; ok && done && e == .Move {
 				for p in t.drag_paths { file_tree_dirty(t, file_path_parent(p, LOCAL_SEPARATOR)) }
 			}

@@ -655,6 +655,28 @@ a_row_dragged_onto_a_folder_moves_its_file :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(strings.concatenate({dir, "/moved.txt"}, context.temp_allocator)))
 }
 
+// A row dragged past the window's edge goes out as the system's drag with its file (ui.Drag_Out); an offscreen window
+// records it.
+@(test)
+a_row_dragged_out_of_the_window_takes_its_file :: proc(t: ^testing.T) {
+	crash_reports()
+	dir := testkit.temp_folder(t, "tree")
+	write(dir, "out.txt", "x")
+	f: Files
+	defer files_destroy(&f)
+	ui.file_tree_set_root(&f.t, dir)
+	s := session.start(t, {build = files_build, user = &f, size = {700, 500}})
+	session.wait_until(s, Wait_Labels{&f, "out.txt"}, labels_are, "the folder listed", BOUND)
+	from := session.center(session.get(s, "lrow_0"))
+	session.drag(s, from, {from.x, -40})
+	session.frames(s, 3)
+	testing.expect_value(t, f.t.drag_out.drags, 1)
+	if testing.expect_value(t, len(f.t.drag_out.recorded), 1) {
+		testing.expect(t, strings.has_suffix(f.t.drag_out.recorded[0], "out.txt"), "its path")
+	}
+	testing.expect(t, os.exists(strings.concatenate({dir, "/out.txt"}, context.temp_allocator)), "a drag out moves nothing here")
+}
+
 ////////////////////////////////
 // Pictures of a file tree, for a person to judge: -define:TREE_PICTURES=true writes them to the test's folder.
 

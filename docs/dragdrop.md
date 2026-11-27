@@ -49,6 +49,28 @@ the drag was given up. Call it between frames, from the press-and-move that star
 in-window drags without the system's loop handles those itself and calls `drag_start` when the pointer leaves the
 window. `drag_threshold(win)` is the distance the system uses before a press becomes a drag.
 
+### A box dragged out (`ui.Drag_Out`)
+
+A cell, a card or a row whose file (or text) goes to another program by a drag: the press past the threshold, one drag
+a press, and a record instead of the system's drag in a window that cannot drag (offscreen: a test).
+
+```odin
+app.drag: ui.Drag_Out                                   // zero is ready; ui.drag_out_destroy(&app.drag) at the end
+sig := ui.signal(cell)
+ui.drag_out_files(&app.drag, cell, sig, {path})          // in each box that can be dragged out
+```
+
+| Call | What it does |
+|---|---|
+| `drag_out(d, b, sig, data, allowed)` | once `b`'s press moved past the threshold, the system's drag with `data` (it holds the thread until the drop), once per press. Returns the effect and whether it started in this build |
+| `drag_out_files(d, b, sig, files, allowed)` | `drag_out` with files; the data is made only when the drag starts |
+| `drag_out_start(d, data, allowed)` | the system's drag now, for a program that decides when (the file tree's, past the window's edge) |
+| `drag_past_threshold(sig)` | the left button, pressed on the box, moved past `drag_threshold` since its press |
+| `Drag_Out.recorded`, `drags` | in an offscreen window: the files (else the text) each drag would have taken, and their count |
+| `drag_out_destroy(d)` | frees what was recorded |
+
+The file tree drags its rows out with it (`File_Tree.drag_out`).
+
 Call `dragdrop_thread_init()` first thing on each interface thread (Windows: OLE needs a single-threaded apartment,
 which a decoder library joining the multithreaded one first would make impossible). OLE is initialized once per thread:
 `drop_target_enable` and `drag_start` ask the same, and a thread in the multithreaded apartment does not stop another.
