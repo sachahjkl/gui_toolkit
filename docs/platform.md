@@ -237,6 +237,20 @@ if asked { platform.taskbar_attention(app.window, true) }
   window: another compositor can grant it and take the focus. The attention cannot be taken back: the compositor ends
   it when the window is focused. A notification (`notify`) is the program's choice, not this API's.
 
+## The desktop's background
+
+`platform.set_wallpaper(path) -> Wallpaper_Result` gives a picture (absolute path; a PNG or a JPEG) to the system as
+the desktop's background: `.Set`, `.Cancelled` (the person said no), `.Unsupported` (no way on this system or
+desktop: the program says so, or greys its menu item), `.Failed` (the file could not be read, or the system refused
+it). It blocks until the system answers, and a portal may ask the person: call it on a worker. `ui.wallpaper_set(path,
+done, user)` does that on the chores and calls `done(user, result)` at a later build.
+
+| System | How |
+|---|---|
+| Windows | `SystemParametersInfoW(SPI_SETDESKWALLPAPER)`, written to the profile and broadcast |
+| Linux | the desktop portal's `org.freedesktop.portal.Wallpaper.SetWallpaperFile` (the picture's descriptor, no preview, the background only), which GNOME's and KDE's portals answer; no portal or no Wallpaper interface: `.Unsupported` |
+| others | `.Unsupported` |
+
 ## Differences the app should know
 
 - **A pipe whose reader is gone.** On Linux and macOS a write to it raises SIGPIPE, which ends the process.
