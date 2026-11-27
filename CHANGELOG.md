@@ -5,6 +5,26 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.364.0] - 2026-11-27 10:36
+
+### Added
+- **A lock between processes** (`fsx.file_lock`, `file_unlock`): one process at a time holds the lock of a file, and the others wait for it a bounded time or give up. The system lets it go when the process ends, even after a crash.
+- **Curves in the debug window (`gt:debug`)**: a program's value animated over time, edited live. A `debug.Curve` is the program's plain data (32 keys at most, each a time, a value, Bézier handles and the interpolation of its segment: Bézier, linear or constant); `debug.curve_eval`, `curves_eval`, `curve_span`, `playback_step` (the program's clock, `debug.Playback`), `curve_insert`, `curve_remove` and `curve_smooth` work in every build, a release too. In a panel, `debug.curve` and `debug.curves` (a vector's channels, each in its axis's colour) edit them: keys selected by a click or a box, dragged (Shift keeps the direction, Ctrl snaps to the grid), added by a double click, deleted; handles aligned or broken (Alt); the wheel zooms, the middle button pans, F frames all; a playhead to play, pause, loop, scrub and speed up; the selected keys' time, value and interpolation in fields; undo. Print writes the curves as Odin source to paste back (`debug.curve_text`; `odin_text` too). `debug.easing` edits a `ui.Cubic_Bezier` with the toolkit's easings as presets; `ui.tween_curve` tweens along it, `ui.cubic_bezier_at`, `ui.ease_bezier` and `ui.bezier_param` evaluate one. The devtools' `Toolkit.debugPanels` lists a curve's keys and `Toolkit.debugSet` sets them. `examples/debug_panel` drives its drone's hover, sway and landing with them (`--debug=Flight`).
+- **A program that changes its name takes over its earlier install and folders** (`setup.adopt_earlier`, `Setup_Options.earlier` and `program_folder`): once at the start, one start at a time, its folders move by one rename per kind (a new folder there already stays, and the earlier one is named). A folder that cannot move ends the start with a message instead of leaving the settings behind; after a few such starts its folder is copied and the earlier one stays. A person's install moves with its choices and its desktop shortcut when the update placed the new program in the earlier folder, which then hands off to the adopted one; another copy installs nothing, and the earlier install goes once the person installed the new one. An interrupted start resumes; `adoption_words` says each result once, with the new console command and, on Windows, a taskbar pin to make again (`desktop.taskbar_pinned`). An install for everyone is left to an administrator. `toolbox.update_earlier` publishes the new program in the earlier product's feed, and refuses a version that is not above the earlier name's last one, so an install several versions late still updates.
+
+### Changed
+- **A dense panel's labels take the width of its longest label**: the debug window's labels' column is no longer 7 ems whatever the labels; it is the panel's longest label's, its sections' indent counted, from 2.5 to 11 ems (a longer label is cut and opens whole). Fields of every depth still start on one edge. `ui.Dense_Labels` (`dense_labels_begin`, `dense_label_column`, `dense_labels_end`) gives a program's own instrument the same column. Acts one after another (`debug.act`) share a row.
+- **Dropdowns spend no width on nothing**: the button's words have their text's inset only and the arrow a small cell at the right edge (it was a lead of 0.8 em and a cell of 1.8 em); every menu's rows (a dropdown's list, a context menu, a menu bar's menus) put the check closer to the edge and the words closer to the check. In a dense scope (`ui.dense_scope`) the button is tighter still and its list is dense: the scope's text, rows a dense row high, the check at the left.
+
+### Fixed
+- **A dragged number's digits stay whole**: the two ticks at the value's place stop short of the digits when they fall under them; in a dense field they touched the digits and read as a bar through them ("0.92|0").
+- **An open list follows its button**: a dropdown's list or a button's menu, open while its button moves (a view dragged, a panel scrolled or laid out again), moves with it and stays in the button's room; it stayed where it opened.
+- **A cut short word's bubble is one line, sized to it**: the bubble that shows a cut text whole showed "Bézier" as "Bézi / er" with a wide padding. Its text now shows at its own size on one line with the text's inset as its padding, Copy and the cross after it; a long text wraps between words only; opened from a dense scope, the bubble is dense.
+- **A dropdown's list shows its rows and its hint whole, inside its button's room**: it is never narrower than its widest row nor than its search field's hint (`ui.search_band_width`), and a list wider than its button, opened near the right edge of the view its button is in, moves left to stay inside it; a list wider than that view stays by its button.
+
+### Security
+- **An uninstall never deletes through a link out of the install folder.** A file that the install's record names behind a folder that is a link (made by hand, or planted beside a changed record) stays where it is; the removal of an earlier name's install at a program's start has the same bound.
+
 ## [0.363.1] - 2026-11-27 10:02
 
 ### Fixed
@@ -5099,6 +5119,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.364.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.364.0
 [0.363.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.1
 [0.363.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.0
 [0.362.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.362.0
