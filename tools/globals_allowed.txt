@@ -473,6 +473,9 @@ render/capture.odin srgb_table_bytes const  # a table, made once (srgb_table_onc
 render/capture.odin srgb_table_once process  # the once of a table
 render/damage.odin damage_verify_env.state process  # a switch of the environment, read once (atomic)
 render/wgpu_gl_linux.odin wgpu_gl_forced.state process  # a switch of the environment, read once (atomic)
+render/cpu_stage.odin cpu_first_wanted.state process  # a switch of the environment, read once (atomic)
+render/cpu_stage.odin cpu_encode_table.table const  # a table, made once (cpu_encode_table.once)
+render/cpu_stage.odin cpu_encode_table.once process  # the once of a table
 render/damage.odin damage_check_frames process  # the damage check's counts over every renderer of the process (atomic)
 render/damage.odin damage_check_partial process  # the damage check's counts over every renderer of the process (atomic)
 render/damage.odin damage_check_differences process  # the damage check's counts over every renderer of the process (atomic)

@@ -166,6 +166,7 @@ Wl_Window_State :: struct {
 	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
 	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
 	presented:   bool,
+	pixels:      Wl_Proxy,         // show_pixels' wl_buffer, attached until the renderer's first present (drop_pixels)
 	drawn:       [2]int,           // w.size at the last picture's commit: another size is a step of a resize no picture shows yet
 	output:      u32,              // the registry name of the output the surface entered last (wl_surface.enter); 0: none yet
 	entered:     [WL_ENTERED_MAX]u32,   // the registry names of every output the surface is on now (enter minus leave); 0: a free place
@@ -1267,6 +1268,7 @@ wl_destroy :: proc(w: ^Window) {
 	if wlc.ti_window == w { wlc.ti_window = nil }
 	wl_role_destroy(st)
 	wl_surface_destroy(st)
+	wl_drop_pixels(w)
 	wl.display_flush(wlc.display)
 	delete(st.title)
 	delete(st.activate_token)
@@ -1639,9 +1641,10 @@ foreign libc_wl {
 	@(link_name="munmap") sys_munmap :: proc(addr: rawptr, length: uint) -> i32 ---
 }
 
-// A wl_buffer of `size` pixels in shared memory (ARGB8888, in memory BGRA), holding `bgra` when given. nil when the system refused.
+// A wl_buffer of `size` pixels in shared memory (ARGB8888, in memory BGRA; `opaque`: XRGB8888, its alpha not read), holding
+// `bgra` when given. nil when the system refused.
 @(private)
-wl_shm_buffer :: proc(size: [2]int, bgra: []u8 = nil) -> Wl_Proxy {
+wl_shm_buffer :: proc(size: [2]int, bgra: []u8 = nil, opaque := false) -> Wl_Proxy {
 	if wlc.shm == nil { return nil }
 	stride, bytes := size.x * 4, size.x * size.y * 4
 	fd := memfd_create("gui_toolkit", 0)
@@ -1658,7 +1661,10 @@ wl_shm_buffer :: proc(size: [2]int, bgra: []u8 = nil) -> Wl_Proxy {
 	}
 	pool := wl.proxy_marshal_flags(wlc.shm, WL_SHM_CREATE_POOL, wl.shm_pool_interface, wl.proxy_get_version(wlc.shm), 0, nil, fd, i32(bytes))
 	if pool == nil { return nil }
-	buffer := wl.proxy_marshal_flags(pool, WL_SHM_POOL_CREATE_BUFFER, wl.buffer_interface, wl.proxy_get_version(pool), 0, nil, i32(0), i32(size.x), i32(size.y), i32(stride), u32(0))
+	WL_SHM_FORMAT_ARGB8888 :: 0
+	WL_SHM_FORMAT_XRGB8888 :: 1
+	format := u32(opaque ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888)
+	buffer := wl.proxy_marshal_flags(pool, WL_SHM_POOL_CREATE_BUFFER, wl.buffer_interface, wl.proxy_get_version(pool), 0, nil, i32(0), i32(size.x), i32(size.y), i32(stride), format)
 	wl.proxy_marshal_flags(pool, WL_SHM_POOL_DESTROY, nil, wl.proxy_get_version(pool), WL_MARSHAL_FLAG_DESTROY)
 	return buffer
 }
@@ -1678,6 +1684,44 @@ test_show_plain :: proc(w: ^Window) {
 	st.presented = true
 	wl_activation_flush(w, st)
 }
+// A picture drawn on the CPU (show_pixels): a wl_shm buffer attached to the window's surface and committed. The first
+// commit with a buffer maps the window, as a first present does. The role's first configure must have been acked: a
+// buffer before it is a protocol error, and a surface with no role shows nothing.
+@(private)
+wl_show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bool {
+	st := wl_state(w)
+	if st == nil || st.surface == nil || !st.acked || size.x <= 0 || size.y <= 0 { return false }
+	buffer := wl_shm_buffer(size, bgra, opaque)
+	if buffer == nil { return false }
+	wl_drop_pixels(w)
+	st.pixels = buffer
+	WL_SURFACE_DAMAGE :: 2
+	WL_DAMAGE_ALL :: max(i32)
+	wl.proxy_marshal_flags(st.surface, WL_SURFACE_ATTACH, nil, wl.proxy_get_version(st.surface), 0, buffer, i32(0), i32(0))
+	wl.proxy_marshal_flags(st.surface, WL_SURFACE_DAMAGE, nil, wl.proxy_get_version(st.surface), 0, i32(0), i32(0), WL_DAMAGE_ALL, WL_DAMAGE_ALL)
+	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
+	// (a picture is on the surface: the window is mapped; an activation asked waits for that)
+	st.presented = true
+	st.drawn = w.size
+	wl_activation_flush(w, st)
+	// (a commit that maps the window: a tiling compositor answers with its tile, and shows it only once a picture of that
+	// size comes, or after its own wait (sway: 200 ms). Read now, the next frame is drawn at that size. A renderer's stage
+	// shows a few pictures at most: a roundtrip each)
+	wl.display_roundtrip(wlc.display)
+	return true
+}
+
+// The buffer of show_pixels, once the renderer's own is attached (or the window goes). Never before: the surface's content
+// could be the buffer's still.
+@(private)
+wl_drop_pixels :: proc(w: ^Window) {
+	st := wl_state(w)
+	if st == nil || st.pixels == nil { return }
+	WL_BUFFER_DESTROY :: 0
+	wl.proxy_marshal_flags(st.pixels, WL_BUFFER_DESTROY, nil, wl.proxy_get_version(st.pixels), WL_MARSHAL_FLAG_DESTROY)
+	st.pixels = nil
+}
+
 @(private = "file") WL_SHM_CREATE_POOL :: 0
 @(private = "file") WL_SHM_POOL_CREATE_BUFFER :: 0
 @(private = "file") WL_SHM_POOL_DESTROY :: 1

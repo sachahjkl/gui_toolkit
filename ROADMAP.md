@@ -152,6 +152,16 @@
 
 ## Later
 
+- **The first frame on the CPU on Windows.** A window shows its first picture from a DIB section on `WM_PAINT` while
+  Direct3D 11 and its shaders come, as Linux does: first checked on a real machine for a blank frame between the GDI
+  picture and the flip-model swap chain's first present. Intent:
+  [src/md/infrastructure/cpu-first-frames.md](src/md/infrastructure/cpu-first-frames.md).
+- **CPU frames until the device is ready.** The renderer stays in its CPU stage until the device and the pipelines are
+  made, without a wait: input is answered during the 100 to 200 ms the GPU still takes on lavapipe. It needs a wake from
+  the device's thread. Intent: [src/md/infrastructure/cpu-first-frames.md](src/md/infrastructure/cpu-first-frames.md).
+- **The programs with their own loop on the CPU's first frame.** fidget and the programs that call `render.init_window`
+  themselves ask for `cpu_first` and ask for their second frame at once, as `host_open` does.
+
 - **The first pipelines from the disk.** A pipeline cache (Vulkan's) kept between starts, once wgpu-native's C API can make
   one: the first frame then compiles nothing at a second start (110 ms on lavapipe). Intent:
   [src/md/infrastructure/fast-start.md](src/md/infrastructure/fast-start.md).

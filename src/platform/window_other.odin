@@ -36,6 +36,11 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := 
 events_waiting :: proc(w: ^Window) -> bool { return false }
 inject_event :: proc(w: ^Window, e: Event) {}
 wake :: proc(w: ^Window) {}
+// No picture drawn on the CPU is shown here (render's CPU stage is Linux's): see platform_linux.odin.
+show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bool { return false }
+can_show_pixels :: proc(w: ^Window) -> bool { return false }
+drop_pixels :: proc(w: ^Window) {}
+
 wake_handle :: proc(w: ^Window) -> rawptr { return nil }
 wake_signal :: proc(h: rawptr) {}
 request_close :: proc(w: ^Window) {}

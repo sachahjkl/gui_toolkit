@@ -358,7 +358,8 @@ Frame_Data :: struct {
 // Whether text can have a coverage per colour stripe here: the renderer's blending, for `slug` or atlas text. Direct3D 11 blends the
 // atlas (the Windows default), WebGPU Slug (the default elsewhere), when the device has dual-source blending.
 text_subpixel_supported :: proc(r: ^Renderer, slug: bool) -> bool {
-	when USE_WGPU { return slug && r.wg.can_dual } else { return !slug }
+	// (the CPU stage blends each channel by itself: cpu_raster.odin)
+	when USE_WGPU { return slug && (r.wg.can_dual || cpu_stage_active(r)) } else { return !slug }
 }
 
 // Failed: a device recovered could not make it again. It holds nothing and draws nothing; its owner still has the handle, so the slot
@@ -513,6 +514,7 @@ Renderer :: struct {
 	warp:        bool,                   // the device is WARP (software)
 	half_float_offscreen: bool,          // init_offscreen's `half_float`: the offscreen frame in half floats, as a translucent window's
 	wg:          Wgpu_State,             // the wgpu backend (wgpu_*.odin); zero on the Direct3D backend
+	cpu:         Cpu_Stage,              // the CPU stage and the CPU copies its rasteriser reads (cpu_stage.odin)
 	failure:     Init_Failure,           // why the last init failed (init_failure.odin)
 	first_present_noted: bool,           // (the program's first, whichever window: a trace of its start)
 	teardown_wait_ms: int,               // set_teardown_wait
@@ -845,6 +847,8 @@ targets_generation :: proc(r: ^Renderer) -> u64 { return r.targets_gen }
 
 @(private)
 acquire_pooled :: proc(r: ^Renderer, w, h: int, snapshot: bool, unorm := false, mips := false) -> Texture {
+	// (the CPU stage has no layers: gt:draw draws a layer's content plainly, with its alpha, when it gets none)
+	if cpu_stage_active(r) { return 0 }
 	if w <= 0 || h <= 0 || w > max_texture_size(r) || h > max_texture_size(r) { return 0 }
 	if mips && (snapshot || unorm || (w <= 1 && h <= 1)) { return 0 }
 	when !USE_WGPU {

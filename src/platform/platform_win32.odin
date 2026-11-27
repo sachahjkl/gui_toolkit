@@ -689,6 +689,11 @@ frame_shown_held :: proc(w: ^Window) {}
 vblank_ask :: proc(h: Surface_Handles) {}
 vblank_timing :: proc(h: Surface_Handles) -> (v: Vblank_Timing, ok: bool) { return }
 
+// No picture drawn on the CPU is shown on Windows yet (render's CPU stage is Linux's: ROADMAP.md).
+show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bool { return false }
+can_show_pixels :: proc(w: ^Window) -> bool { return false }
+drop_pixels :: proc(w: ^Window) {}
+
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) {
 	if w.offscreen { if w.off_event != nil { win.SetEvent(w.off_event) }; return }

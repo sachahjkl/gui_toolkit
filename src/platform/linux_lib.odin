@@ -355,6 +355,11 @@ Xcb_Lib :: struct {
 	get_atom_name_name_length: proc "c" (reply: rawptr) -> i32,
 	get_extension_data: proc "c" (c: Xcb_Connection, id: rawptr) -> rawptr,   // ^xcb_query_extension_reply_t
 	change_window_attributes: proc "c" (c: Xcb_Connection, window: Xcb_Window, value_mask: u32, value_list: rawptr) -> Xcb_Void_Cookie,
+	// a picture drawn on the CPU (show_pixels): optional, the callers check them
+	create_gc:          proc "c" (c: Xcb_Connection, gc: u32, drawable: Xcb_Window, value_mask: u32, value_list: rawptr) -> Xcb_Void_Cookie,
+	free_gc:            proc "c" (c: Xcb_Connection, gc: u32) -> Xcb_Void_Cookie,
+	put_image:          proc "c" (c: Xcb_Connection, format: u8, drawable: Xcb_Window, gc: u32, width, height: u16, dst_x, dst_y: i16, left_pad, depth: u8, data_len: u32, data: [^]u8) -> Xcb_Void_Cookie,
+	get_maximum_request_length: proc "c" (c: Xcb_Connection) -> u32,
 	// extension helpers (own .so files, optional)
 	ewmh_handle:        Lib,
 	keysyms_handle:     Lib,
@@ -413,6 +418,10 @@ xcb_lib :: proc() -> ^Xcb_Lib {
 		xcb.get_atom_name_name_length = auto_cast lib_sym(h, "xcb_get_atom_name_name_length")
 		xcb.get_extension_data = auto_cast lib_sym(h, "xcb_get_extension_data")
 		xcb.change_window_attributes = auto_cast lib_sym(h, "xcb_change_window_attributes")
+		xcb.create_gc          = auto_cast lib_sym(h, "xcb_create_gc")
+		xcb.free_gc            = auto_cast lib_sym(h, "xcb_free_gc")
+		xcb.put_image          = auto_cast lib_sym(h, "xcb_put_image")
+		xcb.get_maximum_request_length = auto_cast lib_sym(h, "xcb_get_maximum_request_length")
 		xcb.ok = xcb.connect != nil && xcb.create_window != nil && xcb.map_window != nil &&
 			xcb.poll_for_event != nil && xcb.get_setup != nil && xcb.intern_atom != nil
 	})

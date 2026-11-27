@@ -55,6 +55,9 @@ Not yet: a pipeline cache on disk (Vulkan's `VkPipelineCache`). `vendor:wgpu` ov
 (`FeatureName.PipelineCache`) but has no call that makes a cache; when it does, the two first pipelines can come from the
 disk (ROADMAP.md, Later).
 
+The first picture no longer waits for the device at all on Linux: it is drawn on the CPU while the device comes
+([cpu-first-frames.md](cpu-first-frames.md)). What this file measures is now the time of the first picture on the GPU.
+
 The test that breaks the design: `src/render/device_preload_test.odin` checks that the device made early holds the
 shaders and the early pipelines started, that a pipeline of another format is made without them, and that the
 renderer's pipeline of their format is the one made early. `early_pipelines_are_made_in_the_window_s_format` checks the

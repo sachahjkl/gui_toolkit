@@ -447,6 +447,8 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	// naga can write, wgpu_gl_pipelines)
 	if g.gl { fmt.eprintfln("render: wgpu: GL adapter: vendor %q, device %q, description %q, architecture %q", info.vendor, info.device, info.description, info.architecture) }
 	wgpu.AdapterInfoFreeMembers(info)
+	// (the device made early: its adapter is said now, a window's CPU stage waits for it, not for the device)
+	if r == &preload.held { preload_adapter_say(g.gl ? .GL : .Vulkan, g) }
 
 	limits, _ := wgpu.AdapterGetLimits(g.adapter)
 	g.max_tex = int(limits.maxTextureDimension2D)

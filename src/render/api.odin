@@ -44,8 +44,14 @@ init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, tran
 	r.failure = {}
 	ok: bool
 	when USE_WGPU { ok = wgpu_init(r, surface, size, transparent, space) } else { ok = d3d_init(r, surface, size, transparent, space) }
-	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 } else { init_release(r) }
+	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1; cpu_shadow_start(r) } else { init_release(r) }
 	return ok
+}
+
+// TOOLKIT_CPU_SHADOW=1: the renderer keeps CPU copies and draws each frame on the CPU too (cpu_stage.odin).
+@(private)
+cpu_shadow_start :: proc(r: ^Renderer) {
+	when CPU_FIRST { r.cpu.shadow = cpu_shadow_wanted() }
 }
 
 // What a failed init made goes; why it failed stays. (A failure no step named is a failure all the same.)
@@ -58,8 +64,18 @@ init_release :: proc(r: ^Renderer) {
 }
 
 // init from a window directly: the common case, equivalent to init(r, platform.native_surface_handles(w), ...).
-init_window :: proc(r: ^Renderer, w: ^platform.Window, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
-	return init(r, platform.native_surface_handles(w), size, transparent, space)
+// `cpu_first`: while the device made early (preload_device) is still being made, the renderer starts in the CPU stage and
+// draws its first frame on the CPU (src/md/infrastructure/cpu-first-frames.md); its next frame_begin ends the stage
+// (cpu_stage_end), and a failure then is in init_failure.
+init_window :: proc(r: ^Renderer, w: ^platform.Window, size: [2]int, transparent := false, space := Blend_Space.Linear, cpu_first := false) -> bool {
+	handles := platform.native_surface_handles(w)
+	when CPU_FIRST {
+		if cpu_first {
+			r.failure = {}
+			if cpu_stage_begin(r, w, handles, size, transparent, space) { return true }
+		}
+	}
+	return init(r, handles, size, transparent, space)
 }
 
 @(private) renderer_ids: u64
@@ -70,6 +86,7 @@ init_window :: proc(r: ^Renderer, w: ^platform.Window, size: [2]int, transparent
 renderer_id :: proc(r: ^Renderer) -> u64 { return r.id }
 
 destroy :: proc(r: ^Renderer) {
+	cpu_stage_destroy(r)
 	when USE_WGPU { wgpu_destroy(r) } else { d3d_destroy(r) }
 	when DAMAGE_CHECK { damage_check_report() }
 }
@@ -82,11 +99,20 @@ init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend
 	r.half_float_offscreen = half_float
 	ok: bool
 	when USE_WGPU { ok = wgpu_init_offscreen(r, size, warp, space) } else { ok = d3d_init_offscreen(r, size, warp, space) }
-	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 } else { init_release(r) }
+	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1; cpu_shadow_start(r) } else { init_release(r) }
 	return ok
 }
 
 set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
+	when CPU_FIRST {
+		if r.cpu.active {
+			if space == r.space { return }
+			r.space, r.cpu.init.space = space, space
+			r.text = text_rendering_default(space)
+			r.space_epoch += 1
+			return
+		}
+	}
 	when USE_WGPU { wgpu_set_blend_space(r, space) } else { d3d_set_blend_space(r, space) }
 }
 
@@ -158,6 +184,7 @@ read_frame_raw :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 // same call serves both and a headless app resizes its window the usual way.
 resize :: proc(r: ^Renderer, size: [2]int) {
 	if size.x <= 0 || size.y <= 0 || size == r.size { return }
+	if cpu_stage_active(r) { r.size = size; return }   // (the stage's end configures the surface at this size)
 	if is_offscreen(r) { _ = resize_offscreen(r, size); return }
 	when USE_WGPU { wgpu_resize(r, size) } else { d3d_resize(r, size) }
 }
@@ -179,6 +206,7 @@ is_offscreen :: proc(r: ^Renderer) -> bool {
 // cost of input latency. False: the backend cannot (or has no window). It can be raised and lowered again at will: the surplus
 // the system leaves in the latency object when it is lowered is taken back (wait_frame_slot, wait_for_frame).
 set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
+	if cpu_stage_active(r) { return false }
 	when USE_WGPU { return wgpu_set_max_frame_latency(r, n) } else { return d3d_set_max_frame_latency(r, n) }
 }
 
@@ -188,11 +216,17 @@ set_fixed_surface :: proc(r: ^Renderer, max_size: [2]int) -> bool {
 }
 
 create_texture_r8 :: proc(r: ^Renderer, size: int) -> Texture {
-	when USE_WGPU { return wgpu_create_texture_r8(r, size) } else { return d3d_create_texture_r8(r, size) }
+	if cpu_stage_active(r) { return cpu_texture_add(r, Texture_Data{size = size, w = size, h = size, kind = .R8}) }
+	t: Texture
+	when USE_WGPU { t = wgpu_create_texture_r8(r, size) } else { t = d3d_create_texture_r8(r, size) }
+	cpu_mirror_made(r, t)
+	return t
 }
 
 update_texture_r8 :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, pitch: int) {
 	texture_written(r, t)
+	if cpu_mirroring(r) && h > 0 && len(pixels) >= pitch * (h - 1) + w { cpu_mirror_write(r, t, x, y, w, h, raw_data(pixels), pitch) }
+	if cpu_stage_active(r) { return }
 	when USE_WGPU { wgpu_update_texture_r8(r, t, x, y, w, h, pixels, pitch) } else { d3d_update_texture_r8(r, t, x, y, w, h, pixels, pitch) }
 }
 
@@ -201,28 +235,61 @@ max_texture_size :: proc(r: ^Renderer) -> int {
 }
 
 create_texture_rgba :: proc(r: ^Renderer, w, h: int, mips := true) -> Texture {
-	when USE_WGPU { return wgpu_create_texture_rgba(r, w, h, mips) } else { return d3d_create_texture_rgba(r, w, h, mips) }
+	if cpu_stage_active(r) {
+		limit := max_texture_size(r)
+		if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
+		return cpu_texture_add(r, Texture_Data{w = w, h = h, size = max(w, h), kind = .RGBA, space = r.space, mips = mips && (w > 1 || h > 1)})
+	}
+	t: Texture
+	when USE_WGPU { t = wgpu_create_texture_rgba(r, w, h, mips) } else { t = d3d_create_texture_rgba(r, w, h, mips) }
+	cpu_mirror_made(r, t)
+	return t
 }
 
 update_texture_rgba :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
 	texture_written(r, t)
-	when USE_WGPU { wgpu_update_texture_rgba(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_rgba(r, t, x, y, w, h, pixels, stride) }
+	if !cpu_stage_active(r) {
+		when USE_WGPU { wgpu_update_texture_rgba(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_rgba(r, t, x, y, w, h, pixels, stride) }
+	}
+	// (the copy holds the texels as the texture stores them: premultiplied in its space)
+	if cpu_mirroring(r) && int(t) > 0 && int(t) < len(r.textures) && w > 0 && h > 0 {
+		pitch := stride > 0 ? stride : w * 4
+		if len(pixels) >= pitch * (h - 1) + w * 4 {
+			data, row, _ := premultiply_upload(r, &r.textures[int(t)], w, h, pixels, pitch)
+			cpu_mirror_write(r, t, x, y, w, h, data, row)
+		}
+	}
 }
 
 // A texture of raw 8-bit data for the shaders of draw.app_shader (a normal map, a height map, a mask): sampled as 0..1 floats,
 // with no sRGB decoding and no premultiplication, whatever the blend space. Contents start at zero. 0: out of range or refused.
 create_texture_data :: proc(r: ^Renderer, w, h: int, format := Data_Format.RGBA8, mips := true) -> Texture {
-	when USE_WGPU { return wgpu_create_texture_data(r, w, h, format, mips) } else { return d3d_create_texture_data(r, w, h, format, mips) }
+	if cpu_stage_active(r) {
+		limit := max_texture_size(r)
+		if w <= 0 || h <= 0 || w > limit || h > limit { return 0 }
+		return cpu_texture_add(r, Texture_Data{w = w, h = h, size = max(w, h), kind = .Data, data_format = format, mips = mips && (w > 1 || h > 1)})
+	}
+	t: Texture
+	when USE_WGPU { t = wgpu_create_texture_data(r, w, h, format, mips) } else { t = d3d_create_texture_data(r, w, h, format, mips) }
+	cpu_mirror_made(r, t)
+	return t
 }
 
 // Uploads a w x h block at (x, y) of a data texture: `pixels` are its texels as they are (4 bytes each for RGBA8, 1 for R8);
 // `stride` = bytes per row (0: tight).
 update_texture_data :: proc(r: ^Renderer, t: Texture, x, y, w, h: int, pixels: []u8, stride := 0) {
 	texture_written(r, t)
+	if cpu_mirroring(r) && int(t) > 0 && int(t) < len(r.textures) && w > 0 && h > 0 {
+		texel := r.textures[int(t)].data_format == .R8 ? 1 : 4
+		pitch := stride > 0 ? stride : w * texel
+		if len(pixels) >= pitch * (h - 1) + w * texel { cpu_mirror_write(r, t, x, y, w, h, raw_data(pixels), pitch) }
+	}
+	if cpu_stage_active(r) { return }
 	when USE_WGPU { wgpu_update_texture_data(r, t, x, y, w, h, pixels, stride) } else { d3d_update_texture_data(r, t, x, y, w, h, pixels, stride) }
 }
 
 destroy_texture :: proc(r: ^Renderer, t: Texture) {
+	cpu_mirror_gone(r, t)
 	when USE_WGPU { wgpu_destroy_texture(r, t) } else { d3d_destroy_texture(r, t) }
 }
 
@@ -230,6 +297,16 @@ frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	r.damage.have_region = false
 	r.damage.frame_clear = clear
 	when DAMAGE_CHECK { r.damage.mode = .On }
+	when CPU_FIRST {
+		// (the stage draws one frame, and one more at each size the window gets meanwhile; the next one ends it, and is
+		// drawn on the GPU when the device came)
+		another_size := r.size != r.cpu.drawn && r.cpu.frames < CPU_STAGE_FRAMES_MAX
+		if r.cpu.active && (r.cpu.frames == 0 || another_size || !cpu_stage_end(r)) {
+			cpu_frame_begin(r, clear)
+			return
+		}
+		if r.cpu.shadow { cpu_frame_begin(r, clear) }
+	}
 	when USE_WGPU { wgpu_frame_begin(r, clear) } else { d3d_frame_begin(r, clear) }
 }
 
@@ -244,6 +321,7 @@ present_may_block :: proc(r: ^Renderer) -> bool {
 }
 
 wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
+	if cpu_stage_active(r) { return true }
 	when USE_WGPU { return wgpu_wait_for_frame(r, timeout_ms) } else { return d3d_wait_for_frame(r, timeout_ms) }
 }
 
@@ -255,12 +333,17 @@ wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> boo
 // next wait takes back (src/md/infrastructure/frame-latency-object.md). A wait the renderer does not see would break that
 // count, so the object's handle is not given out.
 wait_frame_slot :: proc(r: ^Renderer, w: ^platform.Window, timeout_ms := FRAME_WAIT_TIMEOUT_MS, until_press := false) -> bool {
+	if cpu_stage_active(r) { return true }
 	when USE_WGPU { h := r.wg.latency.timer } else { h := r.latency_handle }
 	return latency_take(&r.present, h, timeout_ms, w, until_press)
 }
 
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	defer readback_frame_done(f)
+	when CPU_FIRST {
+		if r.cpu.active { r.cpu.exact = cpu_raster_frame(r, f); return }
+		if r.cpu.shadow { r.cpu.exact = cpu_raster_frame(r, f) }
+	}
 	when DAMAGE_CHECK {
 		if !r.damage.building { damage_check_submit(r, f); return }
 	}
@@ -270,6 +353,14 @@ frame_submit :: proc(r: ^Renderer, f: Frame_Data) {
 
 frame_end :: proc(r: ^Renderer, vsync := true) {
 	r.present.drawn = time.tick_now()
+	when CPU_FIRST {
+		if r.cpu.active {
+			cpu_frame_end(r)
+			r.damage.building, r.damage.skip_present = false, false
+			return
+		}
+		defer cpu_after_present(r)
+	}
 	when !USE_WGPU {
 		d3d_damage_finish_clear(r)
 		if r.capture.requested { capture_copy(r) }   // before the present: a flip chain does not keep the frame
@@ -299,10 +390,12 @@ render_trace :: proc() -> bool {
 }
 
 heap_write :: proc(r: ^Renderer, kind: Heap_Kind, offset: int, data: rawptr, n: int) {
+	if cpu_stage_active(r) { cpu_heap_write(r, kind, offset, data, n); return }
 	when USE_WGPU { wgpu_heap_write(r, kind, offset, data, n) } else { d3d_heap_write(r, kind, offset, data, n) }
 }
 
 recover :: proc(r: ^Renderer) -> bool {
+	if cpu_stage_active(r) { return true }
 	when USE_WGPU { return wgpu_recover(r) } else { return d3d_recover(r) }
 }
 
@@ -320,6 +413,7 @@ set_instance_page :: proc(r: ^Renderer, n: int) {
 }
 
 heap_grow :: proc(r: ^Renderer, kind: Heap_Kind, need: int) -> bool {
+	if cpu_stage_active(r) { return cpu_heap_grow(r, kind, need) }
 	when USE_WGPU { return wgpu_heap_grow(r, kind, need) } else { return d3d_heap_grow(r, kind, need) }
 }
 
@@ -330,9 +424,23 @@ heaps_destroy :: proc(r: ^Renderer) {
 
 // Slug text (slug.odin): the two glyph data textures a draw context fills, and a glyph page written into them.
 create_slug_textures :: proc(r: ^Renderer, rows: int) -> (curves, bands: Texture) {
-	when USE_WGPU { return wgpu_create_slug_textures(r, rows) } else { return d3d_create_slug_textures(r, rows) }
+	if cpu_stage_active(r) {
+		if rows <= 0 || rows > max_texture_size(r) { return 0, 0 }
+		curves = cpu_texture_add(r, Texture_Data{w = SLUG_TEXTURE_WIDTH, h = rows, size = SLUG_TEXTURE_WIDTH, kind = .Slug_Curves})
+		bands = cpu_texture_add(r, Texture_Data{w = SLUG_TEXTURE_WIDTH, h = rows, size = SLUG_TEXTURE_WIDTH, kind = .Slug_Bands})
+		return
+	}
+	when USE_WGPU { curves, bands = wgpu_create_slug_textures(r, rows) } else { curves, bands = d3d_create_slug_textures(r, rows) }
+	cpu_mirror_made(r, curves)
+	cpu_mirror_made(r, bands)
+	return
 }
 
 update_slug_page :: proc(r: ^Renderer, curves, bands: Texture, page: int, c: [][4]f16, b: [][2]u16) {
+	if cpu_mirroring(r) {
+		if len(c) > 0 { cpu_mirror_write(r, curves, 0, page, len(c), 1, raw_data(c), len(c) * TEXEL_BYTES_FP16) }
+		if len(b) > 0 { cpu_mirror_write(r, bands, 0, page, len(b), 1, raw_data(b), len(b) * 4) }
+	}
+	if cpu_stage_active(r) { return }
 	when USE_WGPU { wgpu_update_slug_page(r, curves, bands, page, c, b) } else { d3d_update_slug_page(r, curves, bands, page, c, b) }
 }

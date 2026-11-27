@@ -271,6 +271,7 @@ STEPS := []Step{
 	{name = "render_pkg", path = "src/render", one = true},
 	// (wgpu's GL backend, forced: EGL surfaceless, llvmpipe where there is no GPU; no EGL: the log says the tests drew nothing)
 	{name = "gl_fallback", oses = LINUX_ONLY, text = true},
+	{name = "cpu_first", one = true, oses = LINUX_ONLY, text = true},   // (the CPU stage's rasteriser against lavapipe)
 	// text
 	{name = "text", wgpu = .Ci1},
 	{name = "subpixel"},

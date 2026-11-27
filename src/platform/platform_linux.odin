@@ -545,6 +545,41 @@ wake_signal :: proc(h: rawptr) {
 	sys_write(i32(uintptr(h)), &one, size_of(one))
 }
 
+// Shows a picture drawn on the CPU on the window, until the renderer presents its own: the renderer's CPU stage, before its
+// device (render/cpu_stage.odin, src/md/infrastructure/cpu-first-frames.md). `bgra`: premultiplied B, G, R, A rows of
+// `size` pixels, packed; `opaque`: its alpha is not read. False: nothing shown (a window that is not on the screen yet,
+// an offscreen one, a system that cannot).
+show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int, opaque: bool) -> bool {
+	if w == nil || w.offscreen { return false }
+	switch w.backend {
+	case .Wayland: return wl_show_pixels(w, bgra, size, opaque)
+	case .X11:     return x11_show_pixels(w, bgra, size)
+	case .None:
+	}
+	return false
+}
+
+// Whether show_pixels can show anything on this window's system.
+can_show_pixels :: proc(w: ^Window) -> bool {
+	if w == nil || w.offscreen { return false }
+	switch w.backend {
+	case .Wayland: return wlc.shm != nil
+	case .X11:     return xcb.put_image != nil && xcb.create_gc != nil && xcb.get_maximum_request_length != nil
+	case .None:
+	}
+	return false
+}
+
+// What show_pixels kept for the window, once the renderer has presented its own picture.
+drop_pixels :: proc(w: ^Window) {
+	if w == nil { return }
+	switch w.backend {
+	case .Wayland: wl_drop_pixels(w)
+	case .X11:     x11_drop_pixels(w)
+	case .None:
+	}
+}
+
 // Requests a wake-up for the loop (a timer, an animation, another thread): the loop polls this fd with its connection. It
 // is the loop of `w` that wakes: a thread that waits in the poll of another window is woken through that one.
 wake :: proc(w: ^Window) {

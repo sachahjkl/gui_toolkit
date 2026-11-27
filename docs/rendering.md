@@ -102,6 +102,23 @@ window and the font are then made side by side); a program that asked earlier ke
 small window, `-o:speed`, Xvfb): the first frame shown 592 ms after the process started before, 205 ms after
 ([src/md/infrastructure/fast-start.md](../src/md/infrastructure/fast-start.md)).
 
+**The first frame on the CPU** (Linux). `init_window(..., cpu_first = true)` returns at once while the device made early is
+still being made: the renderer is in its CPU stage (`render.cpu_stage_active`). Its first frame is drawn on the CPU, with
+the shaders' formulas, and shown on the window through the platform (`platform.show_pixels`: a `wl_shm` buffer on
+Wayland, `PutImage` on X11). The next `frame_begin` ends the stage (`render.cpu_stage_end`, which a program may also
+call itself): it waits for the device, makes the surface and the pipelines, gives every texture and retained heap made
+meanwhile its GPU object in the same handle, and that frame is drawn on the GPU. If the device does not come, the frames
+stay on the CPU and `render.init_failure` says why. `host.host_open` asks for the stage and asks for the second frame at
+once. During the stage the renderer gives no layer (`acquire_target` returns 0, and `gt:draw` draws a layer's content
+with its alpha), and the CPU leaves out filters, blend modes, planes, pictures and application shaders:
+`render.cpu_frame_exact(&r)` says whether the last CPU frame had none of them. The stage starts only once the device's
+thread knows it has a Vulkan adapter (milliseconds; with none, init fails at once with the no-graphics sentence; with
+GL, the usual init). Measured on lavapipe (hello, `-o:speed`, Xvfb, a loaded machine): the first picture at a median
+of 88 ms after the process started, where it came at 392 ms with the stage off. `TOOLKIT_CPU_FIRST=0` in the
+environment turns the stage off; `-define:TOOLKIT_CPU_FIRST=false` removes it from the program (64 KB of code).
+`TOOLKIT_CPU_SHADOW=1` makes a GPU renderer draw each frame on the CPU too, for a test that compares the two
+(`render.cpu_shadow_pixels`). Why: [src/md/infrastructure/cpu-first-frames.md](../src/md/infrastructure/cpu-first-frames.md).
+
 A device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device`
 lets an unused one go. On wgpu the adapter is chosen without a surface; init makes the window's surface on its instance and
 makes its own device when that adapter cannot present to it.

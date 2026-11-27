@@ -625,8 +625,9 @@ an_animation_moves_with_no_input :: proc(t: ^testing.T) {
 	}
 	defer host.host_close(h)
 	host.host_show(h)
-	// (shown and settled first: the tween starts at the first build and runs from there)
-	for i := 0; i < 50 && m.builds == 0; i += 1 { host.hosts_wait({h}); host.host_frame(h) }
+	// (shown and settled first, on the GPU: the tween starts at the first build and runs from there. A first frame drawn on
+	// the CPU is followed by the wait for the device, which is the start's, not the loop's)
+	for i := 0; i < 50 && (m.builds == 0 || render.cpu_stage_active(&sh.r)); i += 1 { host.hosts_wait({h}); host.host_frame(h) }
 	start, builds := time.tick_now(), m.builds
 	for m.value < 1 && time.duration_milliseconds(time.tick_since(start)) < 5000 {
 		host.hosts_wait({h})

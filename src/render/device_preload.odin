@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:sync"
 import "core:thread"
 import "core:time"
+import "vendor:wgpu"
 import base "../base"
 
 // The graphics device made early, on a thread of its own. The first device of a process is the longest step of a
@@ -40,6 +41,47 @@ Device_Preload :: struct {
 	done:   proc(user: rawptr),     // preload_device's: called by the thread once the device is made (or failed)
 	user:   rawptr,
 	faults: Fault_Arms,             // the asking thread's (faults.odin: they are per thread), the worker's too
+	// what the thread knows of its adapter, before the device (a Preload_Adapter; preload_adapter_wait): said as soon as the
+	// adapter answers, milliseconds before the device and its pipelines. The fields below are written before it is said
+	adapter:          sync.Futex,
+	adapter_name:     [WGPU_ADAPTER_NAME_BYTES]u8,
+	adapter_name_len: int,
+	adapter_backend:  wgpu.BackendType,
+	adapter_software: bool,
+}
+
+// What the device made early has for an adapter (preload_adapter_wait).
+Preload_Adapter :: enum u32 {
+	Unknown,   // not said yet
+	Vulkan,    // a Vulkan adapter (or Direct3D 12, Metal: a backend that draws everything)
+	GL,        // wgpu's GL fallback: a device made early is surfaceless there, and the window makes its own
+	None,      // none: the device will fail
+}
+
+// Says what the device's thread found for an adapter, once (wgpu_create_device_here, make_preloaded_device).
+@(private)
+preload_adapter_say :: proc(kind: Preload_Adapter, g: ^Wgpu_State = nil) {
+	if Preload_Adapter(sync.atomic_load(&preload.adapter)) != .Unknown { return }
+	if g != nil {
+		preload.adapter_name_len = copy(preload.adapter_name[:], g.adapter_name[:g.adapter_name_len])
+		preload.adapter_backend, preload.adapter_software = g.backend_type, g.cpu_adapter
+	}
+	sync.atomic_store(&preload.adapter, sync.Futex(kind))
+	sync.futex_broadcast(&preload.adapter)
+	base.start_mark("render: adapter made early")
+}
+
+// What the device being made early has for an adapter, waiting for its thread to know (the adapter request: milliseconds
+// on lavapipe, where the device and its pipelines take a hundred). .None when no device is being made.
+@(private)
+preload_adapter_wait :: proc() -> Preload_Adapter {
+	for {
+		kind := Preload_Adapter(sync.atomic_load(&preload.adapter))
+		if kind != .Unknown { return kind }
+		if device_preload_state() == .Not_Started { return .None }
+		// (said before the state turns Ready or Failed: a thread that ended has said it)
+		sync.futex_wait(&preload.adapter, u32(Preload_Adapter.Unknown))
+	}
 }
 
 @(private)
@@ -59,6 +101,7 @@ preload_device :: proc(warp := false, done: proc(user: rawptr) = nil, user: rawp
 	preload.faults = fault_arms_get()
 	preload.done, preload.user = done, user
 	preload.began = time.tick_now()
+	sync.atomic_store(&preload.adapter, sync.Futex(Preload_Adapter.Unknown))
 	when USE_WGPU { preload.held.wg.shared = new(Wgpu_Shared) }   // (the caller's allocator, as wgpu_create_device's)
 	sync.atomic_store(&preload.state, .Creating)
 	preload.worker = thread.create_and_start(make_preloaded_device)
@@ -119,6 +162,8 @@ make_preloaded_device :: proc() {
 		// (no surface: the window's is made by init. No display either: a GL device made here is surfaceless, and a
 		// window does not take it, wgpu_make_surface)
 		ok = wgpu_create_device_here(&preload.held, {}, preload.warp, {})
+		// (said already when the adapter answered; a failure before it has none)
+		preload_adapter_say(ok ? (preload.held.wg.gl ? .GL : .Vulkan) : .None, ok ? &preload.held.wg : nil)
 		base.start_mark("render: device made early")
 		if ok {
 			format, make := early_pipeline_format(preload.transparent, preload.space, .Unknown, COMPILES_SERIAL)
@@ -127,7 +172,10 @@ make_preloaded_device :: proc() {
 	} else {
 		ok = create_device(&preload.held, preload.warp ? .WARP : .HARDWARE)
 	}
-	when !USE_WGPU { base.start_mark("render: device made early") }
+	when !USE_WGPU {
+		base.start_mark("render: device made early")
+		preload_adapter_say(ok ? .Vulkan : .None)
+	}
 	sync.atomic_store(&preload.state, ok ? .Ready : .Failed)
 	if preload.done != nil { preload.done(preload.user) }
 }

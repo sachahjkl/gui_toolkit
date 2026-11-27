@@ -75,6 +75,7 @@ X11_Window_State :: struct {
 	// the times of the presents not answered yet, oldest first (vblank_ask): each Pixmap answer takes the oldest (the lead)
 	presents:  [X11_PRESENTS_MAX]i64,
 	presents_n: int,
+	pixels_gc: u32,                   // show_pixels' graphics context (0: none)
 }
 
 // Presents whose answer is awaited at once: one or two; more means the answers do not come (a software WSI's PutImage),
@@ -395,6 +396,7 @@ x11_destroy :: proc(w: ^Window) {
 	for x, i in x11c.windows { if x == w { ordered_remove(&x11c.windows, i); break } }
 	if x11c.dnd_target.window == w { x11c.dnd_target.window = nil }
 	if x11c.clip_owner == st.id { x11c.clip_owner = 0; delete(x11c.clip_text); x11c.clip_text = "" }
+	x11_drop_pixels(w)
 	xcb.destroy_window(x11c.c, st.id)
 	if st.colormap != 0 && xcb.free_colormap != nil { xcb.free_colormap(x11c.c, st.colormap) }   // (an overlay's)
 	xcb.flush(x11c.c)
@@ -1113,3 +1115,38 @@ get_u32 :: proc(b: [^]u8) -> u32 { return u32(b[0]) | u32(b[1]) << 8 | u32(b[2])
 // Frees what xcb allocated (a reply).
 @(private)
 free_c :: proc(p: rawptr) { posix.free(p) }
+
+// A picture drawn on the CPU (show_pixels), put into the window in strips that each fit in one request. The window must
+// be mapped: what is put before the server shows it is lost (a window manager maps it when it decides).
+@(private)
+x11_show_pixels :: proc(w: ^Window, bgra: []u8, size: [2]int) -> bool {
+	st := x11_state(w)
+	x := &xcb
+	if st == nil || x.put_image == nil || x.create_gc == nil || x.get_maximum_request_length == nil { return false }
+	if st.map_phase == .Never || st.withdrawn || size.x <= 0 || size.y <= 0 || len(bgra) < size.x * size.y * 4 { return false }
+	depth := st.colormap != 0 ? u8(32) : x11c.screen.root_depth
+	if depth != 24 && depth != 32 { return false }   // (32 bits a pixel, as the frame is: the depths every server has)
+	if st.pixels_gc == 0 {
+		st.pixels_gc = x.generate_id(x11c.c)
+		x.create_gc(x11c.c, st.pixels_gc, st.id, 0, nil)
+	}
+	X11_PUT_IMAGE_HEADER :: 24
+	X11_Z_PIXMAP :: 2
+	limit := int(x.get_maximum_request_length(x11c.c)) * 4 - X11_PUT_IMAGE_HEADER
+	stride := size.x * 4
+	rows := max(limit / stride, 1)
+	for y := 0; y < size.y; y += rows {
+		n := min(rows, size.y - y)
+		x.put_image(x11c.c, X11_Z_PIXMAP, st.id, st.pixels_gc, u16(size.x), u16(n), 0, i16(y), 0, depth, u32(n * stride), raw_data(bgra[y * stride:]))
+	}
+	x.flush(x11c.c)
+	return true
+}
+
+@(private)
+x11_drop_pixels :: proc(w: ^Window) {
+	st := x11_state(w)
+	if st == nil || st.pixels_gc == 0 || xcb.free_gc == nil { return }
+	xcb.free_gc(x11c.c, st.pixels_gc)
+	st.pixels_gc = 0
+}

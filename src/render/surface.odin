@@ -77,6 +77,8 @@ surface_refresh :: proc(r: ^Renderer) {
 // view) would be hidden behind it: this puts it below them. Direct3D (fixed_size neither has a meaning on WebGPU).
 // `surface_init` makes it in the Surface `s` points to, where the program keeps it. Prefer it to `surface_create`.
 surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_Handles, size: [2]int, transparent := false, fixed_size := [2]int{}, under_children := false) -> (ok: bool) {
+	// (a second window needs the device: the CPU stage of the first one ends here)
+	if !cpu_stage_end(r) { s^ = {}; return false }
 	when USE_WGPU {
 		// a second window on WebGPU: its own wgpu surface (and the latency / present state that go with it), swapped with the
 		// renderer's by surface_use, exactly as the Direct3D path swaps its swap chain. fixed_size is Direct3D's composition
