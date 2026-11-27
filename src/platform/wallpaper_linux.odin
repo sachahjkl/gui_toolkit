@@ -13,12 +13,17 @@ import "../dbus"
 @(private = "file") WALLPAPER_CALL_MS :: 8000   // the request's own answer, not the time the person takes
 @(private = "file") WALLPAPER_POLL_MS :: 200
 
-set_wallpaper :: proc(path: string) -> Wallpaper_Result {
+set_wallpaper :: proc(path: string) -> Wallpaper_Result { return wallpaper_set_at(path, "") }
+
+// set_wallpaper on the bus at `address` ("": the session's). A test names a bus that is nowhere: it never reaches the
+// person's portal, and sets no variable of the process that the other tests' threads read.
+@(private)
+wallpaper_set_at :: proc(path, address: string) -> Wallpaper_Result {
 	cpath := strings.clone_to_cstring(path, context.temp_allocator)
 	fd, err := linux.open(cpath, {.CLOEXEC})
 	if err != .NONE { return .Failed }
 	defer linux.close(fd)
-	conn := dbus.connect_bus(.Session, unix_fds = true)
+	conn := address == "" ? dbus.connect_bus(.Session, unix_fds = true) : dbus.connect_bus_address(address, unix_fds = true)
 	if conn == nil { return .Unsupported }
 	defer dbus.conn_close(conn)
 	if !dbus.conn_unix_fds(conn) { return .Unsupported }
