@@ -502,6 +502,11 @@ menu_step :: proc(items: []Menu_Item_Info, from, dir: int) -> int {
 // menu that opened it). `width` 0 = as wide as the widest item; a width given is a minimum. Closes on Escape, on a press
 // outside every open level (a nested menu: outside it and the levels it opened, which closes only it), or when an item is
 // chosen.
+//
+// The menu ends where the scope of the call ends (deferred_none): its items go in the block of its `if`. An early
+// return does not work: in `if !ui.menu(id) { return }` the scope is the `if`'s, so the menu ends before the items that
+// follow and they are built outside it. Write `if ui.menu(id) { items(app) }`; for an early return, call it as a
+// statement (`open := ui.menu(id)`), which ends the menu with the procedure.
 @(require_results, deferred_none = menu_end)
 menu :: proc(id: string, width: f32 = 0) -> bool {
 	s := gs()
@@ -1169,6 +1174,45 @@ tooltip_beside :: proc(at := Rect{}) -> bool {
 	if pos.x + size.x > s.window_size.x { pos.x = left - gap - size.x }
 	tooltip_open(clamp_popup(pos, size, s.window_size), em)
 	return true
+}
+
+// `if tooltip_near(at) { tooltip_text("...") }`: a tooltip about the rectangle `at` (frame px), not about the pointer: a
+// part of a drawing that is no box (a node's header in a graph), or a box the keyboard reached. It goes below `at`,
+// above it, to its right or to its left, each moved inside the window: the side that covers the least of `at` (on a
+// tie, the first in that order), centred on `at` along that side.
+@(require_results, deferred_none = tooltip_end)
+tooltip_near :: proc(at: Rect) -> bool {
+	s := gs()
+	em := font_size()
+	size := tooltip_last_size(em)
+	tooltip_open(tooltip_near_place(at, size, s.window_size, em * TOOLTIP_NEAR_GAP_EM), em)
+	return true
+}
+
+// tooltip_near's gap between the rectangle and the tooltip.
+@(private = "file") TOOLTIP_NEAR_GAP_EM :: 0.4
+
+// Where tooltip_near puts a tooltip of `size` about `at` in a window of `window` (all frame px).
+@(private)
+tooltip_near_place :: proc(at: Rect, size, window: Vec2, gap: f32) -> Vec2 {
+	mid := (at.min + at.max) * 0.5
+	sides := [4]Vec2{
+		{mid.x - size.x * 0.5, at.max.y + gap},    // below
+		{mid.x - size.x * 0.5, at.min.y - gap - size.y},   // above
+		{at.max.x + gap, mid.y - size.y * 0.5},    // right
+		{at.min.x - gap - size.x, mid.y - size.y * 0.5},   // left
+	}
+	best := Vec2{}
+	least := max(f32)
+	for p in sides {
+		q := clamp_popup(p, size, window)
+		cover := Rect{{max(q.x, at.min.x), max(q.y, at.min.y)}, {min(q.x + size.x, at.max.x), min(q.y + size.y, at.max.y)}}
+		c := max(cover.max.x - cover.min.x, 0) * max(cover.max.y - cover.min.y, 0)
+		if c < least {
+			least, best = c, q
+		}
+	}
+	return best
 }
 
 // The size the tooltip had in the last build.

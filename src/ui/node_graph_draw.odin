@@ -24,6 +24,9 @@ import "../render"
 // A link's width (logical px at the zoom 1, within these zooms); under the pointer or selected, this many times.
 @(private) GRAPH_LINK_PX :: 2
 @(private) GRAPH_LINK_HOT :: 1.8
+// A dashed link's dash and gap, a dotted link's gap between dots: in the link's widths.
+@(private) GRAPH_DASH :: [2]f32{3.5, 2.5}
+@(private) GRAPH_DOT_GAP :: 2.5
 // A node's header: this much of its accent over the panel (of the bad colour when it failed).
 @(private) GRAPH_HEADER_TINT :: 0.30
 @(private) GRAPH_FAILED_TINT :: 0.42
@@ -66,7 +69,8 @@ Node_Graph_Port_Draw :: struct {
 
 @(private)
 Node_Graph_Node_Draw :: struct {
-	title, subtitle, icon, message: string,
+	title:     [2]string,             // its lines (the second "" for one; cut with an ellipsis at the drawn size)
+	subtitle, icon, message: string,
 	font, icon_font: font.Font_Id,
 	accent:    Color,
 	state:     Graph_Node_State,
@@ -87,6 +91,7 @@ Node_Graph_Link_Draw :: struct {
 	a, b:  [2]f32,   // from the area's top-left, frame px: the out port, the in port
 	color: Color,
 	width: f32,
+	dash:  Graph_Dash,
 }
 
 @(private)
@@ -95,6 +100,7 @@ Node_Graph_Area_Draw :: struct {
 	offset:  [2]f32,   // the graph's origin from the area's top-left, frame px
 	k:       f32,      // frame px per graph unit
 	least:   f32,      // node_graph_curve's least bend, frame px
+	down:    bool,     // Graph_Direction.Down: the links bend vertically
 	colors:  Node_Graph_Colors,
 	sc:      f32,
 }
@@ -111,6 +117,7 @@ Node_Graph_Over_Draw :: struct {
 	map_selected: []bool,
 	map_view: Rect,
 	least:    f32,
+	down:     bool,
 	width:    f32,
 	colors:   Node_Graph_Colors,
 	sc:       f32,
@@ -134,13 +141,13 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 
 	// the links, those in view
 	ad := frame_new(Node_Graph_Area_Draw)
-	ad^ = {offset = view.offset * f.sc, k = k, least = node_graph_curve_least(f), colors = colors, sc = f.sc}
+	ad^ = {offset = view.offset * f.sc, k = k, least = node_graph_curve_least(f), down = f.down, colors = colors, sc = f.sc}
 	links := make([dynamic]Node_Graph_Link_Draw, 0, len(f.links), frame_allocator())
 	linked := make(map[flowgraph.Port_Ref]bool, len(f.links) * 2, context.temp_allocator)
 	selected_link, has_selected := view.link.?
-	hover_link, has_hover := view.hover.?
+	hover_link, has_hover := view.hover_link.?
 	base_width := GRAPH_LINK_PX * f.sc * clamp(z, 0.6, 1.5)
-	for l in f.links {
+	for l, li in f.links {
 		if wiring && has_detached && l == detached { continue }
 		from := flowgraph.Port_Ref{l.from_node, l.from_port, .Out}
 		to := flowgraph.Port_Ref{l.to_node, l.to_port, .In}
@@ -148,12 +155,18 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 		a, ok_a := node_graph_port_screen(f, from)
 		b, ok_b := node_graph_port_screen(f, to)
 		if !ok_a || !ok_b { continue }
-		ca, cb := node_graph_curve(a, b, ad.least)
+		ca, cb := node_graph_curve(a, b, ad.least, f.down)
 		lo := [2]f32{min(a.x, b.x, ca.x, cb.x), min(a.y, b.y, ca.y, cb.y)}
 		hi := [2]f32{max(a.x, b.x, ca.x, cb.x), max(a.y, b.y, ca.y, cb.y)}
 		if !node_graph_overlaps({lo - base_width, hi + base_width}, area_rect) { continue }
-		port, _, _ := node_graph_port(f, from)
-		c := node_graph_kind_color(f, port.kind, colors.accent)
+		look := li < len(f.o.link_looks) ? f.o.link_looks[li] : Graph_Link_Look{}
+		c: Color
+		if look.intent != .Neutral {
+			c = hue_color(intent_hue(look.intent))
+		} else {
+			port, _, _ := node_graph_port(f, from)
+			c = node_graph_kind_color(f, port.kind, colors.accent)
+		}
 		w := base_width
 		if has_selected && l == selected_link {
 			w *= GRAPH_LINK_HOT
@@ -163,7 +176,7 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 		}
 		// (a link to a node that was skipped faded: an opaque mix, a translucent stroke goes through a layer)
 		if i, ok := f.index[l.to_node]; ok && f.nodes[i].state == .Skipped { c = draw.mix(colors.well, c, GRAPH_SKIPPED_ALPHA) }
-		append(&links, Node_Graph_Link_Draw{a = a - view.origin, b = b - view.origin, color = c, width = w})
+		append(&links, Node_Graph_Link_Draw{a = a - view.origin, b = b - view.origin, color = c, width = w, dash = look.dash})
 	}
 	ad.links = links[:]
 	f.area.custom, f.area.custom_user = node_graph_area_draw, ad
@@ -178,7 +191,7 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 			size := (g.rect.max - g.rect.min) * k
 			nd := frame_new(Node_Graph_Node_Draw)
 			nd^ = {
-				title = strings.clone(n.title, frame_allocator()), subtitle = strings.clone(n.subtitle, frame_allocator()),
+				title = node_graph_title_lines(&n, &g, f.font, f.em, k), subtitle = strings.clone(n.subtitle, frame_allocator()),
 				icon = strings.clone(n.icon, frame_allocator()), message = strings.clone(n.message, frame_allocator()),
 				font = top_style().font, icon_font = f.o.icon_font,
 				accent = n.color.a > 0 ? n.color : colors.accent,
@@ -224,7 +237,7 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 		}
 
 		od := frame_new(Node_Graph_Over_Draw)
-		od^ = {least = ad.least, width = base_width, colors = colors, sc = f.sc}
+		od^ = {least = ad.least, down = f.down, width = base_width, colors = colors, sc = f.sc}
 		if wiring {
 			if a, ok := node_graph_port_screen(f, wire.from); ok {
 				free_end := view.origin + node_graph_local(f, wire.at)
@@ -242,7 +255,7 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 			od.band = {{min(a.x, b.x), min(a.y, b.y)}, {max(a.x, b.x), max(a.y, b.y)}}
 		}
 		mm_rect_local: Rect
-		if f.o.minimap {
+		if f.o.minimap.show {
 			mm: Node_Graph_Minimap
 			mm_ok: bool
 			if mg, dragging_mm := view.gesture.(Graph_Gesture_Minimap); dragging_mm && mg.k > 0 {
@@ -280,8 +293,13 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 				bw := button_width(label_text, glyph = true)
 				bh := math.round(dense(font_size() * CONTROL_HEIGHT_EM))
 				margin := GRAPH_MINIMAP_MARGIN * f.sc
-				bx := max(margin, view.size.x - margin - bw)
-				by := od.minimap ? max(margin, mm_rect_local.min.y - margin * 0.6 - bh) : max(margin, view.size.y - margin - bh)
+				// (in the minimap's corner, beside it toward the middle; with no minimap, the bottom-right one)
+				corner := od.minimap ? (f.o.minimap.corner.? or_else .Bottom_Right) : .Bottom_Right
+				right := corner == .Top_Right || corner == .Bottom_Right
+				bottom := corner == .Bottom_Left || corner == .Bottom_Right
+				bx := right ? max(margin, view.size.x - margin - bw) : margin
+				by := bottom ? max(margin, view.size.y - margin - bh) : margin
+				if od.minimap { by = bottom ? max(margin, mm_rect_local.min.y - margin * 0.6 - bh) : mm_rect_local.max.y + margin * 0.6 }
 				next({fixed_x = bx, fixed_y = by, width = px(bw), height = px(bh)})
 				if button("###graph_back", label_text, lucide.MAXIMIZE_2, {icon_font = lucide_icons(), intent = .Primary, tip = i18n.tr("Fit the graph in view (F)")}).clicked {
 					graph_fit(view, f.nodes, view.size / f.sc)
@@ -333,9 +351,44 @@ node_graph_area_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 	for l in d.links {
 		a, e := r.min + l.a, r.min + l.b
-		ca, cb := node_graph_curve(a, e, d.least)
-		draw.bezier(dc, a, ca, cb, e, l.width, l.color)
+		ca, cb := node_graph_curve(a, e, d.least, d.down)
+		if l.dash == .Solid {
+			draw.bezier(dc, a, ca, cb, e, l.width, l.color)
+			continue
+		}
+		p := draw.path_make(allocator = context.temp_allocator)
+		draw.path_move_to(&p, a)
+		draw.path_cubic_to(&p, ca, cb, e)
+		pattern := l.dash == .Dashed ? []f32{GRAPH_DASH.x * l.width, GRAPH_DASH.y * l.width} : []f32{0, GRAPH_DOT_GAP * l.width}
+		cut := draw.path_dash(&p, pattern, 0, context.temp_allocator)
+		draw.path_stroke(dc, &cut, l.width, l.color)
 	}
+}
+
+// A node's title as drawn: its first line, and its second cut with an ellipsis when the title had more (at the drawn
+// size `em * k`, in the frame's memory). The lines are those of the zoom 1 (node_graph_title_wrap): the node keeps its
+// shape while the zoom changes.
+@(private)
+node_graph_title_lines :: proc(n: ^Graph_Node, g: ^Node_Graph_Geometry, f: font.Font_Id, em, k: f32) -> (lines: [2]string) {
+	title := strings.clone(n.title, frame_allocator())
+	if g.title_lines < 2 {
+		lines[0] = title
+		return
+	}
+	room := node_graph_title_room(n, g.rect.max.x - g.rect.min.x, em)
+	all := wrap_lines_cached(f, em, title, room)
+	if len(all) < 2 {
+		lines[0] = title
+		return
+	}
+	lines[0] = title[all[0][0]:all[0][1]]
+	lines[1] = title[all[1][0]:all[1][1]]
+	if g.title_cut {
+		// (the ellipsis already at the line's end: elide keeps it there, cutting the line before it)
+		with := strings.concatenate({lines[1], ELLIPSIS}, context.temp_allocator)
+		lines[1] = elide(f, em * k, with, room * k, allocator = frame_allocator())
+	}
+	return
 }
 
 // A box's text at baseline `y`, from `x`, within `right` (cut at it).
@@ -379,15 +432,21 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	machined_groove(dc, {header.min.x, header.max.y - p}, {header.max.x, header.max.y - p})
 	pad := g.pad * k
 	x := r.min.x + pad
-	mark_w := d.state == .Idle ? 0 : d.em * 1.2
+	// (the mark's room is kept for an idle node too: a run that starts does not move the title)
+	mark_w := d.em * GRAPH_MARK_EM
 	right := r.max.x - pad - mark_w
-	title_mid := d.subtitle != "" ? header.min.y + g.header * k * 0.36 : (header.min.y + header.max.y) * 0.5
+	title_mid := header.min.y + d.em * (d.subtitle != "" ? GRAPH_TITLE_SUB_MID_EM : GRAPH_TITLE_MID_EM)
 	if d.icon != "" && d.icon_font != 0 {
 		node_graph_text(dc, d.icon_font, d.em * 1.05, x, title_mid, right, c.text, d.icon)
-		x += d.em * 1.45
+		x += d.em * GRAPH_ICON_EM
 	}
-	node_graph_text(dc, d.font, d.em, x, title_mid, right, c.text, d.title)
-	if d.subtitle != "" { node_graph_text(dc, d.font, d.em * 0.85, x, header.min.y + g.header * k * 0.72, right, c.weak, d.subtitle) }
+	last_mid := title_mid
+	node_graph_text(dc, d.font, d.em, x, title_mid, right, c.text, d.title[0])
+	if d.title[1] != "" {
+		last_mid += d.em * GRAPH_TITLE_LINE_EM
+		node_graph_text(dc, d.font, d.em, x, last_mid, right, c.text, d.title[1])
+	}
+	if d.subtitle != "" { node_graph_text(dc, d.font, d.em * 0.85, x, last_mid + d.em * GRAPH_SUB_GAP_EM, right, c.weak, d.subtitle) }
 	mark := [2]f32{r.max.x - pad - mark_w * 0.5, title_mid}
 	switch d.state {
 	case .Idle:
@@ -420,8 +479,8 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	// the ports: a dot on the side, coloured by kind (hollow while it has no link), the name beside it
 	dot := GRAPH_PORT_EM * d.em * 0.5
 	for port in d.ports {
-		y := r.min.y + (g.ports_top + (f32(port.index) + 0.5) * g.row) * k
-		at := [2]f32{port.side == .In ? r.min.x : r.max.x, y}
+		at := r.min + node_graph_port_at(g, port.side, port.index) * k
+		y := at.y
 		dim := port.mark == .Dim
 		if dim { draw.push_alpha(dc, GRAPH_DIM_ALPHA) }
 		dr := dot
@@ -435,11 +494,12 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		} else {
 			draw.rect(dc, {at - dr, at + dr}, port.color, dr, max(p, dr * 0.4))
 		}
-		if g.detail && port.name != "" {
+		if g.names && port.name != "" {
 			size := d.em * 0.85
 			if port.side == .In {
-				// (to the middle when an out port shares its row, else across)
-				edge := port.index < d.outputs ? (r.min.x + r.max.x) * 0.5 : r.max.x - pad
+				// (to the middle when an out port may stand beside it: its row's, or any on the edges; else across)
+				shared := g.rows > 0 ? port.index < d.outputs : d.outputs > 0
+				edge := shared ? (r.min.x + r.max.x) * 0.5 : r.max.x - pad
 				node_graph_text(dc, d.font, size, r.min.x + pad + dot, y, edge, c.weak, port.name)
 			} else {
 				tw := font.text_width(gs().fonts, d.font, size, port.name)
@@ -456,7 +516,12 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if d.state == .Failed { draw.rect(dc, r, c.bad, radius, 1.5 * p) }
 	if d.message != "" {
 		size := d.em * 0.85
-		node_graph_text(dc, d.font, size, r.min.x + p, r.max.y + d.em * 0.85, r.max.x + d.em * 6, d.state == .Failed ? c.bad : c.weak, d.message)
+		ink := d.state == .Failed ? c.bad : c.weak
+		if g.message_mid > 0 {
+			node_graph_text(dc, d.font, size, r.min.x + pad, r.min.y + g.message_mid * k, r.max.x - pad, ink, d.message)
+		} else {
+			node_graph_text(dc, d.font, size, r.min.x + p, r.max.y + d.em * 0.85, r.max.x + d.em * 6, ink, d.message)
+		}
 	}
 }
 
@@ -468,7 +533,7 @@ node_graph_over_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	p := max(1, math.round(d.sc))
 	if d.wire {
 		a, e := o + d.wire_a, o + d.wire_b
-		ca, cb := node_graph_curve(a, e, d.least)
+		ca, cb := node_graph_curve(a, e, d.least, d.down)
 		draw.bezier(dc, a, ca, cb, e, d.width * GRAPH_LINK_HOT, d.wire_color)
 	}
 	if d.band.max.x > d.band.min.x {

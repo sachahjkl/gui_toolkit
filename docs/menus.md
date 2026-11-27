@@ -14,6 +14,25 @@ if ui.menu("file_menu") {
 }
 ```
 
+The menu is the block of its `if`. `ui.menu` ends the menu where the scope of its call ends (Odin's
+`deferred_none`), so an early return does not work:
+
+```odin
+// wrong: the scope of the call is the `if`'s; the menu ends before the items, which are built outside it
+if !ui.menu("file_menu") { return }
+ui.menu_item("Copy", "Ctrl+C")
+
+// right: the items in the block, or in a procedure called there
+if ui.menu("file_menu") { file_menu_items(app) }
+
+// right too: the call as a statement; the menu ends with the procedure
+open := ui.menu("file_menu")
+if !open { return }
+ui.menu_item("Copy", "Ctrl+C")
+```
+
+The same holds for every call that opens a block: `menu_submenu`, `tooltip`, `tooltip_near`, `menu_control`.
+
 A block that is no button (a message, a card, an image) takes a right press with `ui.context_take(box)`, called after
 what is in it is built: the innermost that asks keeps the press, one box a build; a field that opened its own menu on that
 press keeps it; nothing drawn over the pointer (a dialog, a floating panel) lets it through.

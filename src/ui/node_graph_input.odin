@@ -6,6 +6,7 @@ package ui
 import "core:math"
 import "../draw"
 import "../flowgraph"
+import "../font"
 import i18n "../i18n"
 import "../platform"
 
@@ -20,8 +21,13 @@ import "../platform"
 @(private) GRAPH_ZOOM_RATE :: 18
 // An arrow key moves the selection this far (graph units) when the graph has no snap; with Shift ten times.
 @(private) GRAPH_NUDGE :: 1
-// The minimap: its size and its margin from the area's corner (logical px).
-@(private) GRAPH_MINIMAP_SIZE :: [2]f32{200, 130}
+// The minimap's default size: this share of the area's width, within these widths (logical px), its height this ratio of
+// its width and at most this share of the area's height. Its margin from the area's corner (logical px).
+@(private) GRAPH_MINIMAP_SHARE :: 0.25
+@(private) GRAPH_MINIMAP_LEAST :: 100
+@(private) GRAPH_MINIMAP_MOST :: 200
+@(private) GRAPH_MINIMAP_RATIO :: 0.65
+@(private) GRAPH_MINIMAP_TALL :: 0.35
 @(private) GRAPH_MINIMAP_MARGIN :: 10
 // What is drawn of a node reaches this far under it (its message), in ems: a node that far off the area is still drawn.
 @(private) GRAPH_CULL_EM :: 2.5
@@ -40,6 +46,8 @@ Node_Graph_Frame :: struct {
 	sel:      map[u64]bool,            // the selected nodes
 	events:   [dynamic]Graph_Event,
 	sc, em:   f32,                     // the interface's scale; its em in graph units
+	font:     font.Font_Id,            // the titles'
+	down:     bool,                    // Graph_Direction.Down
 	// a move let go in this frame: the program applies its Graph_Moved after the build, so until then its nodes are
 	// drawn where they were let go (drawn back at their old place, they would jump there and back)
 	landed:   Maybe(Graph_Gesture_Move),
@@ -67,6 +75,8 @@ node_graph :: proc(id: string, view: ^Graph_View, nodes: []Graph_Node, links: []
 	f := Node_Graph_Frame{view = view, nodes = nodes, links = links, selected = selected, o = o, area = area}
 	f.sc = max(scale(), 0.01)
 	f.em = font_size() / f.sc
+	f.font = top_style().font
+	f.down = o.direction == .Down
 	f.events = make([dynamic]Graph_Event, context.temp_allocator)
 	f.index = make(map[u64]int, len(nodes), context.temp_allocator)
 	f.sel = make(map[u64]bool, len(selected), context.temp_allocator)
@@ -74,6 +84,7 @@ node_graph :: proc(id: string, view: ^Graph_View, nodes: []Graph_Node, links: []
 	for x in selected { f.sel[x] = true }
 	// (the area as last laid out: the pointer was over that)
 	view.key, view.origin, view.size, view.scale, view.em = area.key, area.rect.min, area.rect.max - area.rect.min, f.sc, f.em
+	view.direction, view.port_rows, view.font, view.minimap = o.direction, o.port_rows, f.font, o.minimap
 
 	node_graph_glide(s, view)
 	node_graph_shapes(&f)
@@ -82,12 +93,16 @@ node_graph :: proc(id: string, view: ^Graph_View, nodes: []Graph_Node, links: []
 	sig := signal(area)
 	node_graph_input(&f, s, sig)
 	node_graph_shapes(&f)   // (what the input moved)
-	// the link under the pointer is drawn thicker (not during a gesture: the pointer is busy)
-	view.hover = nil
-	if view.gesture == nil && s.mouse_valid && s.hot_key == area.key {
-		if h := node_graph_hit(&f, s.mouse); h.kind == .Link { view.hover = h.link }
+	// what is under the pointer: the node (for the program), the link drawn thicker (not during a gesture: the pointer is busy)
+	view.hover_link, view.hover_node = nil, 0
+	under := Node_Graph_Hit{}
+	if s.mouse_valid && node_graph_pointer_over(s, area) { under = node_graph_hit(&f, s.mouse) }
+	#partial switch under.kind {
+	case .Node, .Port: view.hover_node = f.nodes[under.node].id
+	case .Link: if view.gesture == nil && s.hot_key == area.key { view.hover_link = under.link }
 	}
 	node_graph_build(&f)
+	node_graph_tip(&f, s, under)
 	a11y_default(area, {role = .Group, name = i18n.tr("Graph"), role_description = i18n.tr("node graph")})
 	return f.events[:]
 }
@@ -117,7 +132,8 @@ node_graph_shapes :: proc(f: ^Node_Graph_Frame) {
 	m, shifted := node_graph_shift(f)
 	for &n, i in f.nodes {
 		body := detail && f.o.body != nil ? node_graph_body_height(f.view, n.id) : 0
-		f.geo[i] = node_graph_geometry(&n, f.em, body, detail)
+		lines, cut := node_graph_title_wrap(&n, f.font, f.em)
+		f.geo[i] = node_graph_geometry(&n, f.em, body, detail, {down = f.down, rows = f.o.port_rows, title_lines = lines, title_cut = cut})
 		if shifted && (n.id == m.node || (!m.alone && f.sel[n.id])) {
 			f.geo[i].rect.min += m.delta
 			f.geo[i].rect.max += m.delta
@@ -138,6 +154,7 @@ node_graph_screen_rect :: proc(f: ^Node_Graph_Frame, i: int) -> Rect {
 node_graph_visible :: proc(f: ^Node_Graph_Frame, i: int, area: Rect) -> bool {
 	r := node_graph_screen_rect(f, i)
 	r.max.y += GRAPH_CULL_EM * f.em * graph_zoom(f.view) * f.sc
+	if f.down { r.min.y -= GRAPH_PORT_EM * f.em * graph_zoom(f.view) * f.sc }   // (its in ports stand over its top edge)
 	return node_graph_overlaps(r, area)
 }
 
@@ -197,9 +214,7 @@ node_graph_port_reach :: proc(f: ^Node_Graph_Frame) -> f32 {
 node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 	area := Rect{f.view.origin, f.view.origin + f.view.size}
 	if !draw.rect_contains(area, p) { return }
-	if f.o.minimap {
-		if mm, ok := node_graph_minimap(f, area); ok && draw.rect_contains(mm.rect, p) { return {kind = .Minimap} }
-	}
+	if mm, ok := node_graph_minimap(f, area); ok && draw.rect_contains(mm.rect, p) { return {kind = .Minimap} }
 	// the ports first (they stand out of their node's sides), the nodes on top first
 	reach := node_graph_port_reach(f)
 	for i := len(f.nodes) - 1; i >= 0; i -= 1 {
@@ -221,7 +236,7 @@ node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 		a, ok_a := node_graph_port_screen(f, {l.from_node, l.from_port, .Out})
 		b, ok_b := node_graph_port_screen(f, {l.to_node, l.to_port, .In})
 		if !ok_a || !ok_b { continue }
-		ca, cb := node_graph_curve(a, b, node_graph_curve_least(f))
+		ca, cb := node_graph_curve(a, b, node_graph_curve_least(f), f.down)
 		lo := [2]f32{min(a.x, b.x, ca.x, cb.x), min(a.y, b.y, ca.y, cb.y)} - best
 		hi := [2]f32{max(a.x, b.x, ca.x, cb.x), max(a.y, b.y, ca.y, cb.y)} + best
 		if !draw.rect_contains({lo, hi}, p) { continue }
@@ -231,6 +246,62 @@ node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 		}
 	}
 	return
+}
+
+// Whether the pointer is over the graph and not over something built over it (a popup, a panel): the area is the box it
+// is on, or a box inside it (a node's widgets, the graph's own button).
+@(private)
+node_graph_pointer_over :: proc(s: ^State, area: ^Box) -> bool {
+	if !draw.rect_contains(area.rect, s.mouse) { return false }
+	if s.hot_key == area.key { return true }
+	hb := s.boxes[s.hot_key] if s.hot_key != 0 else nil
+	return hb != nil && is_descendant(hb, area)
+}
+
+// The graph's tooltips, once the pointer rested on what they are about: a cut title over its header, and a port's name
+// where the node does not draw it (.Down, content beside the ports, a small zoom). The rest is the graph's own (Graph_View.tip): the area is one box, and the
+// toolkit's rest (hovered_for) is per box.
+@(private)
+node_graph_tip :: proc(f: ^Node_Graph_Frame, s: ^State, h: Node_Graph_Hit) {
+	view := f.view
+	target: [2]u64
+	text: string
+	at: Rect
+	if view.gesture == nil {
+		#partial switch h.kind {
+		case .Port:
+			i, found := f.index[h.port.node]
+			if port, _, ok := node_graph_port(f, h.port); ok && found && !f.geo[i].names && port.name != "" {
+				target = {h.port.node, (u64(h.port.side) << 32 | u64(h.port.port)) + 1}
+				text = port.name
+				c, _ := node_graph_port_screen(f, h.port)
+				reach := node_graph_port_reach(f)
+				at = {c - reach, c + reach}
+			}
+		case .Node:
+			g := &f.geo[h.node]
+			r := node_graph_screen_rect(f, h.node)
+			header := Rect{r.min, {r.max.x, r.min.y + g.header * graph_zoom(view) * f.sc}}
+			if g.title_cut && draw.rect_contains(header, s.mouse) {
+				target = {f.nodes[h.node].id, 0}
+				text = f.nodes[h.node].title
+				at = r   // (the whole node: the tooltip covers none of it, its message neither)
+				if f.nodes[h.node].message != "" && !f.down {
+					// (.Right draws the message under the node: node_graph_node_draw, its middle 0.85 em under it)
+					at.max.y += 1.4 * f.em * graph_zoom(view) * f.sc
+				}
+			}
+		}
+	}
+	if target != view.tip { view.tip, view.tip_since = target, s.time_ms }
+	if target == {} { return }
+	delay := f64(s.feel.tooltip_delay_ms)
+	waited := s.time_ms - view.tip_since
+	if waited < delay {
+		wake_within(s, max(1, int(delay - waited) + WAKE_MARGIN_MS))
+		return
+	}
+	if tooltip_near(at) { tooltip_text(text) }
 }
 
 // How far a link leaves its out port before it bends (frame px).
@@ -267,13 +338,12 @@ Node_Graph_Minimap :: struct {
 	pad:   [2]f32,   // where the graph starts in it
 }
 
-// The minimap in the bottom-right corner of `area`: what it shows is every node and the view. ok false: no room.
+// The minimap in its corner of `area` (frame px): what it shows is every node and the view. ok false: hidden, or no room.
 @(private)
 node_graph_minimap :: proc(f: ^Node_Graph_Frame, area: Rect) -> (m: Node_Graph_Minimap, ok: bool) {
-	size := GRAPH_MINIMAP_SIZE * f.sc
-	margin := GRAPH_MINIMAP_MARGIN * f.sc
-	if area.max.x - area.min.x < size.x + 2 * margin || area.max.y - area.min.y < size.y + 2 * margin { return }
-	m.rect = {area.max - margin - size, area.max - margin}
+	place := node_graph_minimap_place(f.o.minimap, (area.max - area.min) / f.sc) or_return
+	m.rect = {area.min + place.min * f.sc, area.min + place.max * f.sc}
+	size := m.rect.max - m.rect.min
 	// the view's own rectangle, then each node's
 	lo := graph_from_screen(f.view, area.min)
 	hi := graph_from_screen(f.view, area.max)

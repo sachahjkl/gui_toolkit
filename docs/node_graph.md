@@ -1,7 +1,7 @@
 # node_graph: a graph of nodes and links
 
 `ui.node_graph` shows a graph and lets the user edit it. A node is a box with a header (an icon, a title, a subtitle),
-ports on its sides and optional widgets. A link is a curve from an out port to an in port. The program owns the model:
+ports on its sides (or on its top and bottom edges) and optional widgets. A link is a curve from an out port to an in port. The program owns the model:
 its nodes, links, selection and undo. The widget draws them and returns events. The program applies the events, and the
 next frame shows the result.
 
@@ -11,7 +11,7 @@ app.view: ui.Graph_View   // kept between frames: the offset, the zoom, the gest
 events := ui.node_graph("###flow", &app.view, nodes, links, app.selected[:], {
 	kind_colors = {ui.color("hue_blue"), ui.color("hue_green")},
 	snap        = 12,
-	minimap     = true,
+	minimap     = {show = true},
 })
 for e in events { apply(app, e) }
 ```
@@ -30,7 +30,12 @@ A program whose model is a `flowgraph.Graph` makes the widget's nodes with `ui.f
 | `Graph_Node` | `id`, `title`, `subtitle`, `icon` (a glyph of `icon_font`), `color` (the header's accent; `{}`: the theme's), `pos` (top-left, graph units), `width` (0: 13 em), `inputs`, `outputs`, `state`, `message`, `thumbnail` and `thumbnail_size` |
 | `Graph_Port` | `id` (unique on its node), `name`, `kind` (the program's type: its colour is `kind_colors[kind]`), `side`, `multiple` (an in port that takes several links) |
 | `Graph_Link` | `from_node`, `from_port` (an out port), `to_node`, `to_port` (an in port) |
+| `Graph_Link_Look` | how one link is drawn: `intent` (an `Intent`; `.Neutral`: the colour of its out port's kind, else the theme's hue of the intent) and `dash` (`Graph_Dash`: `.Solid`, `.Dashed`, `.Dotted`, measured in the link's widths) |
 | `Graph_Node_State` | `Idle`, `Running` (a lamp and a bar that moves), `Done` (a check), `Failed` (red header, red edge, the message in red), `Skipped` (faded) |
+
+A node's title wraps at the node's width, on two lines at most. A longer title ends its second line with an ellipsis, and
+the whole title shows in a tooltip (`tooltip_near`, around the node) when the pointer rests on the header. A title of
+two lines makes the header one line taller.
 
 A graph unit is a logical pixel at the zoom 1. The widget copies what it draws into the frame's memory. The program can
 change its model between two frames.
@@ -97,17 +102,47 @@ temp allocator too.
   (0.5), they, the port names and the thumbnail are not shown.
 - `icon_font`: the font of `Graph_Node.icon`.
 - `snap`: the grid that moves snap to, in graph units (0: none).
-- `minimap`: a map of the graph in the bottom-right corner (its transform freezes while dragging so moving past its edge
-  cannot run away). When all nodes are panned off-screen, a floating "Back to content" button appears above it to call
-  `graph_fit`.
+- `direction` (`Graph_Direction`): `.Right` (the default) puts the in ports on a node's left edge and the out ports on
+  its right edge; links run from left to right. The ports of a side are spread evenly over the edge beside the node's
+  thumbnail and widgets, which start right under the header; the edge is at least a row (1.55 em) per port. A port's
+  name is drawn on the node when nothing is beside it (no thumbnail, no widgets). `.Down` puts the in ports over a
+  node's top edge and the out ports under its bottom edge, outside the node, spaced evenly (one port: the middle);
+  links run from top to bottom and bend vertically: a tree. Port names are not drawn in `.Down`. A name that is not
+  drawn shows in a tooltip when the pointer rests on its port. A node's `message` is a line inside it in `.Down`,
+  under its header (under the node, the links leave).
+- `port_rows`: in `.Right`, each port on a row of its own with its name, the thumbnail and widgets under the rows (for
+  typed ports whose names must stay visible next to a body).
+- `link_looks`: a `Graph_Link_Look` per link, in the order of `links`. A shorter slice (or none) leaves the other links
+  plain. A link that is selected or under the pointer is drawn thicker, in its own look.
+- `minimap` (`Graph_Minimap`): a map of the graph and the view. `show`; `corner` (a `Corner`; nil: `.Bottom_Right`);
+  `size` in logical pixels (0: a quarter of the area's width, from 100 to 200 pixels, 0.65 as tall, at most 0.35 of the
+  area's height). An area too small for it shows none. Its transform freezes while dragging so moving past its edge
+  cannot run away. When all nodes are panned off-screen, a floating "Back to content" button appears beside it, toward
+  the middle, to call `graph_fit`.
+
+```odin
+// Tower's swarm: a tree from top to bottom, each link in the state of its child
+looks := make([]ui.Graph_Link_Look, len(links), context.temp_allocator)
+for l, i in links { looks[i] = look_of(child_state(l.to_node)) }   // {intent = .Danger}, {dash = .Dashed}...
+events := ui.node_graph("###swarm", &app.view, nodes, links, app.selected[:], {
+	direction  = .Down,
+	link_looks = looks,
+	minimap    = {show = true, corner = .Top_Right},
+})
+if app.view.hover_node != 0 { /* show its card */ }
+```
 
 ## The view
 
 `Graph_View.offset` (logical pixels from the box's top-left to the graph's origin) and `Graph_View.zoom` are the
 program's to set or save. Its other fields are the widget's.
 
+- `hover_node` is the node under the pointer (one of its ports counts), 0 when there is none or when the pointer is
+  over something built over the graph. `hover_link` is the link under the pointer (nil during a gesture). Both are set
+  at each build.
 - `graph_fit(view, nodes, area)` zooms (to 1 at most) and pans to show every node; `area` in logical pixels, 0: the box
-  of the last frame.
+  of the last frame. With the minimap of the last build, the nodes fit beside it or above it (below it in a top corner),
+  whichever shows them larger: none is under it.
 - `graph_to_screen(view, p)` and `graph_from_screen(view, p)` convert between graph units and frame pixels (by the box
   of the last frame).
 - `graph_zoom_about(view, zoom, at)` sets the zoom, the point `at` of the box staying where it is.
@@ -118,7 +153,8 @@ program's to set or save. Its other fields are the widget's.
 
 The box draws a sunken canvas (`machined_well`) with a grid. A node is a raised panel (`machined_plate`), so it follows
 each finish: flat, gradient, machined, edged. Its header is tinted with its accent. A selected node has a ring of the
-accent. Links are cubic curves (`draw.bezier`) in the colour of their out port's kind.
+accent. Links are cubic curves (`draw.bezier`) in the colour of their out port's kind, or in their own look (`link_looks`): an
+intent's hue, dashes or dots (`draw.path_dash`).
 
 Only the nodes and links in view are drawn and built. A node out of view has no box: its widgets' state (a text
 field's) does not survive it. A running node asks for frames while it is in view; at rest the graph asks for none.
@@ -213,7 +249,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 		kind_colors = {ui.color("hue_blue"), ui.color("hue_green")},
 		body        = body,
 		snap        = 12,
-		minimap     = true,
+		minimap     = {show = true},
 	})
 	for e in events { apply(app, e) }
 }
@@ -241,4 +277,6 @@ frame's end frees them. A string changed in `body` shows only at the next frame:
 
 `tests/scenarios/node_graph_test.odin` drives the widget in an offscreen session: a node dragged (`Graph_Moved`), two
 ports linked (`Graph_Linked`), a link of other kinds refused, a band selection, Delete, the zoom that keeps the point
-under the pointer, and `graph_fit`.
+under the pointer, `graph_fit`, `hover_node`, a link from a bottom port to a top port in `.Down`, each link's look read
+by its pixels, a title on two lines then cut with its tooltip, and the minimap's corner and size that a fit avoids.
+`tests/scenarios/tooltip_near_test.odin` places `tooltip_near` at each edge of the window.

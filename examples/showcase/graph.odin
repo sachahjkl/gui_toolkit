@@ -124,7 +124,7 @@ graph_build :: proc(app: ^App, em: f32) {
 		kinds := [3]ui.Color{ui.hue_color(.Yellow), ui.hue_color(.Blue), ui.hue_color(.Green)}
 		ui.next({width = ui.fill(), height = ui.fill()})
 		events := ui.node_graph("###flow", &app.graph_view, app.flow.nodes[:], app.flow.links[:], app.selected[:], {
-			user = app, kind_colors = kinds[:], icon_font = ui.lucide_icons(), snap = 10, minimap = true,
+			user = app, kind_colors = kinds[:], icon_font = ui.lucide_icons(), snap = 10, minimap = {show = true},
 			can_link = proc(user: rawptr, l: ui.Graph_Link) -> bool {
 				app := (^App)(user)
 				return flowgraph.can_link(&app.graph, &CATALOG, ui.flow_link(l))
