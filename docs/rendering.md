@@ -119,6 +119,11 @@ environment turns the stage off; `-define:TOOLKIT_CPU_FIRST=false` removes it fr
 `TOOLKIT_CPU_SHADOW=1` makes a GPU renderer draw each frame on the CPU too, for a test that compares the two
 (`render.cpu_shadow_pixels`). Why: [src/md/infrastructure/cpu-first-frames.md](../src/md/infrastructure/cpu-first-frames.md).
 
+A program that links `host` asks for the device at its start, before its main (`-define:TOOLKIT_EARLY_DEVICE=false` or
+`TOOLKIT_EARLY_DEVICE=0` in the environment: not; never in a test). `render.preload_when_done(done, user)` gives a device
+being made a callback after the fact: `done(user)` on its thread once it is made, or at once when it is made already
+(`host.ahead_due` wakes its loop with it).
+
 A device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device`
 lets an unused one go. On wgpu the adapter is chosen without a surface; init makes the window's surface on its instance and
 makes its own device when that adapter cannot present to it.

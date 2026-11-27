@@ -38,8 +38,9 @@ Device_Preload :: struct {
 	worker: ^thread.Thread,
 	began:  time.Tick,
 	held:   Renderer,               // where the thread makes the device: device and ctx (Direct3D 11), wg (wgpu)
-	done:   proc(user: rawptr),     // preload_device's: called by the thread once the device is made (or failed)
+	done:   proc(user: rawptr),     // preload_device's or preload_when_done's: called by the thread once the device is made (or failed)
 	user:   rawptr,
+	done_lock: sync.Mutex,          // done and user, set while the thread runs (preload_when_done); not `lock`, held by a join
 	faults: Fault_Arms,             // the asking thread's (faults.odin: they are per thread), the worker's too
 	// what the thread knows of its adapter, before the device (a Preload_Adapter; preload_adapter_wait): said as soon as the
 	// adapter answers, milliseconds before the device and its pipelines. The fields below are written before it is said
@@ -101,6 +102,7 @@ preload_device :: proc(warp := false, done: proc(user: rawptr) = nil, user: rawp
 	preload.faults = fault_arms_get()
 	preload.done, preload.user = done, user
 	preload.began = time.tick_now()
+	base.start_mark("render: device asked")
 	sync.atomic_store(&preload.adapter, sync.Futex(Preload_Adapter.Unknown))
 	when USE_WGPU { preload.held.wg.shared = new(Wgpu_Shared) }   // (the caller's allocator, as wgpu_create_device's)
 	sync.atomic_store(&preload.state, .Creating)
@@ -176,8 +178,28 @@ make_preloaded_device :: proc() {
 		base.start_mark("render: device made early")
 		preload_adapter_say(ok ? .Vulkan : .None)
 	}
+	// (the state and the callback under done_lock: a callback given by preload_when_done is called once, here or there)
+	sync.mutex_lock(&preload.done_lock)
 	sync.atomic_store(&preload.state, ok ? .Ready : .Failed)
-	if preload.done != nil { preload.done(preload.user) }
+	done, user := preload.done, preload.user
+	sync.mutex_unlock(&preload.done_lock)
+	if done != nil { done(user) }
+}
+
+// `done(user)` once the device made early is Ready or Failed: on its thread when it is still being made, at once (on
+// this one) when it is made already. For a loop that sleeps until an event, when the device was asked for by another
+// (host's at the process's start). False: no device is being made or waits to be taken.
+preload_when_done :: proc(done: proc(user: rawptr), user: rawptr) -> bool {
+	sync.mutex_lock(&preload.done_lock)
+	state := sync.atomic_load(&preload.state)
+	if state == .Creating { preload.done, preload.user = done, user }
+	sync.mutex_unlock(&preload.done_lock)
+	switch state {
+	case .Creating: return true
+	case .Ready, .Failed: if done != nil { done(user) }; return true
+	case .Not_Started: return false
+	}
+	return false
 }
 
 @(private = "file")

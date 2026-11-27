@@ -79,6 +79,19 @@ a_device_made_early_goes_to_the_init_of_its_kind :: proc(t: ^testing.T) {
 	testing.expect(t, preload_device(warp = true), "the thread starts a third time")
 	release_preloaded_device()
 	testing.expect_value(t, device_preload_state(), Device_Preload_State.Not_Started)
+
+	// its adapter is said before the device; a callback given while it is made is called once by its thread, one given
+	// after it is made at once; with nothing being made, none is taken
+	calls: int
+	count :: proc(user: rawptr) { (^int)(user)^ += 1 }
+	testing.expect(t, !preload_when_done(count, &calls), "nothing is being made")
+	testing.expect(t, preload_device(warp = true), "the thread starts a fourth time")
+	testing.expect_value(t, preload_adapter_wait(), Preload_Adapter.Vulkan)
+	testing.expect(t, preload_when_done(count, &calls), "a device is being made")
+	testing.expect(t, made_device() != nil, "made")
+	testing.expect(t, preload_when_done(count, &calls), "made: called at once")
+	release_preloaded_device()   // (joins the thread: its call is done)
+	testing.expect_value(t, calls, 2)
 }
 
 // The format of the pipelines made early is the one the renderer will choose for the window (wgpu_frame_formats), and

@@ -80,6 +80,15 @@ given on the CPU, rasterises each frame on the CPU and gives the pixels to the w
   the first picture. GL (the fallback of a machine without Vulkan): no stage either; the window makes its own device
   there, and `adapter_info` must say OpenGL as soon as `host_open` returns. During the stage `adapter_info` says the
   adapter that will draw.
+- **The device asked at the process's start** (`host`'s `@(init)`, `early_device.odin`): the stage waits for the
+  adapter's answer, so the adapter is asked as soon as the program runs, before its main, in parallel with everything
+  the program does before its window. Measured on hello (Xvfb, lavapipe): the `@(init)` runs 15 to 26 ms after the
+  process's start (the loading of a 42 MB program comes first), `host_open` a few milliseconds later, and the adapter
+  answers 30 to 60 ms after it is asked; hello's main does almost nothing before `host_open`, so the gain there is
+  within the noise. A program that reads its settings, its catalogue and its log before its window gains that time.
+  Not in a test process, nor with `-define:TOOLKIT_EARLY_DEVICE=false` or `TOOLKIT_EARLY_DEVICE=0`. A program that
+  wants another kind of device (WARP for a headless window) releases this one; a loop that waits for the device
+  (`host.ahead_due`) attaches its wake to it (`render.preload_when_done`).
 - If the device fails after its adapter answered (rare), the end of the stage fails: `render.init_failure` says why,
   the renderer stays on the CPU, and the host reports it as a failed `host_open` does (log, standard error, box) and
   closes the window. A program then ends with its normal exit code, not with the code of a failed `host_open`.
