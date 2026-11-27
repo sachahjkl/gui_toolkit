@@ -71,11 +71,29 @@ The widget has two more machines of its own:
   what the chosen tool or the selection can change (`props`).
 - **Styles are in logical pixels.** `Options.scale` is the picture's pixels per logical pixel: on a screenshot taken at
   200 %, a stroke of 4 is 8 of its pixels.
+- **Two frames of reference, one conversion each.** The model works in window pixels (`to_window`, `to_picture`):
+  the pointer's events and the painter are in them. A box placed in the layout is placed against its parent: the
+  text field is a child of the canvas, at `to_canvas` (the picture's point by the zoom and the pan, without the
+  canvas's place in the window). Refused: the field placed in window pixels outside the canvas. The layout read them
+  against its parent (the dialog's body), so in a dialog away from the window's corner the field opened that far from
+  the click.
+- **The dialog opens at the picture's size.** Its first size is the picture at 100 % with the editor's bars around it,
+  held between its least (`MARK_DIALOG_MIN_*_EM`) and 90 % of the owner window. Its unseen builds (views.md 3.4)
+  measure the bars in the layout: what the bars take depends on the width, so an estimate in ems is not enough. A
+  program gives another first size with `size_em`. The size the person gives it is remembered per program by the
+  views' memory (`dialog=`), and wins over both at the next opening. Refused: a fixed size in ems. A screenshot
+  showed at 40 %, and a small picture sat in a large grey well.
 - **A run of one field is one undo step.** The values that a slider runs through on one selection merge into the step
   that its first value made, as in cliche.
 
 ## Subtle points
 
+- The text field follows its picture point while the person types: the canvas is its parent, and it is placed after
+  this build's zoom and pan. A zoom, a pan or a move of the dialog keeps it on the point. The canvas clips it: near
+  the canvas's right or bottom edge, the field stops at the edge and scrolls, so its caret stays seen. Refused: the
+  field moved inside the canvas as a whole, because its letters then leave the text's place.
+- The editor's icons are Lucide's constants. Each bar, button and menu item names `lucide_icons()`: the program's icon
+  font (`State.icon_font`) may be another set, where those characters are other glyphs.
 - The selection is a flag on each shape (`Shape.picked`): it moves with the shape when the order changes. `selected` is
   the picked shape whose style the bar shows. The handles show when one shape is picked.
 - A shape drawn smaller than 4 window pixels was a click: it is dropped, and no undo step remains. A pen's dot stays:

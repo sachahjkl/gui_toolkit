@@ -50,6 +50,17 @@ ui.mark_editor_dialog(app.ui_state, rgba, w, h, {}, done, app, i18n.tr("Draw on 
 One dialog per window. A dialog asked while another shows answers that one first, with `ok` false. The person's
 close (the close cross, Escape) is Cancel. `done` comes once, at a later build of that window.
 
+The dialog opens at the picture's size: the picture at 100 % with the bars around it, at least
+`MARK_DIALOG_MIN_WIDTH_EM` by `MARK_DIALOG_MIN_HEIGHT_EM`, at most 90 % of the window (`MARK_DIALOG_MOST`). A larger
+picture is fitted in it. `size_em` gives another first size, in ems:
+
+```odin
+ui.mark_editor_dialog(app.ui_state, rgba, w, h, {}, done, app, size_em = {80, 50})
+```
+
+The person can resize the dialog. The program's views memory keeps that size (`dialog=` in its line,
+[views.md](views.md)), and the next opening uses it instead of the first size.
+
 ## API
 
 | | |
@@ -61,7 +72,7 @@ close (the close cross, Escape) is Cancel. `done` comes once, at a later build o
 | `mark_editor_busy(&e) -> bool` | A flattening is under way. |
 | `mark_editor_result(&e) -> (rgba, size, ok)` | The flattened picture of the last `.Done`, taken: the caller frees it with `delete(rgba, runtime.heap_allocator())`. |
 | `mark_editor_destroy(&e)` | Everything freed. A chore still running finishes on its own. |
-| `mark_editor_dialog(s, rgba, w, h, options, done, user, title) -> bool` | The editor in a dialog over the window of `s`. |
+| `mark_editor_dialog(s, rgba, w, h, options, done, user, title, size_em) -> bool` | The editor in a dialog over the window of `s`. `size_em`: its first size in ems (`{}`: the picture's). |
 | `mark_editor_dialog_shown(s) -> bool` | Its dialog is open. |
 
 `Mark_Editor_Events` holds `.Changed` (a kept change: an undo step, an undo, a redo), `.Done`, `.Cancelled` and
@@ -108,6 +119,9 @@ The keys act while the keyboard is in the editor (its canvas takes it at the fir
 
 - `init(&m, size, options)`, `destroy(&m)`; `step(&m, event)` for the pointer (`Press`, `Move`, `Release`, `Wheel`,
   `Typed`, `Type_End`, in window pixels); `view_place(&m, canvas)` each frame.
+- `to_picture(view, p)` and `to_window(view, p)` convert between window pixels and picture pixels. `to_canvas(view, p)`
+  gives a picture point from the canvas's top left: use it for a box laid out inside the canvas, because the layout
+  places a child against its parent.
 - The operations: `undo`, `redo`, `delete_selection`, `delete_all`, `duplicate`, `nudge`, `order`, `select_all`,
   `deselect`, `style_set`, `tool_set`, `crop_set`, `crop_clear`. Each returns false when it changes nothing.
 - `figures(&m.doc, &shape, &out, allocator)`: a shape as polylines to stroke and polygons to fill, in picture pixels.

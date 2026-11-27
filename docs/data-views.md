@@ -334,6 +334,11 @@ view.search_key = ui.line_edit("###search", &view.search, {placeholder = "Filter
 `segmented(id, labels, selected, tips)` shows `tips[i]` when the pointer rests on segment `i` ("" or a missing entry: no
 tooltip). A screen reader reads it as the segment's description.
 
+## No choice
+
+A `selected` outside the labels (-1) is no choice: no segment shows chosen, and no key is drawn. A click or the arrow
+keys choose one.
+
 ## A segmented control's width
 
 With no width given (`next`), a segmented control (`look = .Pills`) is `segmented_width(labels)` wide: every segment

@@ -68,7 +68,10 @@ box_handles :: proc(r: Box) -> (at: [Handle]Vec) {
 // The view
 
 to_picture :: proc(v: View, p: Vec) -> Vec { return (p - v.canvas.min - v.offset) / v.zoom }
-to_window :: proc(v: View, p: Vec) -> Vec { return p * v.zoom + v.canvas.min + v.offset }
+to_window :: proc(v: View, p: Vec) -> Vec { return to_canvas(v, p) + v.canvas.min }
+// A picture's point from the canvas's top left: where a box laid out inside the canvas goes (a layout places a child
+// against its parent, not the window).
+to_canvas :: proc(v: View, p: Vec) -> Vec { return p * v.zoom + v.offset }
 
 // The canvas box of this build (window pixels): a fitted picture is fitted again to it.
 view_place :: proc(m: ^Model, canvas: Box) {

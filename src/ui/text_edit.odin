@@ -20,6 +20,16 @@ import "../platform"
 @(private="file") Mods :: platform.Modifiers
 
 @(private="file") TEXT_EDIT_LINE_HEIGHT :: 1.15   // of the font's line height
+
+// A field's line in a face and size: its height, and its baseline from the line's top. One place for the build and the
+// draw, and for what lays a field over text it draws itself (the mark editor's text, at its letters).
+@(private)
+text_edit_line :: proc(fonts: ^font.State, face: font.Font_Id, size: f32) -> (height, baseline: f32) {
+	m := font.metrics(fonts, face, size)
+	height = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)
+	baseline = math.round((height + m.ascent - m.descent) * 0.5)
+	return
+}
 @(private="file") TEXT_EDIT_GUTTER_FONT_SCALE :: 0.85
 // Room kept past the longest line, so the caret at its end is seen.
 @(private="file") TEXT_EDIT_END_SLACK_PX :: 4
@@ -304,11 +314,9 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Text_Edit_Draw)(user)
 	s := gs()
 	r := b.rect
-	m := font.metrics(s.fonts, b.font, b.font_size)
-	lh := d.line_h
+	lh, baseline_off := text_edit_line(s.fonts, b.font, b.font_size)
 	text_x0 := r.min.x + d.gutter + d.pad - d.scroll.x
 	top := r.min.y + d.pad - d.scroll.y
-	baseline_off := math.round((lh + m.ascent - m.descent) * 0.5)
 
 	if d.gutter > 0 {
 		draw.rect(dc, {r.min, {r.min.x + d.gutter, r.max.y}}, d.gutter_bg)
@@ -485,8 +493,8 @@ text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: 
 		pad := b.text_pad
 		mono := state_text_face(s, .Mono)
 		if mono == 0 { mono = b.font }
-		m := font.metrics(s.fonts, b.font, b.font_size)
-		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT), paste = o.paste == {} ? Paste_Kinds{.Text} : o.paste, paste_decode = o.paste_decode}
+		lh, _ := text_edit_line(s.fonts, b.font, b.font_size)
+		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = lh, paste = o.paste == {} ? Paste_Kinds{.Text} : o.paste, paste_decode = o.paste_decode}
 		if o.line_numbers {
 			digits := len(fmt_int(text_edit_line_count(a)))
 			e.gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)

@@ -123,7 +123,6 @@ Mark_Editor :: struct {
 
 	field:        Text_Edit,  // the text being typed
 	field_typing: u32,        // the model's Typing count the field was filled for
-	field_rect:   marks.Box,  // where the field was last built, window pixels
 	field_shown:  bool,
 	menu_due:     bool,       // a right press on a shape: its menu opens at menu_at in the next build
 	menu_at:      Vec2,
@@ -401,7 +400,8 @@ mark_filter_free :: proc(e: ^Mark_Editor, f: ^Mark_Filter) {
 ////////////////////////////////
 // The build
 
-// The tools' keys, labels and icons.
+// The tools' keys, labels and icons. The icons are Lucide's: every bar, button and menu item of the editor names
+// lucide_icons(), as the program's icon font (State.icon_font) may be another set.
 @(private)
 mark_tool_command :: proc(t: marks.Tool) -> Command {
 	// (static: a command's keys outlive the call)
@@ -545,9 +545,10 @@ mark_editor :: proc(id: string, e: ^Mark_Editor) -> (events: Mark_Editor_Events)
 		sig := signal(b)
 		marks.view_place(m, {b.rect.min, b.rect.max})   // (last build's layout: where the pointer was)
 		mark_editor_input(e, s, b, sig)
+		// (in the canvas: laid out against it, after this build's zoom and pan)
+		if parent(b) { mark_text_field(e, em) }
 		mark_end_bar(e, id, em)
 	}
-	mark_text_field(e, em)
 	mark_shape_menu(e)
 	mark_filters_want(e)
 	if m.doc.edits != e.edits_seen {
@@ -689,7 +690,7 @@ mark_tools_bar :: proc(e: ^Mark_Editor, id: string, em: f32) {
 			if toolbar_group("tools", {title = i18n.tr("Tools")}) {
 				for t in marks.Tool {
 					if t not_in e.tools { continue }
-					if toolbar_tool(fmt.tprintf("mark_tool_%d", int(t)), {command = mark_tool_command(t), on = m.tool == t}) { marks.tool_set(m, t) }
+					if toolbar_tool(fmt.tprintf("mark_tool_%d", int(t)), {command = mark_tool_command(t), on = m.tool == t, icon_font = lucide_icons()}) { marks.tool_set(m, t) }
 				}
 			}
 			mark_properties(e, side)
@@ -724,7 +725,7 @@ mark_properties :: proc(e: ^Mark_Editor, side: f32) {
 				if row(cross = .Center, id = "###mark_fills") {
 					_, filled := marks.fill_of(style)
 					next({width = px(math.round(side * 0.7)), height = px(math.round(side * 0.7))})
-					if button("mark_fill_none", icon = lucide.BAN, o = {tip = i18n.tr("No fill"), face = !filled ? .Toggled : .Ghost}).clicked { style.fill_color = 0 }
+					if button("mark_fill_none", icon = lucide.BAN, o = {tip = i18n.tr("No fill"), face = !filled ? .Toggled : .Ghost, icon_font = lucide_icons()}).clicked { style.fill_color = 0 }
 					for rgb, i in e.colors {
 						spacer(px(math.round(side * MARK_SWATCH_GAP)))
 						if mark_swatch(fmt.tprintf("###mark_fill_%d", i), rgb, filled && style.fill_color & 0xFFFFFF == rgb, side) { style.fill_color = marks.OPAQUE | rgb }
@@ -765,7 +766,7 @@ mark_properties :: proc(e: ^Mark_Editor, side: f32) {
 		if .Bold in props {
 			if toolbar_control("mark_bold", {label = i18n.tr("Bold")}) {
 				next({width = px(side), height = px(side)})
-				if button("mark_bold", icon = lucide.BOLD, o = {tip = i18n.tr("Bold"), face = style.bold ? .Toggled : .Ghost}).clicked { style.bold = !style.bold }
+				if button("mark_bold", icon = lucide.BOLD, o = {tip = i18n.tr("Bold"), face = style.bold ? .Toggled : .Ghost, icon_font = lucide_icons()}).clicked { style.bold = !style.bold }
 			}
 		}
 		if .Text_Look in props {
@@ -824,26 +825,29 @@ mark_end_bar :: proc(e: ^Mark_Editor, id: string, em: f32) {
 		if toolbar(fmt.tprintf("%s_end", id), {overflow = .Wrap, align = .Center}) {
 			if toolbar_group("edit", {title = i18n.tr("Edit")}) {
 				for a in ([?]Mark_Action{.Undo, .Redo, .Delete, .Remove_Crop}) {
-					if toolbar_tool(fmt.tprintf("mark_act_%d", int(a)), {command = mark_command(a), disabled = !mark_action_enabled(e, a)}) { mark_action(e, a) }
+					if toolbar_tool(fmt.tprintf("mark_act_%d", int(a)), {command = mark_command(a), disabled = !mark_action_enabled(e, a), icon_font = lucide_icons()}) { mark_action(e, a) }
 				}
 			}
 			if toolbar_group("zoom", {title = i18n.tr("Zoom"), separator = true}) {
-				if toolbar_tool("mark_zoom_out", {command = mark_command(.Zoom_Out)}) { mark_action(e, .Zoom_Out) }
-				if toolbar_tool("mark_zoom_actual", {label = fmt.tprintf("%d %%", int(math.round(e.model.view.zoom * 100))), words = true, tip = i18n.tr("Actual size"), command = mark_command(.Zoom_Actual)}) { mark_action(e, .Zoom_Actual) }
-				if toolbar_tool("mark_zoom_in", {command = mark_command(.Zoom_In)}) { mark_action(e, .Zoom_In) }
-				if toolbar_tool("mark_zoom_fit", {command = mark_command(.Zoom_Fit)}) { mark_action(e, .Zoom_Fit) }
+				if toolbar_tool("mark_zoom_out", {command = mark_command(.Zoom_Out), icon_font = lucide_icons()}) { mark_action(e, .Zoom_Out) }
+				if toolbar_tool("mark_zoom_actual", {label = fmt.tprintf("%d %%", int(math.round(e.model.view.zoom * 100))), words = true, tip = i18n.tr("Actual size"), command = mark_command(.Zoom_Actual), icon_font = lucide_icons()}) { mark_action(e, .Zoom_Actual) }
+				if toolbar_tool("mark_zoom_in", {command = mark_command(.Zoom_In), icon_font = lucide_icons()}) { mark_action(e, .Zoom_In) }
+				if toolbar_tool("mark_zoom_fit", {command = mark_command(.Zoom_Fit), icon_font = lucide_icons()}) { mark_action(e, .Zoom_Fit) }
 			}
 			if !e.hide_end_buttons {
 				if toolbar_group("end", {pinned = true}) {
-					if toolbar_tool("mark_cancel", {label = i18n.tr("Cancel"), words = true, command = mark_command(.Cancel), disabled = e.flat != nil}) { mark_action(e, .Cancel) }
-					if toolbar_tool("mark_done", {label = i18n.tr("Done"), words = true, intent = .Primary, command = mark_command(.Done), disabled = e.flat != nil}) { mark_action(e, .Done) }
+					if toolbar_tool("mark_cancel", {label = i18n.tr("Cancel"), words = true, command = mark_command(.Cancel), disabled = e.flat != nil, icon_font = lucide_icons()}) { mark_action(e, .Cancel) }
+					if toolbar_tool("mark_done", {label = i18n.tr("Done"), words = true, intent = .Primary, command = mark_command(.Done), disabled = e.flat != nil, icon_font = lucide_icons()}) { mark_action(e, .Done) }
 				}
 			}
 		}
 	}
 }
 
-// The field of the text being typed, over the canvas where the text is.
+// The text field's least width near the canvas's edge, in ems: room for a few letters and the caret.
+@(private = "file") MARK_FIELD_LEAST_EM :: 4
+
+// The field of the text being typed, a child of the canvas where the text is: its letters on the text's letters.
 @(private = "file")
 mark_text_field :: proc(e: ^Mark_Editor, em: f32) {
 	m := &e.model
@@ -862,7 +866,7 @@ mark_text_field :: proc(e: ^Mark_Editor, em: f32) {
 	}
 	size := max(marks.text_px(&m.doc, sh) * m.view.zoom, em * 0.8)
 	face := mark_face(e, sh.style.bold)
-	at := marks.to_window(m.view, sh.a)
+	at := marks.to_canvas(m.view, sh.a)
 	pad := math.round(em * SPACE_1)
 	// (as wide as its longest line, as tall as its lines: the field grows with what is typed; a pass over the text
 	// typed, not over the document)
@@ -878,11 +882,32 @@ mark_text_field :: proc(e: ^Mark_Editor, em: f32) {
 		lines += 1
 	}
 	w := max(text_w + 2 * pad + size, em * 8)
-	lh := e.fonts != nil ? math.round(font.metrics(e.fonts, face, size).line_height * 1.15) : size * 1.3
+	// (its first baseline on the text's: the field's line is taller than the text's, and centres its letters in it)
+	lh, rise := size * 1.3, f32(0)
+	if e.fonts != nil {
+		baseline: f32
+		lh, baseline = text_edit_line(e.fonts, face, size)
+		rise = baseline - font.metrics(e.fonts, face, size).ascent
+	}
 	hgt := f32(lines) * lh + 2 * pad
-	e.field_rect = {at - pad, at - pad + {w, hgt}}
-	next({fixed_x = at.x - pad, fixed_y = at.y - pad, width = px(w), height = px(hgt), font = face, font_size = size, text_pad = pad, fg = draw.hex(sh.style.color << 8 | 0xFF)})
-	res := text_edit("###mark_text", &e.field, {placeholder = i18n.tr("Text"), own_menu = true, enter_commits = true, auto_height = true})
+	// (the canvas clips its children: near its right or bottom edge the field stops there and scrolls, its caret seen.
+	// Its letters stay on the text's until then; a field with less room than MARK_FIELD_LEAST_EM moves back inside)
+	x, y := at.x - pad, at.y - pad - rise
+	canvas := m.view.canvas.max - m.view.canvas.min
+	max_lines := 0
+	if canvas.x > 0 && canvas.y > 0 {
+		cut := min(w, max(canvas.x - x, em * MARK_FIELD_LEAST_EM))
+		// (cut, the field scrolls sideways: its bar takes a height under the lines, as text_edit's auto_height adds it)
+		s := gs()
+		bar := cut < w && !s.scrollbar_overlay ? scrollbar_thickness(s) : 0
+		w = cut
+		x = min(x, canvas.x - w)
+		max_lines = max(int((canvas.y - y - 2 * pad - bar) / lh), 1)
+		hgt = min(hgt, f32(max_lines) * lh + 2 * pad)
+		y = min(y, canvas.y - hgt - bar)
+	}
+	next({fixed_x = x, fixed_y = y, width = px(w), height = px(hgt), font = face, font_size = size, text_pad = pad, fg = draw.hex(sh.style.color << 8 | 0xFF)})
+	res := text_edit("###mark_text", &e.field, {placeholder = i18n.tr("Text"), own_menu = true, enter_commits = true, auto_height = true, max_lines = max_lines})
 	if fresh || !e.field_shown { set_focus(res.box.key) }
 	e.field_shown = true
 	// (what was typed in the frame of Enter is kept with it)
@@ -904,7 +929,7 @@ mark_shape_menu :: proc(e: ^Mark_Editor) {
 	if menu(MARK_MENU) {
 		for a in ([?]Mark_Action{.Duplicate, .Delete, .Front, .Forward, .Backward, .Back}) {
 			c := mark_command(a)
-			if menu_item(i18n.tr(c.label), command_shortcut(c), icon = c.icon, disabled = !mark_action_enabled(e, a)).clicked { mark_action(e, a) }
+			if menu_item(i18n.tr(c.label), command_shortcut(c), icon = c.icon, disabled = !mark_action_enabled(e, a), icon_font = lucide_icons()).clicked { mark_action(e, a) }
 		}
 	}
 }

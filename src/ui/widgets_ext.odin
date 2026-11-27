@@ -1125,7 +1125,7 @@ repeat_fires_every :: proc(s: ^State, key: Key, pressed, held, on: bool, delay_m
 @(private = "file") SEGMENTED_RATE :: 40
 
 // key_radius: the corners of the chosen segment's key, and of each segment's hover and focus, which have its place and shape
-Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius, key_radius: f32 }
+Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius, key_radius: f32, none: bool }   // none: no key
 
 // machined: the key's face toward the accent, its least radius
 @(private = "file") SEG_KEY_ACCENT :: 0.1
@@ -1147,17 +1147,19 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		iw := ((r.max.x - r.min.x) - 2 * pad) / f32(d.n)
 		for i in 1 ..< d.n {
 			// (none beside the key: it covers its edges)
-			if f32(i) > d.t - 0.5 && f32(i) < d.t + 1.5 { continue }
+			if !d.none && f32(i) > d.t - 0.5 && f32(i) < d.t + 1.5 { continue }
 			gx := math.round(r.min.x + pad + f32(i) * iw)
 			gh := math.round(h * SEG_GROOVE_HEIGHT * 0.5)
 			cy := math.round((r.min.y + r.max.y) * 0.5)
 			machined_groove(dc, {gx, cy - gh}, {gx, cy + gh}, vertical = true)
 		}
+		if d.none { return }
 		x := math.round(r.min.x + pad + d.t * iw)
 		key := Rect{{x, r.min.y + pad}, {math.round(x + iw), r.max.y - pad}}
 		machined_bevel(dc, key, d.key_radius, draw.mix(d.face, d.accent, SEG_KEY_ACCENT), 0, 0, glow = d.accent)
 		return
 	}
+	if d.none { return }
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
 	x := r.min.x + d.pad + d.t * iw
 	pill := Rect{{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}
@@ -1204,7 +1206,8 @@ segmented_width :: proc(labels: []string) -> f32 {
 	return f32(len(labels)) * segment + 2 * math.round(em * 0.25)   // (seg_draw's pad on each side)
 }
 
-// Sliding-pill segmented control. Returns true when the selection changed. `tips`: a tooltip per segment, shown when the
+// Sliding-pill segmented control. Returns true when the selection changed. A choice outside the labels (-1) is none:
+// no segment shows chosen until a click or the keys choose one. `tips`: a tooltip per segment, shown when the
 // pointer rests on it ("" or a missing entry: none); a screen reader reads it as the segment's description. `look`
 // .Text: words in a line, as wide as they are. With no width given (next), it is segmented_width wide: no label is cut,
 // in any language; a width given is kept. With no width given, a row too narrow for its labels makes it a dropdown of the
@@ -1224,7 +1227,11 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 		}
 	}
 	em := font_size()
-	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), f32(selected^), SEGMENTED_RATE, f32(selected^))
+	// (a choice outside the labels is none: no key. Its slide stays on a segment, so a first choice slides from there,
+	// not from past the control's edge, where the key was drawn over what stands before it)
+	none := selected^ < 0 || selected^ >= len(labels)
+	at := f32(clamp(selected^, 0, max(len(labels) - 1, 0)))
+	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), at, SEGMENTED_RATE, at)
 	accent := color("accent")
 	mach := machined()
 	text_on, text_off: Color
@@ -1241,7 +1248,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 		// (machined: the box draws nothing of its own, seg_draw carves the slot)
 		b := build_box(mach ? {} : {.Draw_Background, .Draw_Border, .Sunken}, id)
 		d := frame_new(Seg_Draw)
-		d.t, d.n, d.accent, d.pad = t, len(labels), accent, math.round(em * 0.25)   // (whole pixels: the key and the labels share it)
+		d.t, d.n, d.accent, d.pad, d.none = t, len(labels), accent, math.round(em * 0.25), none   // (whole pixels: the key and the labels share it)
 		d.face, d.well = color("background"), color("well")
 		d.radius = max(b.radius, rad(em * 0.4))
 		d.key_radius = seg_key_radius(b.radius, d.radius, d.pad, mach)
