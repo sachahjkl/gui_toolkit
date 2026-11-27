@@ -26,6 +26,7 @@ Strip_Options :: struct {
 	axes: bit_set[Axis],   // the axes it scrolls along: {.X} (also {}), {.Y}, or {.X, .Y} (a block of choices)
 	step: Strip_Step,
 	fade: f32,             // how far the content fades out beyond an arrow, ems (0: STRIP_FADE_EM)
+	edge: f32,             // frame px along the strip's bottom (its right side for {.Y}) its arrows leave showing: a line drawn there under them (a Folder's)
 }
 
 // How far the content fades out beyond an arrow, ems: the choice that comes out from under it does not start hard.
@@ -49,6 +50,7 @@ Strip_Build :: struct {
 	shown:       [Axis][2]bool,   // the arrows that show, by the layout drawn (strips_place)
 	arrows:      [Axis][2]Key,    // their boxes, all built: strips_place puts each on its edge, or hides it
 	arrow, gap, fade: f32,       // an arrow's thickness, the clear gap beyond it, the fade beyond that
+	edge:        f32,             // Strip_Options.edge
 	step:        Strip_Step,
 	reveal:      Key,             // a choice to bring into view this build (strip_reveal)
 }
@@ -84,7 +86,7 @@ strip :: proc(id: string, o := Strip_Options{}) -> bool {
 	next({width = size(outer, .X, .X in axes), height = size(outer, .Y, .Y in axes), axis = lay, cross = cross})
 	view := build_box(flags, "###strip_view")
 	_ = signal(view)
-	sb := Strip_Build{outer = outer.key, view = view.key, axes = axes, step = o.step}
+	sb := Strip_Build{outer = outer.key, view = view.key, axes = axes, step = o.step, edge = max(o.edge, 0)}
 	sb.arrow = math.round(em * STRIP_ARROW_EM)
 	sb.gap = math.round(em * STRIP_GAP_EM)
 	sb.fade = math.round((o.fade > 0 ? o.fade : STRIP_FADE_EM) * em)
@@ -207,7 +209,8 @@ strip_side :: proc(a: Axis, end: int) -> (glyph, name, side: string) {
 }
 
 // Where a side's arrow is in the strip `r` (window pixels): across the whole strip, short of the other axis's arrows'
-// corners when it scrolls both ways, as thick as an arrow along `a`.
+// corners when it scrolls both ways and of the strip's edge (Strip_Options.edge), as thick as an arrow along `a`. An
+// opaque arrow over the strip's bottom row covered the line drawn there: a cut in a Folder's line, in a tab_panel's frame.
 @(private = "file")
 strip_arrow_rect :: proc(sb: Strip_Build, r: Rect, a: Axis, end: int) -> (q: Rect) {
 	i, j := int(a), 1 - int(a)
@@ -215,7 +218,7 @@ strip_arrow_rect :: proc(sb: Strip_Build, r: Rect, a: Axis, end: int) -> (q: Rec
 	q.min[i] = end == 1 ? math.round(r.max[i] - sb.arrow) : r.min[i]
 	q.max[i] = q.min[i] + sb.arrow
 	q.min[j] = r.min[j] + inset
-	q.max[j] = max(q.min[j], r.max[j] - inset)
+	q.max[j] = max(q.min[j], r.max[j] - inset - sb.edge)
 	return
 }
 

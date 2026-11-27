@@ -920,7 +920,7 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 	// its tabs and buttons take their own). A clickable box with the bar's face was drawn as a key in a finish with a
 	// relief: the bar's sheen raised the whole strip (Tower's bottom terminal, 0.366).
 	// (its tabs in the space's style, on the shown view's surface: View_Dock_Options.tab_style, View_Options.surface)
-	_ = tabs_over(sp.defaults.tab_style.? or_else .Underline, shown.kind.o.surface)
+	tab_scope_push(sp.defaults.tab_style.? or_else .Underline, shown.kind.o.surface)
 	defer tabs_over_end()
 	next({width = fill(), height = px(math.round(DOCK_TAB_EM * em)), axis = .X, cross = .Center})
 	ground: ^Box
@@ -938,7 +938,8 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 		if bs.right_clicked { menu_open(view_menu_id(shown), mouse_pos(), bar.key) }
 	}
 	// the tabs, as every row of tabs of the toolkit (tab_box), on a strip: too many for the stack, they scroll with arrows
-	if strip("###view_tab_strip") {
+	// (a Folder's bottom line runs along the bar: the overflow arrows leave it showing)
+	if strip("###view_tab_strip", {edge = tab_style_now() == .Folder ? px1() : 0}) {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
 		tab_strip_start()
 		for r in list {
@@ -949,7 +950,8 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 			if parent(tb) { if tab_body() {
 				if !on { push_tags("weak") }
 				words := fmt.tprintf("%s###view_tab_title", title)
-				next({width = tab_title_width(words, em * DOCK_TAB_PAD_EM * 2, em * DOCK_TAB_PAD_EM), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
+				// (its words a dock tab's pad from its sides: the first one's over the panel's first column, dock_content_inset)
+				next({width = tab_title_width(words, 0, em * DOCK_TAB_PAD_EM), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
 				build_box({.Draw_Text}, words)
 				if !on { pop_tags() }
 			} }
@@ -984,7 +986,7 @@ view_stack_tab_input :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, 
 // The least room a stack's strip keeps for its tabs beside the shown view's moves and the stack's own buttons (em): a
 // tab cut to its least (its words' TAB_TITLE_LEAST_EM and its pads), an arrow of its strip and the "+". Less, the
 // moves and the window-sized buttons pushed the tabs' strip past the stack, and its Close past the window's edge.
-@(private = "file") VIEW_STRIP_TABS_LEAST_EM :: TAB_TITLE_LEAST_EM + 6 * DOCK_TAB_PAD_EM + 1.6 + VIEW_DETACH_EM
+@(private = "file") VIEW_STRIP_TABS_LEAST_EM :: TAB_TITLE_LEAST_EM + 2 * DOCK_TAB_PAD_EM + 1.6 + VIEW_DETACH_EM
 
 // The rest of a stack's strip after its tabs and its "+": the shown view's moves, the slot of its program's tools, the
 // stack's own buttons at the right end.
@@ -1283,7 +1285,11 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 	v := View{id = k.id, instance = r.instance, presentation = .Panel, place = r.machine.place, shown = true, rail = rail, record = r}
 	keys_root := s.view_keys_root
 	s.view_keys_root = body.key
+	// (its content in its stack's tabs' style and surface, as a dock_panel's: dock_content_inset lines it up with its
+	// tab's words, a row of tabs in it frames its ground)
+	tab_scope_push(sp.defaults.tab_style.? or_else .Underline, k.o.surface)
 	k.build(&v, r.data)
+	tabs_over_end()
 	s.view_keys_root = keys_root
 	pop_parent()
 	inside := view_focus_inside(s, body.key)

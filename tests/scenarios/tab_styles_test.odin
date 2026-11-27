@@ -6,6 +6,7 @@ package scenarios_test
 // ui.tabs_ex tells a program (a right click, the Menu key, a middle click; a tab's own content).
 
 import "core:fmt"
+import "core:math"
 import "core:testing"
 import "gt:platform"
 import "gt:testkit/session"
@@ -21,6 +22,7 @@ Style_Run :: struct {
 	sel:     int,
 	menu:    int,
 	menu_at: [2]f32,
+	menu_keyboard: bool,
 	closed:  int,
 	custom:  bool,
 	calls:   int,   // the content callback's calls in the last build
@@ -53,7 +55,7 @@ style_build :: proc(s: ^session.Session) {
 	}
 	ui.next({width = ui.px(400), height = ui.px(200)})
 	if res, ok := ui.tab_panel("###panel", STYLE_TABS[:], nil, &r.sel, o); ok {
-		if res.menu >= 0 { r.menu, r.menu_at = res.menu, res.menu_at }
+		if res.menu >= 0 { r.menu, r.menu_at, r.menu_keyboard = res.menu, res.menu_at, res.menu_keyboard }
 		if res.closed >= 0 { r.closed = res.closed }
 		ui.spacer(ui.px(10))
 	}
@@ -168,8 +170,8 @@ a_header_tab_is_a_hole_in_its_band :: proc(t: ^testing.T) { unwatched.run(t, pro
 	testing.expectf(t, session.near(session.pixel(img, int(session.center(c).x), bottom), ground, 4), "no line under the band")
 }) }
 
-// A right click on a tab asks for its menu where the pointer is and chooses nothing; the Menu key on the focused tab
-// asks for its menu under it; a middle click asks to close a tab.
+// A right click on a tab asks for its menu where the pointer is and chooses nothing; the Menu key or Shift+F10 on the
+// focused tab asks for its menu under it, from the keyboard; a middle click asks to close a tab.
 @(test)
 a_tab_says_its_menu_and_its_close :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := Style_Run{style = .Folder}
@@ -180,14 +182,22 @@ a_tab_says_its_menu_and_its_close :: proc(t: ^testing.T) { unwatched.run(t, proc
 	session.frames(s, 2)
 	testing.expect_value(t, r.menu, 1)
 	testing.expectf(t, abs(r.menu_at.x - at.x) < 1 && abs(r.menu_at.y - at.y) < 1, "the menu at the pointer: %v, the click %v", r.menu_at, at)
+	testing.expect(t, !r.menu_keyboard, "a right click's menu is the pointer's")
 	testing.expect_value(t, r.sel, 0)
 	r.menu = -1
 	session.click(s, "panel_0")
 	session.key(s, platform.Key.Menu)
 	session.frames(s, 2)
 	testing.expect_value(t, r.menu, 0)
+	testing.expect(t, r.menu_keyboard, "the Menu key's menu is the keyboard's: its first item lit")
 	a := session.get(s, "panel_0")
 	testing.expectf(t, r.menu_at.y >= a.rect.max.y - 1, "the keyboard's menu under the tab: %v, the tab %v", r.menu_at, a.rect)
+	r.menu, r.menu_keyboard = -1, false
+	session.key(s, platform.Key.F10, {.Shift})
+	session.frames(s, 2)
+	testing.expect_value(t, r.menu, 0)
+	testing.expect(t, r.menu_keyboard, "Shift+F10 asks the menu as the Menu key does")
+	testing.expect_value(t, r.sel, 0)
 	session.click_at(s, session.center(session.get(s, "panel_2")), platform.Mouse_Button.Middle)
 	session.frames(s, 2)
 	testing.expect_value(t, r.closed, 2)
@@ -211,4 +221,110 @@ a_tab_s_own_content_is_built_in_it :: proc(t: ^testing.T) { unwatched.run(t, pro
 	session.frames(s, 2)
 	testing.expect_value(t, r.sel, 2)
 	testing.expect_value(t, r.chosen, 2)
+}) }
+
+// The keyboard's focus on the chosen tab of `st`: a ring inside the strip, clear of its edges, so the accent bar along
+// the strip's bottom (Underline) or the hole's top (Header) still shows. Round the whole box, the ring covered the bar.
+@(private = "file")
+focus_keeps_the_bar :: proc(t: ^testing.T, r: ^Style_Run) {
+	s := style_start(t, r)
+	before := session.capture(s)
+	session.key(s, platform.Key.Tab)
+	session.wait_idle(s)
+	after := session.capture(s)
+	session.save_png(s, fmt.tprintf("focus-%v.png", r.style))
+	b := session.get(s, "panel_1")
+	x0, x1 := int(b.rect.min.x), int(b.rect.max.x)
+	y0, y1 := int(b.rect.min.y), int(b.rect.max.y)
+	changed := 0
+	for y in y0 ..< y1 { for x in x0 ..< x1 { if !session.near(session.pixel(before, x, y), session.pixel(after, x, y), 8) { changed += 1 } } }
+	testing.expectf(t, changed > 2 * (x1 - x0), "the focus shows: %d pixels changed", changed)
+	for x in x0 ..< x1 {
+		for y in ([?]int{y0, y0 + 1, y1 - 2, y1 - 1}) {
+			p, q := session.pixel(before, x, y), session.pixel(after, x, y)
+			testing.expectf(t, session.near(p, q, 8), "the strip's edge rows keep their pixels (the bar) at %d,%d: %v, before %v", x, y, q, p)
+		}
+	}
+}
+
+@(test)
+an_underline_s_focus_ring_keeps_its_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Style_Run{style = .Underline, sel = 1}
+	focus_keeps_the_bar(t, &r)
+}) }
+
+@(test)
+a_header_s_focus_ring_keeps_its_accent :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Style_Run{style = .Header, sel = 1}
+	focus_keeps_the_bar(t, &r)
+}) }
+
+// A Folder's chosen tab at fractional scales: its line runs on the frame's top edge rows (the same rows beside each foot
+// and at the frame's far end), and no edge row under the tab. A line a row off the frame's edge was a step at a foot.
+// At 175 % the tabs overflow and the strip's arrow stands at the far end: it leaves the frame's edge showing (an opaque
+// arrow the strip's height cut it).
+@(test)
+a_folder_s_line_is_its_frame_s_edge_at_every_scale :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for dpi in ([?]f32{1.25, 1.5, 1.75}) {
+		r := Style_Run{style = .Folder, sel = 1, menu = -1, closed = -1}
+		s := session.start(t, {size = {600, 520}, user = &r, build = style_build, dpi_scale = dpi})
+		session.move(s, {595, 515})
+		session.wait_idle(s)
+		img := session.capture(s)
+		session.save_png(s, fmt.tprintf("folder-%v.png", dpi))
+		strip := session.get(s, "tab_panel_strip")
+		frame := strip.parent
+		b := session.get(s, "panel_1")
+		far := int(frame.rect.max.x) - 20
+		edge := session.pixel(img, far, int(frame.rect.max.y) - 1)
+		bottom := int(math.round(strip.rect.max.y))
+		rows :: proc(img: session.Image, x, from, to: int, edge: session.Color) -> (set: u32) {
+			for y in from ..< to { if session.near(session.pixel(img, x, y), edge, 10) { set |= 1 << u32(y - from) } }
+			return
+		}
+		from, to := bottom - 6, bottom + 6
+		want := rows(img, far, from, to, edge)
+		testing.expectf(t, want != 0, "%v: the frame's top edge at its far end", dpi)
+		foot := int(math.ceil(f32(b.rect.max.y - b.rect.min.y)))   // (well past a foot: the straight line)
+		for x in ([?]int{int(b.rect.min.x) - foot, int(b.rect.max.x) + foot}) {
+			got := rows(img, x, from, to, edge)
+			testing.expectf(t, got == want, "%v: beside a foot at x %d the line's rows %b, the frame's edge %b", dpi, x, got, want)
+		}
+		under := rows(img, int(session.center(b).x), from, to, edge)
+		testing.expectf(t, under == 0, "%v: no edge under the chosen tab: rows %b", dpi, under)
+	}
+}) }
+
+@(private = "file")
+Scope_Run :: struct { sel: int, inside_panel, after_panel, after_tabs: ui.Tab_Style, ground_inside: ui.Color }
+
+// tabs_over scopes nest and close where they are closed: a tab_panel's lasts over its page (a row of tabs there frames
+// its surface) and ends with it; ui.tabs_ex's ends with the strip; the scope around both is still in force after them.
+// (A scope opened with tabs_over's deferred end inside the toolkit closed when its procedure returned, and its explicit
+// end then closed the scope around it.)
+@(test)
+tabs_over_scopes_nest :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r: Scope_Run
+	build :: proc(s: ^session.Session) {
+		r := (^Scope_Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+		if !ui.column(id = "###page") { return }
+		if ui.tabs_over(.Header, {ground = STYLE_GROUND}) {
+			ui.next({width = ui.px(400), height = ui.px(160)})
+			if _, ok := ui.tab_panel("###panel", STYLE_TABS[:], nil, &r.sel, {surface = {ground = {0.3, 0.1, 0.1, 1}}, tabs = {style = .Segmented}}); ok {
+				r.inside_panel = ui.tab_style_now()
+				r.ground_inside = ui.tab_surface_now().ground
+			}
+			r.after_panel = ui.tab_style_now()
+			_ = ui.tabs_ex("###strip", STYLE_TABS[:], nil, &r.sel, {style = .Underline})
+			r.after_tabs = ui.tab_style_now()
+		}
+	}
+	s := session.start(t, {size = {480, 280}, user = &r, build = build})
+	session.wait_idle(s)
+	testing.expect_value(t, r.inside_panel, ui.Tab_Style.Segmented)
+	testing.expect_value(t, r.ground_inside, ui.Color{0.3, 0.1, 0.1, 1})
+	testing.expect_value(t, r.after_panel, ui.Tab_Style.Header)
+	testing.expect_value(t, r.after_tabs, ui.Tab_Style.Header)
+	testing.expect_value(t, ui.tab_style_now(), ui.Tab_Style.Folder)
 }) }

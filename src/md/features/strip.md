@@ -50,6 +50,8 @@ the axis, a side is an axis and an end. Refused: a vertical strip as a second wi
   default). Before, the arrow stood on the fade itself: the fade starts half-seen at the edge, and the words under the
   arrow showed glued to its chevron ("log>"). It takes no room from the layout: an arrow that took room when it came
   would shift every choice by its width each time the view left the start, under the pointer about to click.
+  `Strip_Options.edge` keeps it off a line along the strip's bottom (a Folder's, `tab_panel`'s frame): as tall as the
+  strip, the opaque plate cut that line where the tabs overflowed.
 - **A clear gap beyond the arrow** (`STRIP_GAP_EM`, 0.3 em): the band held clear is the arrow and that gap, and the fade
   begins past it. A choice cut at the arrow showed, glued to it, the first pixels of its own drawing (in opencode
   native, the tail of a raised tab and its "⌄"), faint but seen at the start of the fade. Everything the view's content

@@ -67,7 +67,7 @@ column of rows, unless `next` gives another axis.
 
 | Call | What it does |
 |---|---|
-| `if ui.strip(id, o) { choices }` | A strip. `Strip_Options`: `axes` (`{.X}`, the default, also `{}`; `{.Y}`; `{.X, .Y}`), `step` (`.Item`, the default, or `.Page`), `fade` (how far the content fades out beyond an arrow, ems; 0: `ui.STRIP_FADE_EM`, 1). |
+| `if ui.strip(id, o) { choices }` | A strip. `Strip_Options`: `axes` (`{.X}`, the default, also `{}`; `{.Y}`; `{.X, .Y}`), `step` (`.Item`, the default, or `.Page`), `fade` (how far the content fades out beyond an arrow, ems; 0: `ui.STRIP_FADE_EM`, 1), `edge` (frame px along the strip's bottom, its right side for `{.Y}`, that its arrows leave showing: a line drawn there, as `ui.tabs` draws its Folder's). |
 | `ui.strip_reveal(choice)` | In the strip's block, at each build: the chosen choice. Each time it changes, and in the strip's first frame, it is in view along each axis, clear of the arrows and the fade, in that same frame (no jump a frame later). |
 | `ui.strip_view(id)` | The box that holds the choices of the strip built last with `id` in the current parent: its role for a screen reader goes there (a tab list's), and a test reads its offset (`view_off`) and its limit (`ui.view_limit(box, axis)`). |
 | `.Strip_Wheel` | The box flag a strip's view has: it takes the wheel only while it overflows the way the wheel scrolls it, never with Ctrl; on one axis every wheel scrolls along it. |

@@ -47,8 +47,9 @@ colours, two borders.
   surface toward the page, the chrome around it: a card lighter than the page gets a darker band, a terminal darker
   than it a lighter one. The track (Segmented) is a step lighter than the surface on a dark palette (darker vanished on
   a near black), darker on a light one; the chosen key lighter again, white on a light palette.
-- **Colours are read in the build** (`Tab_Draw`, `Tab_Panel_Draw`): a draw has no tags, and `color` there did not give
-  the page.
+- **Colours are read in the build, once per scope** (`Tab_Scope`, `Tab_Draw`, `Tab_Panel_Draw`): a draw has no tags,
+  and `color` there did not give the page. `tabs_over` resolves the surface, the strip's ground and the accent when it
+  opens; a tab copies them, so a strip of many tabs does not read the theme for each.
 
 ## The four styles
 
@@ -59,7 +60,9 @@ colours, two borders.
 - **Underline.** The strip stands on the surface; no line, no border between them. The chosen tab: its words in the
   text's colour over a 2 px accent bar at the strip's bottom (a `mark`, the focused panel's, colours the bar); the
   others weak, a rounded fill under the pointer. The first tab at the edge: its words over the panel's first column
-  (`dock_content_inset`).
+  (`dock_content_inset`). A stack of views pads its tabs' words as a dock does (`DOCK_TAB_PAD_EM`): twice that stood
+  its first words 2.4 em in, far right of its content. The keyboard's ring goes round the hover's shape, inside the
+  strip (Header too): round the tab's box it covered the accent bar and read as a box.
 - **Segmented.** A track a step off the surface, the chosen key on it with a faint edge. Each tab paints its part of
   the track, its ends rounded at the first and the last; the strip's clip lets the track's pad out. The owner: "the
   pills less, but they can serve": it is for small panels that switch modes, not for a dock.
@@ -70,13 +73,18 @@ colours, two borders.
 ## Subtle points
 
 - `tabs_over` is a scope: `tab_face`, `tab_body`, `tab_strip_start` and `tab_strip_look` read the innermost. A
-  `dock_panel` opens its stack's, so `dock_content_inset` inside it gives the stack's inset; `ui.tabs_ex` opens its
+  `dock_panel` and a view's panel open their stack's, so `dock_content_inset` inside them gives the stack's inset (a
+  view's content read a Folder's, 8 px off its Underline tab) and a row of tabs in them frames their surface; `ui.tabs_ex` opens its
   own style on the surface of the scope around it (a `tab_panel`'s).
 - A Folder's frame draws its outline before the tabs (the chosen tab covers the line under it and strokes its own
   outline onto it, the same pixels, opaque). The other styles draw their outline after the tabs, over what reaches a
   rounded corner, inside a rounded clip.
 - `tabs_ex` draws a Folder's line under its strip unless `framed` (a `tab_panel` owns it); the other styles stand on
-  what is under them, and a line there was the double border.
+  what is under them, and a line there was the double border. A Folder's strip asks its arrows to leave that line
+  showing (`Strip_Options.edge`): where the tabs overflowed, an arrow cut the frame.
+- The toolkit opens its scopes with `tab_scope_push` and closes them itself. `tabs_over`'s deferred end runs at the end
+  of the caller's scope even when its result is discarded: `dock_panel`'s scope closed before the panel's content was
+  built, and each explicit end after it closed the scope around it (`tests/scenarios`, `tabs_over_scopes_nest`).
 - The edged finish lit a dock's strip as a window's title where the focus was (`dock_strip_draw`). Gone: a strip on
   its panel's surface is not a caption, and the lit strip drew a band over the panel's colour.
 - A dock keeps each tab's close-button room; under Segmented the key is that wide.
@@ -86,7 +94,9 @@ colours, two borders.
 - **A tab's own content**: `Tabs_Options.content` builds in the tab's body (index, chosen, hot, the box, the label);
   `tab_face` stays public for a strip a program builds itself.
 - **A right click**: `Tabs_Result.menu` is the tab whose menu was asked (a right click, the Menu key, Shift+F10) and
-  `menu_at` where (the pointer, or under the tab); `closed` a middle click. Neither chooses the tab.
+  `menu_at` where (the pointer, or under the tab); `menu_keyboard` says a key asked it, for `menu_open`'s
+  `from_keyboard` (its first item lit, as a dock's tab menu and a tree's); `closed` a middle click. Neither chooses
+  the tab.
 - `Tabs_Options.after` builds after the last tab (a "+"), across the words' height.
 
 ## Refused

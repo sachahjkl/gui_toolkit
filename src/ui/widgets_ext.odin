@@ -1681,9 +1681,10 @@ Tabs_Options :: struct {
 // What happened to a row of tabs this frame.
 Tabs_Result :: struct {
 	changed: bool,
-	menu:    int,    // the tab whose menu was asked (a right click, the Menu key, Shift+F10); -1: none
-	menu_at: Vec2,   // where that menu opens
-	closed:  int,    // the tab a middle click asked to close; -1: none
+	menu:          int,    // the tab whose menu was asked (a right click, the Menu key, Shift+F10); -1: none
+	menu_at:       Vec2,   // where that menu opens
+	menu_keyboard: bool,   // asked from the keyboard: menu_open's from_keyboard (its first item lit)
+	closed:        int,    // the tab a middle click asked to close; -1: none
 }
 
 // ui.tabs in a style (o.style), with a tab's own content, a slot after the tabs, and the signals a program builds its
@@ -1695,9 +1696,10 @@ tabs_ex :: proc(id: string, labels: []string, icons: []string, selected: ^int, o
 	defer res.changed = changed
 	em := font_size()
 	style := o.style.? or_else .Folder
-	_ = tabs_over(style, tab_scope_now().surface)
+	tab_scope_push(style, tab_scope_now().surface)
 	defer tabs_over_end()
-	if strip(id) {
+	// (a Folder's line runs under its strip, its own or a tab_panel's frame: the arrows leave it showing)
+	if strip(id, {edge = style == .Folder ? px1() : 0}) {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
 		// (a Folder: the row's bottom edge a line, out of which the chosen tab rises; a tab_panel's frame draws its own.
 		// The other styles stand on what is under them: a line there was the double border)
@@ -1733,7 +1735,7 @@ tabs_ex :: proc(id: string, labels: []string, icons: []string, selected: ^int, o
 			if sig.focused { on_one = true }
 			if sig.clicked && !on { selected^ = i; changed = true }
 			if sig.right_clicked { res.menu, res.menu_at = i, mouse_pos() }
-			if sig.focused && (key_press(.Menu) || key_press(.F10, {.Shift})) { res.menu, res.menu_at = i, Vec2{b.rect.min.x, b.rect.max.y} }
+			if sig.focused && (key_press(.Menu) || key_press(.F10, {.Shift})) { res.menu, res.menu_at, res.menu_keyboard = i, Vec2{b.rect.min.x, b.rect.max.y}, true }
 			if sig.middle_clicked { res.closed = i }
 			a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
 			if first_tab == nil { first_tab = b }

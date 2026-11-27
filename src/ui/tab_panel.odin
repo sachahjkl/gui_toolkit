@@ -31,7 +31,7 @@ tab_panel :: proc(id: string, labels: []string, icons: []string, selected: ^int,
 	s := gs()
 	em := font_size()
 	st := o.tabs.style.? or_else .Folder
-	_ = tabs_over(st, o.surface)   // (closed by tab_panel_end)
+	tab_scope_push(st, o.surface)   // (closed by tab_panel_end)
 	sf := tab_surface_now()
 	pad := o.pad == 0 ? math.round(CARD_PAD * em) : max(o.pad, 0)
 	rad := o.radius > 0 ? math.round(o.radius * s.scale) : math.round(em * shape_of(.Control) * 1.2)

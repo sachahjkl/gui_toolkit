@@ -50,6 +50,7 @@ Dock :: struct {
 	title_bar:  bool,              // a bar of TITLE_BAR_PX above the frame (a program's title bar)
 	inset:      bool,              // the frame INSET_PX in from every edge of the window (a face at an edge has no rim)
 	long_titles: bool,             // a terminal opened by name has a long title of its own
+	term_inset:  f32,              // ui.dock_content_inset() as the terminal's content read it in its last build
 }
 
 @(private = "file") TITLE_BAR_PX :: 30
@@ -155,6 +156,7 @@ striped_view :: proc(v: ^ui.View, r: ^Dock) {
 @(private = "file")
 term_view :: proc(v: ^ui.View, r: ^Dock) {
 	if r.long_titles && v.instance != "" { ui.view_title(v, fmt.tprintf("The build of %s on the server", v.instance)) }
+	r.term_inset = ui.dock_content_inset()
 	ui.label(fmt.tprintf("The shell %s###term_words", v.instance))
 }
 
@@ -1441,6 +1443,27 @@ what_is_at_a_point :: proc(t: ^testing.T) {
 	testing.expect(t, ui.pointer_on_at(tab, at), "the tab is in front there")
 	testing.expect(t, ui.pointer_on_at(panel, at), "and so is the panel around it")
 	testing.expect(t, !ui.pointer_on_at(tab, OUT), "not elsewhere")
+}
+
+// A stack of views is an Underline, as a dock's: its first tab's words start where its view's content starts, the
+// dock_content_inset() the view reads inside its panel (its stack's style). The words padded twice a dock tab's
+// stood a long way right of the content's first column; read outside its stack's style the inset was a Folder's.
+@(test)
+a_view_s_first_tab_s_words_over_its_content :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "term")
+	panel := wait_built(s, "view_panel_view_term")
+	if panel == nil { return }
+	session.frames(s, 2)
+	tab := built(s, "view_tab_view_term")
+	if tab == nil { testing.expect(t, false, "its tab"); return }
+	words := session.find(s, "view_tab_title", 0, tab)
+	if words == nil { testing.expect(t, false, "its words"); return }
+	pad := math.round(ui.DOCK_TAB_PAD_EM * r.em)
+	testing.expectf(t, abs(r.term_inset - pad) < 0.5, "the inset inside a view of an Underline stack: a tab's pad, %v; got %v", pad, r.term_inset)
+	at := (words.rect.min.x + words.rect.max.x - words.text_dim.x) / 2 - panel.rect.min.x   // (its text, centred in its box)
+	testing.expectf(t, abs(at - r.term_inset) <= 1, "the first tab's words %v from the stack's edge, the content's inset %v", at, r.term_inset)
 }
 
 // tabs_always: a lone terminal has its strip. Its "+" calls new_tab; the new tab comes right after the last one, shown,

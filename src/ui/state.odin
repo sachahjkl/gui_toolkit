@@ -262,6 +262,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	clear(&s.tag_sets); clear(&s.color_memo)
 	clear(&s.disabled_stack); s.disabled_depth = 0
 	clear(&s.tab_stops_off); s.tab_skip = 0
+	s.tab_scope_depth = 0
 	clear(&s.focus_order)
 	clear(&s.acts_next)
 	s.modals_open, s.modals_built = s.modals_built, s.modals_open

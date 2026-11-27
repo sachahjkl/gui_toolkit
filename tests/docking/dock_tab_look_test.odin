@@ -16,7 +16,7 @@ import "gt:ui"
 @(private = "file") LOOK_TITLES := [?]string{"", "Alpha", "Beta", "Gamma"}
 
 @(private = "file")
-Look_App :: struct { dock: ui.Dock, style: Maybe(ui.Tab_Style) }
+Look_App :: struct { dock: ui.Dock, style: Maybe(ui.Tab_Style), inset: f32 }   // (inset: dock_content_inset() in a panel)
 
 @(private = "file")
 look_build :: proc(s: ^session.Session) {
@@ -24,6 +24,7 @@ look_build :: proc(s: ^session.Session) {
 	ui.dock_begin(&app.dock, "###dock", {title = proc(user: rawptr, id: u32) -> string { return LOOK_TITLES[id] }, user = app, close_buttons = true, tab_style = app.style})
 	for p in u32(1) ..< len(LOOK_TITLES) {
 		if ui.dock_panel(&app.dock, p) {
+			if p == 1 { app.inset = ui.dock_content_inset() }
 			ui.spacer(ui.px(40))   // (the body's top rows hold no letter)
 			ui.label(fmt.tprintf("%s content###content", LOOK_TITLES[p]))
 		}
@@ -105,6 +106,9 @@ an_unchosen_tab_has_no_face_and_the_words_sit_in_the_strip :: proc(t: ^testing.T
 	// a panel's content starts where the first tab's words start (dock_content_inset): the tab's pad from the edge
 	stack := app.dock.nodes[ui.dock_leaf_of(&app.dock, 1)].rect.min.x + app.dock.origin.x
 	testing.expect_value(t, words.rect.min.x - stack, math.round(ui.DOCK_TAB_PAD_EM * app.dock.metrics.em))
+	// and the panel's content reads that inset inside its dock_panel (its stack's scope open there, not closed when
+	// dock_panel returned: a Folder's inset, a foot more)
+	testing.expect_value(t, app.inset, words.rect.min.x - stack)
 }
 
 // A panel that names its surface: its body painted with it, the strip on it, the shown tab's bar over it.

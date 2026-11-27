@@ -202,7 +202,7 @@ dock_panel :: proc(d: ^Dock, panel: u32) -> bool {
 	if b == nil || b.last_build != gs().build_index { return false }
 	push_parent(b)
 	// (its content in its stack's tabs' style and surface: dock_content_inset, a strip of its own)
-	_ = tabs_over(dock_tab_style(d), dock_surface(d, panel))
+	tab_scope_push(dock_tab_style(d), dock_surface(d, panel))
 	return true
 }
 
@@ -502,7 +502,7 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	sr := dock_strip_rect(d, leaf)
 	// (the panel shown tells its stack's strip and body the surface it is drawn on)
 	shown_surface := dock_surface(d, d.nodes[leaf].active)
-	_ = tabs_over(dock_tab_style(d), shown_surface)
+	tab_scope_push(dock_tab_style(d), shown_surface)
 	defer tabs_over_end()
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
 	bar: ^Box
@@ -518,7 +518,8 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
 		// (.Fits_Width: its tabs scroll in it, its least is not theirs, or a narrow stack would push its buttons out)
 		if parent(build_box({.Clip, .Fits_Width}, DOCK_TABS_ID)) {
-			if strip(DOCK_TAB_STRIP_ID) {
+			// (a Folder's bottom line runs along the bar: the overflow arrows leave it showing)
+			if strip(DOCK_TAB_STRIP_ID, {edge = tab_style_now() == .Folder ? px1() : 0}) {
 				tab_strip_start()
 				for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
 			}

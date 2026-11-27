@@ -326,14 +326,14 @@ opts.tabs.content = draw_my_tab                       // a tab's own content (ni
 opts.tabs.after = new_tab_button                      // after the last tab: a "+"
 if r, ok := ui.tab_panel("###term", titles, nil, &shown, opts); ok {
 	terminal_view(app)
-	if r.menu >= 0 { ui.menu_open("###tab_menu", r.menu_at, 0) }   // a right click, the Menu key, Shift+F10
+	if r.menu >= 0 { ui.menu_open("###tab_menu", r.menu_at, from_keyboard = r.menu_keyboard) }   // a right click, the Menu key, Shift+F10
 	if r.closed >= 0 { close_tab(app, r.closed) }                   // a middle click
 }
 ```
 
 - `tab_panel(id, labels, icons, &selected, o)`: the strip and the page in one framed box, the page padded by `o.pad`
-  (negative: none). It returns `ui.Tabs_Result`: `changed`, `menu` and `menu_at` (-1: none), `closed` (a middle click).
-  Without a size from `next`, it fills its parent.
+  (negative: none). It returns `ui.Tabs_Result`: `changed`, `menu` and `menu_at` (-1: none), `menu_keyboard` (asked
+  by a key: the menu's first item lit), `closed` (a middle click). Without a size from `next`, it fills its parent.
 - `tabs_ex(id, labels, icons, &selected, o)`: `ui.tabs` with `Tabs_Options` (`style`, `content`, `after`) and the same
   result, for a strip a program frames itself. A Folder draws its line under the box around it; the other styles stand
   on what is under them.

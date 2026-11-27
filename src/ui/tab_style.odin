@@ -23,8 +23,15 @@ Tab_Surface :: struct {
 	edge:   Color,
 }
 
+// A tabs_over scope, its colours read once when it opens (not by each tab: a draw has no tags, and a strip of many tabs
+// read the theme for each).
 @(private)
-Tab_Scope :: struct { style: Tab_Style, surface: Tab_Surface }
+Tab_Scope :: struct {
+	style:   Tab_Style,
+	surface: Tab_Surface,   // its zero colours resolved: the page (a chosen tab's "tab_on background"), the border
+	under:   Color,         // what the strip paints under its tabs (tab_strip_ground; a Folder's: zero, the bar's)
+	accent:  Color,         // the chosen tab's bar (Underline, Header)
+}
 
 TAB_SCOPE_DEPTH :: 8
 
@@ -32,29 +39,28 @@ TAB_SCOPE_DEPTH :: 8
 // strip's ground, their line, the inset of a panel's content: dock_content_inset).
 @(require_results, deferred_none = tabs_over_end)
 tabs_over :: proc(style: Tab_Style, sf: Tab_Surface = {}) -> bool {
-	s := gs()
-	if s.tab_scope_depth < TAB_SCOPE_DEPTH { s.tab_scopes[s.tab_scope_depth] = {style, sf} }
-	s.tab_scope_depth += 1
+	tab_scope_push(style, sf)
 	return true
+}
+
+// Opens a tabs_over scope that the caller closes with tabs_over_end: a scope that outlives the procedure that opens it
+// (dock_panel's, closed by dock_panel_end) or a pair in one procedure. Not tabs_over: its deferred end runs at the end
+// of the caller's scope even as `_ = tabs_over(...)`, so dock_panel's closed before the panel's content was built and
+// every explicit end after it closed a second, outer scope.
+@(private)
+tab_scope_push :: proc(style: Tab_Style, sf: Tab_Surface = {}) {
+	s := gs()
+	if s.tab_scope_depth < TAB_SCOPE_DEPTH { s.tab_scopes[s.tab_scope_depth] = tab_scope_read(style, sf) }
+	s.tab_scope_depth += 1
 }
 
 @(private)
 tabs_over_end :: proc() { s := gs(); s.tab_scope_depth = max(s.tab_scope_depth - 1, 0) }
 
+// A scope's colours, read under the tags in force.
 @(private)
-tab_scope_now :: proc() -> Tab_Scope {
-	s := gs()
-	if d := min(s.tab_scope_depth, TAB_SCOPE_DEPTH); d > 0 { return s.tab_scopes[d - 1] }
-	return {style = .Folder}
-}
-
-// The style of the rows of tabs built here (tabs_over; none: .Folder).
-tab_style_now :: proc() -> Tab_Style { return tab_scope_now().style }
-
-// The surface the rows of tabs built here frame, its zero colours resolved: the page (a chosen tab's "tab_on
-// background") and the border.
-tab_surface_now :: proc() -> Tab_Surface {
-	sf := tab_scope_now().surface
+tab_scope_read :: proc(style: Tab_Style, sf: Tab_Surface) -> Tab_Scope {
+	sf := sf
 	if sf.ground.a <= 0 {
 		push_tags("tab_on")
 		sf.ground = color("background")
@@ -62,8 +68,26 @@ tab_surface_now :: proc() -> Tab_Surface {
 		sf.ground.a = 1
 	}
 	if sf.edge.a <= 0 { sf.edge = color("border") }
-	return sf
+	return {style = style, surface = sf, under = tab_strip_ground(style, sf, {}), accent = color("accent")}
 }
+
+@(private)
+tab_scope_now :: proc() -> Tab_Scope {
+	s := gs()
+	if d := min(s.tab_scope_depth, TAB_SCOPE_DEPTH); d > 0 { return s.tab_scopes[d - 1] }
+	return tab_scope_read(.Folder, {})   // (a program's own strip with no tabs_over: a Folder on the page)
+}
+
+// The style of the rows of tabs built here (tabs_over; none: .Folder).
+tab_style_now :: proc() -> Tab_Style {
+	s := gs()
+	if d := min(s.tab_scope_depth, TAB_SCOPE_DEPTH); d > 0 { return s.tab_scopes[d - 1].style }
+	return .Folder
+}
+
+// The surface the rows of tabs built here frame, its zero colours resolved: the page (a chosen tab's "tab_on
+// background") and the border.
+tab_surface_now :: proc() -> Tab_Surface { return tab_scope_now().surface }
 
 // The palette shown is dark.
 @(private)
@@ -129,9 +153,8 @@ Tab_Strip_Look :: struct {
 // nothing painted, the line only), for tab_strip_draw or tab_line_draw.
 tab_strip_look :: proc(bar: Color) -> ^Tab_Strip_Look {
 	sc := tab_scope_now()
-	sf := tab_surface_now()
 	l := frame_new(Tab_Strip_Look)
-	l^ = {ground = tab_strip_ground(sc.style, sf, bar), edge = sf.edge, line = sc.style == .Folder}
+	l^ = {ground = sc.style == .Folder ? bar : sc.under, edge = sc.surface.edge, line = sc.style == .Folder}
 	return l
 }
 
@@ -166,6 +189,17 @@ tab_style_inset :: proc(st: Tab_Style) -> f32 {
 // An Underline bar's inset from the tab's sides, ems.
 @(private) TAB_BAR_INSET_EM :: 0.35
 
+// An Underline's hover fill and an Underline's or a Header's focus ring: the tab inset from the strip's edges (clear of
+// the accent bars along them) and from its sides, rounded.
+@(private)
+tab_soft_rect :: proc(r: Rect, radius: f32) -> (soft: Rect, rad: f32) {
+	p := px1()
+	h := r.max.y - r.min.y
+	inset := math.round(h * TAB_KEY_INSET_SHARE)
+	soft = {{math.round(r.min.x) + 2 * p, math.round(r.min.y) + inset}, {math.round(r.max.x) - 2 * p, math.round(r.max.y) - inset}}
+	return soft, min(radius, (soft.max.y - soft.min.y) / 2)
+}
+
 @(private)
 tab_hover :: proc(b: ^Box, under: Color, hot: f32) -> Color {
 	return draw.mix(under, state_fill(b, box_held(b) > 0.5 ? "press_fill" : "hover_fill", under), hot)
@@ -191,9 +225,8 @@ tab_draw_style :: proc(b: ^Box, td: ^Tab_Draw, dc: ^draw.Context) {
 		}
 	case .Underline:
 		if !td.on && hot > 0.01 {
-			inset := math.round(h * TAB_KEY_INSET_SHARE)
-			rad := min(td.radius, (h - 2 * inset) / 2)
-			draw.rect(dc, {{r.min.x + 2 * p, r.min.y + inset}, {r.max.x - 2 * p, r.max.y - inset}}, tab_hover(b, td.under, hot), rad)
+			soft, rad := tab_soft_rect(r, td.radius)
+			draw.rect(dc, soft, tab_hover(b, td.under, hot), rad)
 		}
 		if td.on {
 			band := max(p, math.round(TAB_BAR_PX * s.scale))

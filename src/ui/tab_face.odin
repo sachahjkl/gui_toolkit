@@ -77,13 +77,12 @@ tab_face :: proc(b: ^Box, on: bool, mark := Color{}) {
 	b.target_bg, b.target_border, b.target_text = color("background"), color("border"), color("text")
 	pop_tags()
 	sc := tab_scope_now()
-	sf := tab_surface_now()
+	sf := sc.surface
 	folder := sc.style == .Folder
 	b.layout_axis, b.cross = .X, folder ? .End : .Center   // (a Folder's content at its bottom: the visible part of its shape)
 	b.radius = 0
 	td := frame_new(Tab_Draw)
-	td^ = {on = on, radius = tab_radius(), foot = tab_foot(), em = font_size(), mark = mark, style = sc.style, ground = sf.ground, edge = sf.edge, accent = color("accent")}
-	td.under = tab_strip_ground(sc.style, sf, {})
+	td^ = {on = on, radius = tab_radius(), foot = tab_foot(), em = font_size(), mark = mark, style = sc.style, ground = sf.ground, edge = sf.edge, accent = sc.accent, under = sc.under}
 	b.custom, b.custom_user = tab_draw, td
 	b.ring_at = tab_ring   // (the focus goes round the shape a person sees, not the strip's height)
 	if b.parent != nil && .Clip in b.parent.flags {
@@ -129,7 +128,9 @@ Tab_Draw :: struct {
 }
 
 // A tab's visible shape for its focus ring: a Folder's from its top (under the strip's ground) down to the line, its top
-// corners rounded as the shape's; a Segmented's key; the others' box.
+// corners rounded as the shape's; a Segmented's key; an Underline's and a Header's the hover's rounded shape, clear of
+// the strip's edges: round the whole box, the ring covered the chosen tab's accent bar (the strip's bottom, a Header's
+// top) and read as a box.
 @(private = "file")
 tab_ring :: proc(b: ^Box) -> (ring: Rect, radii: [4]f32) {
 	td := (^Tab_Draw)(b.custom_user)
@@ -143,6 +144,8 @@ tab_ring :: proc(b: ^Box) -> (ring: Rect, radii: [4]f32) {
 		kr := min(td.radius, (r.max.y - r.min.y - 2 * inset) / 2)
 		return {{r.min.x, r.min.y + inset}, {r.max.x, r.max.y - inset}}, {kr, kr, kr, kr}
 	case .Underline, .Header:
+		soft, rad := tab_soft_rect(r, td.radius)
+		return soft, {rad, rad, rad, rad}
 	}
 	return r, {}
 }

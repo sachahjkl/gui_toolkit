@@ -108,9 +108,9 @@ press, so it ends with it (the release, the box held going, the user leaving the
 
 A stack's tabs are an Underline by default ([tab-styles.md](../src/md/features/tab-styles.md)): the strip stands on its
 shown panel's surface with no line nor border before the panel, the shown tab's words over an accent bar, the first tab
-at the stack's edge. The first tab's words start `ui.dock_content_inset()` from the stack's edge (inside a `dock_panel`:
-its stack's style): a panel whose content starts there lines up with its tab. A panel that has a ground of its own
-names it in `surface`, and paints none itself: the dock paints its body, and its strip and tab take the same colour.
+at the stack's edge. The first tab's words start `ui.dock_content_inset()` from the stack's edge (inside a
+`dock_panel` or a view's panel: its stack's style): a panel whose content starts there lines up with its tab. A panel
+that has a ground of its own names it in `surface`, and paints none itself: the dock paints its body, and its strip and tab take the same colour.
 `tab_style = .Folder` gives the stacks the documents' look: the shown tab rising out of the strip's line as one shape
 with its panel.
 
