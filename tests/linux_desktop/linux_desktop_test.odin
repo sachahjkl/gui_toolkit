@@ -660,6 +660,28 @@ a_wait_does_not_sleep_over_what_xcb_read :: proc(t: ^testing.T) {
 	testing.expect(t, len(evs) > 0)
 }
 
+// The same, of an event that gives the window nothing to read (a PropertyNotify of a property nobody else watches, as the
+// MapNotify of its first show): the wait ends on it as on one it reads later. It slept until its time, and a window shown
+// with nothing else to say got no first frame.
+@(test)
+a_wait_ends_on_a_quiet_event_xcb_read :: proc(t: ^testing.T) {
+	if !x11() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("quiet")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	pump_for(w, 200)
+	// (a PropertyNotify the window keeps no event for, and the window manager answers with nothing: xprop syncs before it
+	// ends, so it is on the window's socket)
+	sh("xprop -id ", window_id(w), " -f _GT_QUIET 8s -set _GT_QUIET 1")
+	platform.display_invalidate(w)
+	platform.display_info(w)   // (requests and replies: the PropertyNotify is read with them, and stays in xcb's queue)
+	start := time.tick_now()
+	platform.wait_event(w, 3000)
+	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) < 1000, "the wait ends at once")
+}
+
 @(test)
 the_refresh_rate_is_the_servers :: proc(t: ^testing.T) {
 	if desktop() == "" { return }

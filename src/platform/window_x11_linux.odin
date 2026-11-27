@@ -688,8 +688,12 @@ x11_check_link :: proc() {
 // drew a frame at each refresh, for ever (as on Wayland, wl_wait). Any other event ends it, as before.
 @(private)
 x11_wait :: proc(w: ^Window, timeout_ms: int) {
-	x11_drain(w)   // (what xcb has read already: poll(2) would not see it; kept for the next poll_events)
-	if wait_is_over(w) { return }
+	// (what xcb has read already: poll(2) would not see it; kept for the next poll_events. An event it handles ends the wait
+	// as one read later does: a MapNotify read here, before the socket was polled, ended no wait, and a window shown with
+	// nothing else to say slept for ever before its first frame)
+	loud := x11c.loud
+	x11_drain(w)
+	if x11c.loud != loud || wait_is_over(w) { return }
 	deadline := time.tick_add(time.tick_now(), time.Duration(timeout_ms) * time.Millisecond)
 	for {
 		xcb.flush(x11c.c)
@@ -702,7 +706,7 @@ x11_wait :: proc(w: ^Window, timeout_ms: int) {
 		}
 		r := poll_sources(w, x11_fd(w), left)
 		if !r.conn || r.other { return }   // (the time, or another source)
-		loud := x11c.loud
+		loud = x11c.loud
 		x11_drain(w)
 		if x11c.loud != loud || wait_is_over(w) || x11c.link != .Connected { return }
 	}
