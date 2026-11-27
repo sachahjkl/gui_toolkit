@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.363.0] - 2026-11-27 07:51
+
+### Added
+- **Debug panels (`gt:debug`)**: a program shares its own state and acts with a debug window, in a few lines. A panel is a procedure registered once (`debug.panel`) that calls `debug.number`, `vector`, `toggle`, `choice`, `text`, `color`, `watch`, `plot`, `act`, `section` and `value` (any Odin value by reflection, with `debug:"0..1"`, `"ro"` and `"-"` field tags); `debug.odin_text` writes a value as Odin source. Ctrl+Alt+Shift+D opens the debug window in a build with the devtools: a dense view with a View tab (wireframe, exploded view, zoom, density, frame times), a tab per panel, a pin that sends a panel to a view of its own, and a filter that lights the words it matches. The devtools' `Toolkit.debugPanels`, `Toolkit.debugSet` and `Toolkit.debugPress` list, set and press by the same paths; `tk cdp debug`, `debug-set` and `debug-press` (and `cdp.debug_set`) do it from a script. A release build compiles every call to nothing. The dense pieces are in `ui` for a program's own instruments: `ui.dense_scope` (square corners, as `View_Options.square` makes a floating view; `View_Options.dense` makes its header a row of tabs), `ui.drag_number` and `ui.drag_vector` (drag, Shift slower, Ctrl faster, wheel, keys, double click to type), `ui.tree_header`, `ui.dense_row`. `examples/debug_panel` shows a drone and its panels.
+
+### Changed
+- **A scroll in progress keeps its view**: while the wheel turns on with no rest of `ui.WHEEL_LATCH_MS` (350 ms), a box inside the view it scrolls that takes the wheel itself (a dense field, an editor) and slides under a still pointer does not take the wheel; a wheel that starts after a rest goes where the pointer is, and a box that has the keyboard takes it at once.
+
 ## [0.362.0] - 2026-11-26 21:57
 
 ### Added
@@ -5083,6 +5091,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.363.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.363.0
 [0.362.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.362.0
 [0.361.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.361.0
 [0.360.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.1
