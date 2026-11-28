@@ -111,6 +111,9 @@ Menu_Level :: struct {
 	hover_item:   int,       // item under the pointer and since when (submenus open / close after a delay)
 	hover_since:  f64,
 	hover_held:   bool,      // a key closed its submenu: the row under the pointer opens it again only once the pointer moves
+	aim_origin:   Vec2,      // pointer position when leaving an open submenu's parent row (safe triangle aim corridor)
+	aim_has:      bool,
+	aim_ms:       f64,       // last time pointer moved within the safe triangle toward the open submenu
 	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
 	// what is typed filters its items: a menu or a nested menu that built an item (a submenu's items come up into its
@@ -477,7 +480,9 @@ menu_place :: proc(lv: ^Menu_Level, depth: int, size, window: Vec2, em: f32) -> 
 		} else {
 			pad := dense(em * MENU_PAD_EM)   // the first row lines up with the item that opened the submenu
 			pos = {r.max.x - 2, r.min.y - pad}
-			if pos.x + size.x > window.x && r.min.x - size.x + 2 >= 0 { pos.x = r.min.x - size.x + 2 }
+			if pos.x + size.x > window.x && (r.min.x - size.x + 2 >= 0 || r.min.x > window.x - r.max.x) {
+				pos.x = r.min.x - size.x + 2
+			}
 		}
 	} else {
 		if pos.x + size.x > window.x && pos.x - size.x >= 0 { pos.x -= size.x }
@@ -678,7 +683,8 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	em := menu_style.font_size
 	id := fmt.tprintf("###menu_%d", u64(lv.key))
 	panel := s.boxes[key_from_string(s.root.key, id)]
-	first := panel == nil
+	// (a re-opened menu/submenu whose old box is still cached has never been measured for this opening: eff_width is 0)
+	first := panel == nil || never_built
 	// (its content's height: the last layout's; taller than the window, it scrolls, and its panel, as wide as its rows,
 	// grows by the room its layout keeps for the scroll bar)
 	lv.scrolls = !first && panel.view_bounds.y > s.window_size.y
@@ -948,6 +954,48 @@ label_cut :: proc(b: ^Box, text: string) -> bool {
 	return text_width(b.font, b.font_size, text) + 2 * b.text_pad > (b.rect.max.x - b.rect.min.x) + 0.5
 }
 
+// How long a diagonal pointer path inside the safe triangle holds an open submenu open without movement (ms).
+@(private = "file") MENU_SUBMENU_AIM_MS :: 300
+
+// Whether `p` lies inside (or on) the triangle (a, b, c).
+@(private = "file")
+point_in_triangle :: proc(p, a, b, c: Vec2) -> bool {
+	sign :: proc(p1, p2, p3: Vec2) -> f32 { return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y) }
+	d1, d2, d3 := sign(p, a, b), sign(p, b, c), sign(p, c, a)
+	has_neg := d1 < 0 || d2 < 0 || d3 < 0
+	has_pos := d1 > 0 || d2 > 0 || d3 > 0
+	return !(has_neg && has_pos)
+}
+
+// Whether the pointer is moving diagonally toward the open submenu at `depth + 1` inside the safe triangle formed by
+// `lv.aim_origin` and the submenu's near edge. Holds the submenu open while moving toward it so crossing sibling items
+// never accidentally closes it.
+@(private = "file")
+menu_aiming_at_submenu :: proc(s: ^State, lv: ^Menu_Level, depth: int) -> bool {
+	if !lv.aim_has || len(s.menus) <= depth + 1 || s.menus[depth + 1].nested { return false }
+	sub := s.boxes[s.menus[depth + 1].panel]
+	if sub == nil { return false }
+	sr := sub.rect
+	near_x := lv.aim_origin.x <= (sr.min.x + sr.max.x) * 0.5 ? sr.min.x : sr.max.x
+	// Moving horizontally away from the submenu cancels the corridor immediately.
+	if (near_x >= lv.aim_origin.x && s.mouse.x < lv.aim_origin.x - 1) || (near_x < lv.aim_origin.x && s.mouse.x > lv.aim_origin.x + 1) {
+		lv.aim_has = false
+		return false
+	}
+	if !point_in_triangle(s.mouse, lv.aim_origin, {near_x, sr.min.y}, {near_x, sr.max.y}) {
+		lv.aim_has = false
+		return false
+	}
+	if s.mouse_moved { lv.aim_ms = s.time_ms }
+	waited := s.time_ms - lv.aim_ms
+	if waited >= MENU_SUBMENU_AIM_MS {
+		lv.aim_has = false
+		return false
+	}
+	wake_within(s, max(1, int(MENU_SUBMENU_AIM_MS - waited) + WAKE_MARGIN_MS))
+	return true
+}
+
 // The pointer has rested on item `idx` of `lv` for Feel.menu_hover_ms (asks for a timed wake while waiting).
 @(private)
 menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
@@ -982,8 +1030,11 @@ menu_item_ex :: proc(text: string, shortcut := "", checked := false, icon := "",
 	append(&lv.items, Menu_Item_Info{enabled = en})
 	if lv.pick_first && en { lv.sel, lv.pick_first, lv.reveal = idx, false, true }
 	sig := menu_row(lv, idx, text, shortcut, icon, checked, en, false, idx == lv.sel, icon_font, icon_draw, icon_user)
-	// resting on another item than the open submenu's closes that submenu (a nested menu stays: a press closes it)
-	if sig.hovering && len(s.menus) > depth + 1 && !s.menus[depth + 1].nested && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
+	// resting on another item than the open submenu's closes that submenu unless the pointer is moving diagonally
+	// inside the safe triangle toward the open submenu (a nested menu stays: a press closes it)
+	if sig.hovering && len(s.menus) > depth + 1 && !s.menus[depth + 1].nested && !menu_aiming_at_submenu(s, lv, depth) && menu_hover_due(lv, idx) {
+		menu_pop_to(depth + 1)
+	}
 	clicked := en && (sig.clicked || (idx == lv.sel && lv.activate))
 	sig.clicked = clicked
 	// (closed when the menu's block ends: the items after this one are still part of the menu until then, and a menu
@@ -1067,17 +1118,17 @@ menu_control_end :: proc(built: bool) {
 // is no room). Opens on click, after the pointer rests on it, or with Right / Enter / Space; the block builds the
 // submenu's items while it is open.
 @(require_results, deferred_none = menu_end)
-menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
-	return menu_submenu_begin(text, icon, disabled, nil, nil)
+menu_submenu :: proc(text: string, icon := "", disabled := false, icon_font: font.Font_Id = 0) -> bool {
+	return menu_submenu_begin(text, icon, disabled, icon_font, nil, nil)
 }
 
 @(private, require_results, deferred_none = menu_end)
 menu_submenu_ex :: proc(text: string, icon := "", disabled := false, icon_draw: Custom_Draw = nil, icon_user: rawptr = nil) -> bool {
-	return menu_submenu_begin(text, icon, disabled, icon_draw, icon_user)
+	return menu_submenu_begin(text, icon, disabled, 0, icon_draw, icon_user)
 }
 
 @(private = "file")
-menu_submenu_begin :: proc(text: string, icon: string, disabled: bool, icon_draw: Custom_Draw, icon_user: rawptr) -> bool {
+menu_submenu_begin :: proc(text: string, icon: string, disabled: bool, icon_font: font.Font_Id, icon_draw: Custom_Draw, icon_user: rawptr) -> bool {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil { append(&s.popup_stack, false); return false }
@@ -1086,7 +1137,7 @@ menu_submenu_begin :: proc(text: string, icon: string, disabled: bool, icon_draw
 		append(&s.popup_stack, false)
 		return !disabled && s.disabled_depth == 0
 	}
-	if !menu_submenu_row(lv, depth, text, icon, !disabled && s.disabled_depth == 0, key_from_string(lv.key, hash_part(text)), 0, icon_draw, icon_user) {
+	if !menu_submenu_row(lv, depth, text, icon, !disabled && s.disabled_depth == 0, key_from_string(lv.key, hash_part(text)), icon_font, icon_draw, icon_user) {
 		append(&s.popup_stack, false)
 		return false
 	}
@@ -1103,10 +1154,13 @@ menu_submenu_row :: proc(lv: ^Menu_Level, depth: int, text, icon: string, en: bo
 	open := len(s.menus) > depth + 1 && s.menus[depth + 1].key == sub_key
 	sig := menu_row(lv, idx, text, "", icon, false, en, true, idx == lv.sel || open, icon_font, icon_draw, icon_user)
 	want, kb := false, false
+	if open && sig.hovering {
+		lv.aim_origin, lv.aim_has, lv.aim_ms = s.mouse, true, s.time_ms
+	}
 	if en {
 		if sig.clicked { want = true }
 		if idx == lv.sel && lv.open_sub { want, kb = true, true; lv.open_sub = false }
-		if sig.hovering && !open && menu_hover_due(lv, idx) { want = true }
+		if sig.hovering && !open && !menu_aiming_at_submenu(s, lv, depth) && menu_hover_due(lv, idx) { want = true }
 	}
 	if want && !open {
 		lv.sel = idx

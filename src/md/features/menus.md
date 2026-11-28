@@ -69,6 +69,17 @@ pointer, and a person who works with the keys could not reach its menus.
 - **The field only once a letter is typed.** The menu would grow under the pointer at the first letter, and its hint
   ("Type to search") would no longer say what typing does.
 
+## Submenus in context menus
+
+- **Safe triangle aim corridor (`MENU_SUBMENU_AIM_MS`):** moving the pointer diagonally from a submenu's parent row
+  across sibling items toward the open submenu holds the submenu open while the pointer advances inside the triangle
+  from its departure point to the submenu's near edge. Stopping or moving away restores normal hover switching.
+- **Re-opening measurement:** a freshly opened menu or submenu whose previous panel box is still cached is treated as
+  unmeasured (`first := panel == nil || never_built`) so its width and screen-edge flip are always computed from its
+  real rows.
+- **Screen-edge flip:** a submenu that overflows the window's right edge flips to the left of its parent menu when it
+  fits there or when the left side has more room, then clamps inside the window.
+
 ## Subtle points
 
 - A panel opened as a menu with its own field (a vault's search) still has the menu's field when it builds an item.

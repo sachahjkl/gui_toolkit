@@ -371,7 +371,7 @@ file_tree_menu :: proc(t: ^File_Tree) {
 				if act not_in g || act not_in offered { continue }
 				text, icon := file_tree_act_words(act)
 				if act == .Open_With {
-					if menu_submenu(fmt.tprintf("%s###ft_open_with", text), icon) {
+					if menu_submenu(fmt.tprintf("%s###ft_open_with", text), icon, icon_font = lucide_icons()) {
 						if open_with_items(&t.open_with, "ft_ow") { picked_with = true }
 					}
 					continue
