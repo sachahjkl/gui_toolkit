@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.370.1] - 2026-11-28 12:08
+
+### Fixed
+- **A lone sidebar with its own compact rail keeps no extra header bar.** Sidebars that declare `View_Options.rail_em`
+own their top row with `ui.view_fold_button`; skipping `view_lone_header` for them removes the extra bar above the
+sidebar and keeps the fold button at the same pixel across fold and unfold.
+
 ## [0.370.0] - 2026-11-28 11:03
 
 ### Added
@@ -5328,6 +5335,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.370.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.370.1
 [0.370.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.370.0
 [0.369.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.369.1
 [0.369.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.369.0
