@@ -504,7 +504,7 @@ tree_row :: proc(t: ^Tree, i: int, o := Tree_Row_Options{}) -> Signal {
 		m := s.next_mod
 		accent := color("accent")
 		m.border = accent
-		m.bg = draw.mix(color("surface"), accent, 0.18)
+		m.bg = draw.mix(color("background"), accent, 0.22)
 		s.next_mod = m
 	}
 	sig := list_row(&t.list, i, r.label)
