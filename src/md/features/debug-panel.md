@@ -70,12 +70,13 @@ right. The views float it, dock it, send it to a window of its own, resize it an
   word typed (ASCII case ignored). The sections' headers go and their names show before the label, the words found
   lit as every filtered list lights them (`ui.word_ranges`, `matched_label`): a match in a section's name shows why a
   row is there.
-- Floating, its tabs are its title bar (`View_Options.dense`): no title over them, the strip as tall as a dense row
-  of tabs, on the well's colour as the sections' headers, the moves (back home, a window of its own, close) small at
-  its end; its free part moves it. A title bar of a dialog's size over rows of a third of its height was the one thing
-  not dense; a dialog's dark step on a light theme was a grey block. The title stays the window's accessible name.
-  Docked, the stack's own strip names it and the tabs are the body's first row; in a window of its own the system's
-  or the program's caption stays.
+- Floating, its tabs share its dense header bar (`View_Options.dense`): a dedicated, rigid drag handle grip
+  (`VIEW_DRAG_GRIP_EM`) on the left so tabs never eat the draggable area, the tabs inside a bounded `fill()` slot
+  that narrows and scrolls before the Pin button and the reserved right-side moves (re-attach, window, close), on the
+  well's colour as the sections' headers. All controls stay visible, non-overlapping, and inside the header at any
+  width or tab count; both the drag grip and any empty header space move the window. The title stays the window's
+  accessible name. Docked, the stack's own bar names it and the tabs are the body's first row; in a window of its own
+  the system's or the program's caption stays.
 - Its body scrolls inside the view.
 - The key is Ctrl+Alt+Shift+D, as the wireframe's W and the exploded view's E, in every build (`TOOLKIT_DEBUG_WINDOW`,
   "In every build" below). It opens the window and closes it; Escape closes it too while the focus is in it, where the
@@ -148,10 +149,17 @@ do not follow the page. `ui.dense_scope` holds it:
   built anyway), so a label that comes or goes moves the column at the next build. With a filter, a label says its
   sections and is not indented. Refused: a fixed column of 7 ems (a gap before every short label's field), and a share
   of the row (an indented row's share is narrower: the fields of two depths did not line up);
+- read-only `watch` rows are right-aligned with no left box edge to line up against editable fields: their label
+  takes only what its own text needs (capped by the panel's label column and `DENSE_LABEL_MAX_SHARE` of the row), so
+  long watch values get the full remaining width without truncating while empty space sits on the left. Editable fields
+  keep the shared `Dense_Labels` column, capped to `DENSE_LABEL_MAX_SHARE` of the row width so narrow panels never
+  crush their fields;
 - acts one after another share a row, as many as it holds, then the next (Dear ImGui's SameLine, implied): a row
   each for "Print" and "Reset" was a row of nothing after a short button. What is not an act ends their row. The first
   button starts where the labels' words start (a label's text inset), at its depth: at the row's edge it stood out of
-  the column, left of the labels above it (socle's Apply panel);
+  the column, left of the labels above it (socle's Apply panel). A section header (`debug.section`) following rows or
+  an act row keeps clear vertical breathing room above it (`max(dense_gap * 3, round(em * 0.5))`), and rows after an
+  act row keep `dense_gap * 2` so buttons never stick to the next header or control;
 - the theme's colours (light or dark, their contrast checked as every theme's), not a fixed dark skin: a dark window
   over a light program reads as another program, and its contrast would be nobody's. A theme's weak ink is made for
   text at its size: a dense label's is moved from its ground until it reads at 4.5:1 (Graphite's dark was 4.4, Midnight's

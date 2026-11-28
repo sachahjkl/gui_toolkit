@@ -436,27 +436,18 @@ from 0 up are the program's. `VIEW_CANCELLED` is the toolkit's.
 The user's rule: the docking machinery must not invade the screens. A view at rest adds nothing to what the program
 draws, except the header that a dialog always had. The rules:
 
-1. **A panel alone in its stack has no tab strip**, unless its kind says `tabs_always` (ocn's terminals: a strip
-   with one tab and its "+" says that more can come). A tab strip appears when two or more views share a stack, or
-   one of them is `tabs_always`, or its zone is minimised. A panel alone otherwise adds no strip and no border: its
-   body starts at the zone's top edge. A test checks this (section 7.4, test 17). A side zone that folds to its views'
-   compact form (`rail_em`) adds no row either: its view places the fold button in a row of its own (rule 2b,
-   Minimise).
-2. **A lone panel's strip comes on a rest at its top edge, pushes its body down, and goes when the pointer leaves the
-   panel** (`view_hover_strip`). At rest nothing is added. The strip is the stack's strip, as if the panel had
-   company: its tab (its title, its menu), its moves, its Minimise, Maximise and Close (rule 2b). It takes its room:
-   the body moves down under it, and no control of the panel lies over a control of the body. Its state machine, per
-   view (`View_Record.hover`, `View_Hover`):
-   - **Rest → Armed**: the pointer is in the stack's top band (`VIEW_HOVER_EDGE_EM`, by the last layout), no mouse
-     button is down (`State.buttons_down`: a drag holds one) and none was pressed in this build. The time is noted.
-   - **Armed → Rest**: the pointer leaves the band, or a button goes down. A new arming starts from zero.
-   - **Armed → Shown**: the pointer stayed in the band for `VIEW_HOVER_DWELL_MS` (300 ms). While armed, the build asks
-     for one timed frame at the deadline (`wake_within`), not a frame each refresh.
-   - **Shown → Rest**: the pointer leaves the stack's rect (the pointer outside the window too), unless one of the
-     strip's boxes is held (a tab dragged out) or the view's menu is open; Escape (read, not taken: the body still gets
-     it); a click on the strip (its act is done in that build, the strip goes in the next one).
-   - From Rest the strip comes back only by a new arming and a full dwell: the body never jumps back and forth by
-     itself.
+1. **A panel alone in its stack shows a slim compact header bar** (`view_lone_header`, `VIEW_LONE_HEADER_EM`),
+   unless its kind says `tabs_always` (ocn's terminals: a full tab strip with one tab and its "+"), two or more views
+   share its stack, or its zone is minimised. The compact bar sits in the stack above the body, never over it: a
+   subtle drag grip and eliding title on the left (dragging detaches the panel; double-clicking maximises; right-clicking
+   opens its menu), the optional `view_header_tools` slot, and reserved right-side controls (a menu button `…` and a
+   Close button `×`) that never overlap the body and never crop off the right edge. A side zone folded to its views'
+   compact form (`rail_em`) adds no bar: its view places `view_fold_button` in a row of its own (rule 2b, Minimise).
+2. **Why a compact bar replaced the hover-only strip.** A hover-only strip (`view_hover_strip`, 300 ms dwell in a
+   0.6 em top band) forced the user to hunt for an invisible top edge just to close or move a docked panel, and pushed
+   the body down whenever it appeared. Keeping a discrete, non-overlapping compact header bar removes that state
+   machine, guarantees every docked panel has an always-reachable Close button and drag handle, and keeps the body's
+   controls stationary when the pointer crosses into the panel.
    So the body never moves while the pointer only passes the band, and never moves up under a pointer inside the
    panel. The fold button and the controls at the body's top stay where the pointer goes to them.
    **Why the dwell, its own delay.** The tooltip delay (`Feel.tooltip_delay_ms`, 500 ms) is too long for an act, and

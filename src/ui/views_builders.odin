@@ -659,9 +659,14 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	r.header = b.key
 	push_parent(b)
 	if small {
-		// (no title: the tools the body puts here come first, at its edge (a row of tabs, an Underline's: its first tab at
-		// the window's edge), the free part after them moves the window)
+		// (dedicated drag handle grip: always present and rigid so tabs never consume the header's draggable zone;
+		// non-clickable so presses and drags go straight to the clickable header box)
 		b.custom = dense_header_draw
+		push_tags("weak")
+		next({width = px(math.round(em * VIEW_DRAG_GRIP_EM)), height = px(h), font = lucide_icons(), font_size = math.round(em * 0.9), text_align = .Center, text_pad = 0})
+		grip := build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###view_drag_grip", lucide.GRIP_VERTICAL))
+		pop_tags()
+		a11y_default(grip, {ignore = true})
 		pop_parent()
 		return
 	}
@@ -704,10 +709,10 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		}
 		dialog_header_end()   // (clear of the close cross; pops the strip)
 	case .Internal:
-		// (a dense strip: its free part after the body's tools, its moves at the dense text's size)
+		// (a dense strip: when the body placed tools they fill the middle; otherwise a spacer pushes the moves right)
 		small := view_header_dense(r, p)
 		if small {
-			spacer(fill())
+			if r.tools == 0 { spacer(fill()) }
 			push_style_copy()
 			top_style().font_size = math.round(em * DENSE_FONT_SCALE)
 		}
@@ -981,3 +986,5 @@ view_new_tab_take :: proc(vs: ^Views, k: ^View_Kind, r: ^View_Record, now: f64) 
 // The side of a header's small icons (Detach, Re-attach, Close of an internal window), in ems: smaller than the close
 // cross of a dialog (DIALOG_CLOSE_EM).
 VIEW_DETACH_EM :: f32(1.5)
+// The width of a dense floating window's or lone panel's dedicated drag handle grip, in its text's ems.
+VIEW_DRAG_GRIP_EM :: f32(1.4)

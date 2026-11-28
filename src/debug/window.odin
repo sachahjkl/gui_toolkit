@@ -93,12 +93,18 @@ window_build :: proc(v: ^ui.View, sf: ^Surface) {
 	}
 }
 
-// The tabs of the panels not pinned, and the pin of the one shown.
+// The tabs of the panels not pinned, inside a bounded fill() slot before the pin button so tabs scroll/narrow and
+// never crowd or crop the pin and window controls.
 @(private)
 tabs_build :: proc(sf: ^Surface, labels: []string, at: []int, chosen: ^int, head, h: f32) {
-	ui.next({height = ui.px(head)})
-	// (an instrument's tabs: an Underline, tight in its dense scope)
-	if ui.tabs_ex("###debug_tabs", labels, nil, chosen, {style = .Underline}).changed { sf.tab = at[chosen^] }
+	ui.next({width = ui.fill(), height = ui.px(head), axis = .X, cross = .Center})
+	slot := ui.build_box({.Clip, .Fits_Width}, "###debug_tabs_slot")
+	if ui.parent(slot) {
+		ui.next({height = ui.px(head)})
+		// (an instrument's tabs: an Underline, tight in its dense scope)
+		if ui.tabs_ex("###debug_tabs", labels, nil, chosen, {style = .Underline}).changed { sf.tab = at[chosen^] }
+		ui.spacer(ui.fill())
+	}
 	ui.next({width = ui.px(h), height = ui.px(h)})
 	if ui.button("###debug_pin", icon = lucide.PIN, o = {icon_font = ui.lucide_icons(), face = .Ghost, tip = i18n.tr("Pin: this panel in a view of its own")}).clicked {
 		pin(sf, sf.panels[sf.tab])
@@ -160,7 +166,7 @@ pinned_build :: proc(v: ^ui.View, p: ^Panel) {
 	if ui.dense_scope() {
 		// (its dense header has no title: the panel's name is put there, as the window's tabs)
 		if ui.view_header_tools(v) {
-			ui.next({width = ui.text_size(), height = ui.px(math.round(ui.font_size() * ui.DENSE_HEADER_EM))})
+			ui.next({width = ui.fill(), height = ui.px(math.round(ui.font_size() * ui.DENSE_HEADER_EM))})
 			ui.build_box({.Draw_Text}, fmt.tprintf("%s###pinned_name", ui.text_shown(name)))
 		}
 		ui.next({width = ui.fill(), height = ui.fill()})

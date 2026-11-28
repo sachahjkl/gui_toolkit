@@ -385,9 +385,10 @@ a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	fold := wait_built(s, "view_fold")
 	if fold == nil { return }
 	at := fold.rect
-	testing.expect(t, built(s, "view_tabs") == nil, "at rest: no strip")
+	testing.expect(t, built(s, "view_tabs") == nil, "at rest: no tab strip")
+	header := built(s, "view_lone_header")
 	body := built(s, "view_panel_view_marks")
-	testing.expectf(t, body != nil && abs(body.rect.min.y - zone.rect.min.y) <= 0.5, "no row above the body: %v in %v", body.rect if body != nil else ui.Rect{}, zone.rect)
+	testing.expectf(t, header != nil && body != nil && body.rect.min.y >= header.rect.max.y - 0.5, "compact header above body: %v above %v", header.rect if header != nil else ui.Rect{}, body.rect if body != nil else ui.Rect{})
 	testing.expectf(t, abs(at.min.x - (zone.rect.min.x + FOLD_INSET)) <= 1, "where the view put it: %v in %v", at, zone.rect)
 	session.click(s, "view_fold")
 	if wait_built(s, "marks_compact") == nil { return }
@@ -411,18 +412,17 @@ a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	testing.expectf(t, !sm.fold[.Left].folded, "restored, remembered: %q", text)
 }
 
-// The panel that places its fold button: its strip on hover has the strip's own buttons but no Minimise (said once).
+// The panel that places its fold button: its compact header has Close and menu, and no second Minimise (said once).
 @(test)
 a_fold_button_s_strip_says_minimise_once :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "marks")
 	fold := wait_built(s, "view_fold")
-	body := built(s, "view_panel_view_marks")
-	if fold == nil || body == nil { testing.expect(t, false, "the fold button and the body"); return }
-	session.move(s, {body.rect.min.x + RAIL_EM * r.em + 30, body.rect.min.y + 2})
-	if wait_built(s, "view_tabs") == nil { return }
-	testing.expect(t, built(s, "view_stack_max") != nil, "the strip's own buttons")
+	session.frames(s, 2)
+	header := built(s, "view_lone_header")
+	if fold == nil || header == nil { testing.expect(t, false, "the fold button and the header"); return }
+	testing.expect(t, built(s, "view_stack_close") != nil, "the header's Close button")
 	testing.expect(t, built(s, "view_stack_min") == nil, "no second Minimise")
 	testing.expect(t, built(s, "view_fold") != nil, "the view's button stays")
 }
@@ -751,86 +751,46 @@ a_restart_keeps_a_manual_choice_on_its_side :: proc(t: ^testing.T) {
 	testing.expect(t, wait_built(s, "view_panel_view_side") != nil, "wide again: open by itself")
 }
 
-// Test 17: a panel alone in its zone adds no tab strip, no border, no icon at rest; its body starts at the zone's top
-// left. Its stack's strip comes after a rest of VIEW_HOVER_DWELL_MS at the top edge, and pushes the body down (nothing
-// of it over the body); it stays while the pointer is anywhere in the panel, and goes when the pointer leaves it.
+// A panel alone in its zone shows a slim non-overlapping compact header bar with a drag handle, menu button, and
+// reserved Close button at rest (no hover-only dwell required); the Close button closes it directly.
 @(test)
-a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
+a_lone_panel_has_a_compact_header_with_close :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "side")
 	body := wait_built(s, "view_panel_view_side")
 	zone := built(s, "view_zone_Left")
-	if body == nil || zone == nil { testing.expect(t, false, "the panel and its zone"); return }
-	top := zone.rect.min
-	testing.expect_value(t, body.rect.min, top)
-	testing.expect(t, session.find(s, "view_tabs") == nil, "no tab strip")
-	testing.expect(t, .Draw_Background not_in zone.flags && .Draw_Border not_in zone.flags, "the zone draws nothing")
-	testing.expect(t, .Draw_Background not_in body.flags && .Draw_Border not_in body.flags, "the body draws nothing of its own")
-	// (a pointer in the body, past the edge's band: nothing, however long it rests)
-	session.move(s, {top.x + 30, top.y + r.em * 1.5})
-	session.advance(s, 2 * ui.VIEW_HOVER_DWELL_MS)
-	testing.expect(t, built(s, "view_tabs") == nil, "nothing on the hover of the body")
-	// the top edge: nothing before the dwell; then the strip, the body under it
-	session.move(s, {top.x + 30, top.y + 2})
-	session.advance(s, ui.VIEW_HOVER_DWELL_MS - 100)
-	testing.expect(t, built(s, "view_tabs") == nil, "no strip before the dwell")
-	session.advance(s, 150)
-	tabs := built(s, "view_tabs")
-	if !testing.expect(t, tabs != nil, "the strip after a rest at the top edge") { return }
-	body = built(s, "view_panel_view_side")
-	testing.expectf(t, body.rect.min.y >= tabs.rect.max.y - 0.5, "the body pushed under it: %v under %v", body.rect, tabs.rect)
-	testing.expect(t, session.find(s, "view_tab_view_side") != nil, "its tab: its title, its menu")
-	// on the strip, then down into the body: it stays (the body never moves up under the pointer); out: it goes
-	session.move(s, {top.x + 30, (tabs.rect.min.y + tabs.rect.max.y) * 0.5})
-	session.frames(s, 2)
-	testing.expect(t, built(s, "view_tabs") != nil, "it stays while the pointer is on it")
-	session.move(s, {top.x + 30, tabs.rect.max.y + r.em * 2})
-	session.frames(s, 4)
-	testing.expect(t, built(s, "view_tabs") != nil, "it stays while the pointer is in the body")
-	session.move(s, OUT)
-	session.frames(s, 2)
-	testing.expect(t, built(s, "view_tabs") == nil, "none when the pointer leaves")
+	header := built(s, "view_lone_header")
+	close_btn := built(s, "view_stack_close")
+	menu_btn := built(s, "view_lone_menu")
+	drag := built(s, "view_lone_drag")
+	if body == nil || zone == nil || header == nil || close_btn == nil || menu_btn == nil || drag == nil {
+		testing.expect(t, false, "the lone panel's compact header, drag, menu, and close controls")
+		return
+	}
+	testing.expect(t, session.find(s, "view_tabs") == nil, "no tab strip for a lone panel")
+	testing.expectf(t, body.rect.min.y >= header.rect.max.y - 0.5, "body strictly under header: %v under %v", body.rect, header.rect)
+	testing.expectf(t, close_btn.rect.min.x >= header.rect.min.x - 1 && close_btn.rect.max.x <= header.rect.max.x + 1, "close button inside header: %v in %v", close_btn.rect, header.rect)
+	testing.expectf(t, drag.rect.max.x <= menu_btn.rect.min.x + 1 && menu_btn.rect.max.x <= close_btn.rect.min.x + 1, "controls never overlap: drag %v menu %v close %v", drag.rect, menu_btn.rect, close_btn.rect)
 	testing.expectf(t, abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "its extent_em: %v", zone.rect)
+	// Clicking the reserved Close button closes the lone panel without hovering any hidden strip.
+	session.click(s, "view_stack_close")
+	session.frames(s, 3)
+	testing.expect(t, !ui.view_is_open(&r.views, "side"), "clicking Close closes the lone panel")
 }
 
-// The strip's state machine (views.md, section 2.5, rule 2): a press during the dwell starts it again; shown, the strip
-// stays down to the body's bottom and goes when the pointer leaves the stack; it does not come back by itself, only
-// after a new full dwell; Escape hides it.
+// A lone panel's menu button opens its view menu with Float/Maximise/Close without waiting on hover.
 @(test)
-a_lone_panel_s_strip_waits_for_a_rest :: proc(t: ^testing.T) {
+a_lone_panel_menu_button_opens_its_menu :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "side")
-	zone := wait_built(s, "view_zone_Left")
-	if zone == nil { return }
-	band := [2]f32{zone.rect.min.x + 30, zone.rect.min.y + 2}
-	session.move(s, band)
-	session.advance(s, ui.VIEW_HOVER_DWELL_MS - 100)
-	session.press(s, band)
-	session.release(s, band)
-	session.advance(s, ui.VIEW_HOVER_DWELL_MS - 100)
-	testing.expect(t, built(s, "view_tabs") == nil, "a press during the dwell: it starts again")
-	session.advance(s, 150)
-	if !testing.expect(t, built(s, "view_tabs") != nil, "a full dwell after the press") { return }
-	session.move(s, {band.x, zone.rect.max.y - 3})
-	session.frames(s, 2)
-	testing.expect(t, built(s, "view_tabs") != nil, "it stays down to the body's bottom")
-	session.move(s, OUT)
-	session.frames(s, 2)
-	testing.expect(t, built(s, "view_tabs") == nil, "gone when the pointer leaves the stack")
-	// back in the panel: no strip by itself
-	session.move(s, {band.x, zone.rect.min.y + r.em * 4})
-	session.advance(s, 2 * ui.VIEW_HOVER_DWELL_MS)
-	testing.expect(t, built(s, "view_tabs") == nil, "back in the body: it does not come back")
-	session.move(s, band)
-	testing.expect(t, built(s, "view_tabs") == nil, "back in the band: not before a new dwell")
-	session.advance(s, ui.VIEW_HOVER_DWELL_MS)
-	if !testing.expect(t, built(s, "view_tabs") != nil, "after a new dwell") { return }
-	session.key(s, .Escape)
-	testing.expect(t, built(s, "view_tabs") == nil, "Escape hides it")
-	session.advance(s, ui.VIEW_HOVER_DWELL_MS)
-	testing.expect(t, built(s, "view_tabs") != nil, "a new dwell in the band brings it back")
+	menu_btn := wait_built(s, "view_lone_menu")
+	if menu_btn == nil { return }
+	session.click_at(s, session.center(menu_btn))
+	if !click_item(s, "Open as a floating window") { return }
+	if wait_built(s, "internal_view_side") == nil { return }
+	testing.expect_value(t, ui.view_presentation(&r.views, "side"), ui.View_Presentation.Internal)
 }
 
 // opencode native's sidebar: its fold button under a half em margin at the panel's top, under the title bar. The
@@ -852,7 +812,7 @@ a_pointer_travelling_to_the_fold_button_moves_nothing :: proc(t: ^testing.T) {
 	in_band := false
 	for y := top - 10; ; y += 4 {
 		p := [2]f32{c.x, min(y, c.y)}
-		if p.y >= top && p.y < top + ui.VIEW_HOVER_EDGE_EM * r.em { in_band = true }
+		if p.y >= top && p.y < top + ui.VIEW_LONE_HEADER_EM * r.em { in_band = true }
 		s.pointer = p
 		session.event(s, {kind = .Mouse_Move, pos = p})
 		session.frame(s)
@@ -926,24 +886,20 @@ a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
 	}
 }
 
-// The panel's controls and the body's never meet: on the hover of its top edge, a lone panel's strip pushes the body's
-// own strip (a sidebar's row of tabs) down under it, every control of both in reach; its tab's menu floats the panel.
+// The panel's compact header and the body's own strip never overlap: the body's strip sits cleanly under the header,
+// and the header's right-click menu floats the panel.
 @(test)
 a_panel_s_strip_pushes_the_body_s_strip :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "striped")
-	body := wait_built(s, "view_panel_view_striped")
-	if body == nil || wait_built(s, "striped_strip") == nil { return }
-	session.move(s, {body.rect.min.x + 40, body.rect.min.y + 2})
-	wait_built(s, "view_tabs")   // (after the dwell, VIEW_HOVER_DWELL_MS)
-	tabs, strip := built(s, "view_tabs"), built(s, "striped_strip")
-	if !testing.expect(t, tabs != nil && strip != nil, "the panel's strip and the body's") { return }
-	testing.expectf(t, strip.rect.min.y >= tabs.rect.max.y - 0.5, "the body's strip under the panel's: %v under %v", strip.rect, tabs.rect)
-	// its tab's menu floats it
-	tab := built(s, "view_tab_view_striped")
-	if !testing.expect(t, tab != nil, "the panel's tab") { return }
-	session.click_at(s, session.center(tab), .Right)
+	header := wait_built(s, "view_lone_header")
+	strip := wait_built(s, "striped_strip")
+	if !testing.expect(t, header != nil && strip != nil, "the panel's header and the body's strip") { return }
+	testing.expectf(t, strip.rect.min.y >= header.rect.max.y - 0.5, "the body's strip under the panel's header: %v under %v", strip.rect, header.rect)
+	drag := built(s, "view_lone_drag")
+	if !testing.expect(t, drag != nil, "the panel's drag handle") { return }
+	session.click_at(s, session.center(drag), .Right)
 	if !click_item(s, "Open as a floating window") { return }
 	if wait_built(s, "internal_view_striped") == nil { return }
 	testing.expect_value(t, ui.view_presentation(&r.views, "striped"), ui.View_Presentation.Internal)
@@ -1329,12 +1285,11 @@ the_band_s_menu_gives_way_to_the_body_s :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.menu_is_open(VIEW_MENU_TABBED), "not the view's")
 	session.key(s, .Escape)
 	session.frames(s, 2)
-	session.move(s, {panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 2})
-	strip_tab := wait_built(s, "view_tab_view_tabbed")   // (after the dwell, VIEW_HOVER_DWELL_MS)
-	if strip_tab == nil { return }
-	session.click_at(s, session.center(strip_tab), .Right)
+	drag := built(s, "view_lone_drag")
+	if drag == nil { return }
+	session.click_at(s, session.center(drag), .Right)
 	session.frames(s, 2)
-	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu on the strip's tab")
+	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu on its compact header")
 	testing.expect(t, !ui.menu_is_open("tab_menu"))
 }
 
@@ -1345,26 +1300,24 @@ item_shown :: proc(s: ^session.Session, words: string) -> bool {
 	return x != nil && x.last_build == s.state.build_index
 }
 
-// A right press on the free part of a lone panel's top area opens the view's menu at the press (a tab's opens at the
-// release), with no strip shown; a right press lower in the body opens nothing. Its item floats the panel.
+// A right click on a lone panel's compact header opens the view's menu, while a right press lower in the body opens
+// nothing; its item floats the panel.
 @(test)
 the_free_part_of_a_panel_s_top_area_opens_its_menu :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "tabbed")
 	panel := wait_built(s, "view_panel_view_tabbed")
-	if panel == nil || wait_built(s, "tab_in_band") == nil { return }
+	drag := built(s, "view_lone_drag")
+	if panel == nil || drag == nil || wait_built(s, "tab_in_band") == nil { return }
 	low := [2]f32{panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 4 * r.em}
 	session.press(s, low, .Right)
-	testing.expect(t, !ui.menu_is_open(VIEW_MENU_TABBED), "no menu of the view's below the top area")
+	testing.expect(t, !ui.menu_is_open(VIEW_MENU_TABBED), "no menu of the view's below the header")
 	session.release(s, low, .Right)
-	at := [2]f32{panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 2}
-	ui.use(s.state)
-	testing.expect(t, ui.hit_box_at(at) == nil, "nothing clickable there: the area's free part")
-	session.press(s, at, .Right)
-	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu, at the press")
+	session.click_at(s, session.center(drag), .Right)
+	session.frames(s, 2)
+	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu on the header")
 	testing.expect(t, !ui.menu_is_open("tab_menu"), "not the body's tab's")
-	session.release(s, at, .Right)
 	if !click_item(s, "Open as a floating window") { return }
 	if wait_built(s, "internal_view_tabbed") == nil { return }
 	testing.expect_value(t, ui.view_presentation(&r.views, "tabbed"), ui.View_Presentation.Internal)

@@ -3140,3 +3140,6 @@ fr le serveur a répondu %d
 
 en the update has no signature: refused
 fr la mise à jour n'a pas de signature : refusée
+
+en Panel menu
+fr Menu du panneau

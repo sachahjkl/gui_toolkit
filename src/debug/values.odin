@@ -37,8 +37,10 @@ Pass :: struct {
 	sb:      ^strings.Builder,          // List
 	items:   int,
 	panel:   ^Panel,                    // the panel run
-	acts:    bool,                      // Build: a row of acts is open, the next act goes on it
-	acts_used, acts_room: f32,          // its width taken so far, and its whole width (by the last layout; 0: unknown)
+	acts:       bool,                      // Build: a row of acts is open, the next act goes on it
+	acts_used, acts_room: f32,             // its width taken so far, and its whole width (by the last layout; 0: unknown)
+	has_item:   [SECTIONS_MAX + 1]bool,    // Build: an item was built in this column already (spacing before sections)
+	after_acts: bool,                      // Build: the previous item was an acts row (breathing room after buttons)
 }
 
 // The pass this thread runs: its procedure's calls find it here.
@@ -198,6 +200,8 @@ act :: proc(label: string) -> (pressed: bool) {
 			ui.next({width = ui.text_size(em), height = ui.pct(1)})
 			pressed = ui.button(widget_id(key, "act"), words).clicked
 			p.acts_used += w
+			p.has_item[p.depth] = true
+			p.after_acts = false
 		case .List:
 			list_open(p, label, "act")
 			strings.write_string(p.sb, "}")
@@ -211,12 +215,17 @@ act :: proc(label: string) -> (pressed: bool) {
 	}
 }
 
+// Vertical breathing room above a section header that follows rows or acts in the same column.
+@(private)
+section_gap :: proc() -> f32 { return max(ui.dense_gap() * 3, math.round(ui.font_size() * 0.5)) }
+
 // Ends the row of acts open, if one is.
 @(private)
 acts_close :: proc(p: ^Pass) {
 	if !p.acts { return }
 	ui.pop_parent()
 	p.acts = false
+	p.after_acts = true
 }
 
 // A line of words in the panel (what a group of values is for). Not in a tool's list.
@@ -225,7 +234,9 @@ note :: proc(words: string) {
 		p := current
 		if p == nil || p.kind != .Build || p.filter != "" { return }
 		acts_close(p)
-		ui.spacer(ui.px(ui.dense_gap()))
+		ui.spacer(ui.px(p.after_acts ? ui.dense_gap() * 2 : ui.dense_gap()))
+		p.after_acts = false
+		p.has_item[p.depth] = true
 		ui.next({width = ui.fill(), height = ui.text_size()})
 		if ui.tags("weak") { ui.build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###note", ui.text_shown(words))) }
 	}
@@ -245,7 +256,9 @@ section :: proc(label: string, open := true) -> bool {
 			sf := p.surface
 			on := sf.opened[key] or_else open
 			was := on
-			ui.spacer(ui.px(ui.dense_gap()))
+			ui.spacer(ui.px(p.has_item[p.depth] ? section_gap() : ui.dense_gap()))
+			p.has_item[p.depth] = true
+			p.after_acts = false
 			ui.tree_header(widget_id(key, "section"), label, &on)
 			if on != was { sf.opened[key] = on }
 			if !on { return false }
@@ -258,6 +271,7 @@ section :: proc(label: string, open := true) -> bool {
 		}
 		p.depth += 1
 		p.keys[p.depth], p.names[p.depth] = key, label
+		p.has_item[p.depth] = false
 		return true
 	} else {
 		return false
@@ -529,7 +543,9 @@ watch_text :: proc(label, words: string) {
 
 @(private)
 watch_row :: proc(p: ^Pass, label: string, key: u64, words: string) {
-	if row_start(p, label, key) { value_text(key, words, 0) }
+	// (read-only watches are right-aligned: cap their label to its own text width so a long label elsewhere in the
+	// panel never wastes dead space to the left of a long watch value)
+	if row_start(p, label, key, label_cap_own = true) { value_text(key, words, 0) }
 }
 
 // A value's words at the right of its row, in the mono face; width 0: the rest of the row.
@@ -563,12 +579,18 @@ item :: proc(label: string, act := false) -> (p: ^Pass, key: u64, here: bool) {
 }
 
 // A row's start in the window: the gap over it, its label (with a filter, its sections before it).
+// `label_cap_own`: cap the label cell to its own text width (for right-aligned watches so long values get all
+// remaining room without wasting blank space on the left).
 @(private, require_results, deferred_out = row_end)
-row_start :: proc(p: ^Pass, label: string, key: u64, height: f32 = 0) -> bool {
-	ui.spacer(ui.px(ui.dense_gap()))
+row_start :: proc(p: ^Pass, label: string, key: u64, height: f32 = 0, label_cap_own := false) -> bool {
+	ui.spacer(ui.px(p.after_acts ? ui.dense_gap() * 2 : ui.dense_gap()))
+	p.after_acts = false
+	p.has_item[p.depth] = true
 	shown := shown_label(p, label)
 	ranges := p.filter != "" ? ui.word_ranges(shown, p.filter) : nil
-	ui.dense_row_open(shown, widget_id(key, "row"), row_label_width(p, shown), ranges, height)
+	col := row_label_width(p, shown)
+	if label_cap_own { col = min(col, ui.dense_label_width(shown)) }
+	ui.dense_row_open(shown, widget_id(key, "row"), col, ranges, height)
 	return true
 }
 

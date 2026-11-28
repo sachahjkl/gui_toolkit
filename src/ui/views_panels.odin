@@ -22,16 +22,8 @@ import store "../store"
 
 // A zone's extent when nothing else gives one (ems).
 VIEW_ZONE_EM :: f32(18)
-// A lone panel's strip (view_hover_strip): the band at the stack's top edge where the pointer arms it (ems), and how
-// long the pointer rests there before it shows (ms). Its own delay, not a Feel one: a submenu delay set to 0 would
-// show the strip on the first build of a pointer that only crosses the band (views.md, section 2.5, rule 2).
-VIEW_HOVER_EDGE_EM :: f32(0.6)
-VIEW_HOVER_DWELL_MS :: 300
-
-// The states of a lone panel's strip: at rest; armed (the pointer rests in the top band since View_Record.hover_since);
-// shown until the pointer leaves the stack.
-@(private)
-View_Hover :: enum u8 { Rest, Armed, Shown }
+// A lone panel's compact header bar height, in ems (views.md, section 2.5): sits above the body, never over it.
+VIEW_LONE_HEADER_EM :: f32(1.7)
 
 // A dock space: what is remembered of it (the memory's `#<space>` line) and what its last build laid out.
 @(private)
@@ -871,28 +863,17 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		push_parent(stack)
 		with_strip := minimised || len(list) >= 2
 		for r in list { if r.kind.o.tabs_always { with_strip = true } }
-		// (a lone panel's strip comes on a rest at its top edge and pushes its body down: its controls never lie over
-		// the body's; with company it is the stack's strip, and its hover starts again from rest)
-		on_hover := false
-		if with_strip {
-			for r in list { r.hover = .Rest }
-		} else {
-			with_strip = view_hover_strip(shown, stack)
-			on_hover = with_strip
-		}
 		shown.strip_tools = 0
 		// (the shown view placed its zone's fold button in its last build: the strip says Minimise no second time)
 		folds := shown.fold_built != 0 && shown.fold_built + 1 >= s.build_index
-		if with_strip { view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !folds) }
-		// (a click on the strip did its act in this build: the strip goes in the next one. Not a click on its free part:
-		// the first of a double click that maximises)
-		tabs_key := key_from_string(stack.key, "###view_tabs")
-		if on_hover && s.clicked_key[.Left] != 0 && s.clicked_key[.Left] != tabs_key && view_key_within(s, s.clicked_key[.Left], tabs_key) {
-			shown.hover = .Rest
+		if with_strip {
+			view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !folds)
+		} else {
+			view_lone_header(vs, sp, e, k, list, shown, only >= 0, minimise = !folds)
 		}
 		if !minimised { view_panel_build(vs, sp, shown) }
 		pop_parent()
-		view_panel_menu_press(shown, stack, with_strip ? strip_h : em * VIEW_HOVER_EDGE_EM)
+		view_panel_menu_press(shown, stack, with_strip ? strip_h : math.round(em * VIEW_LONE_HEADER_EM))
 		for r in list { view_header_menu(vs, r, .Panel) }
 		if last || length <= 0 || (minimised && axis == .Y) { continue }
 		// (the handle after it: its share of the zone, written when it is let go)
@@ -1078,6 +1059,8 @@ view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View
 		stack := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_stack_%d", k))
 		sp.stacks[e][k], sp.stack_key[e][k] = stack.rect, stack.key
 		push_parent(stack)
+		// (keep the same top offset as view_lone_header so view_fold_button stays under the pointer across fold/unfold)
+		view_rail_header(vs, sp, e, list, shown)
 		view_panel_build(vs, sp, shown, rail = true)
 		// (the toolkit's rail has no Restore for a compact form: its view places it, views.md, Minimise)
 		when ODIN_DEBUG {
@@ -1105,6 +1088,7 @@ view_fold_button :: proc(v: ^View) -> Signal {
 	sp := view_space_of(vs, view_panel_place(r.machine).space)
 	labels := view_labels(vs)
 	collapsed := view_zone_collapsed(sp, e)
+	if r.fold_built == 0 { gs().anim_busy = true }   // (one more build drops the duplicate Minimise from the lone header)
 	r.fold_built = gs().build_index
 	sig := side_fold_button("###view_fold", collapsed, e == .Right, labels.minimize, labels.restore, labels.menu_hint)
 	if sig.clicked {
@@ -1316,48 +1300,107 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 	view_build_ended(vs, r)
 }
 
-// Whether a lone panel shows its stack's strip (section 2.5, rule 2), by its state machine (View_Hover): armed while
-// the pointer rests in the stack's top band (VIEW_HOVER_EDGE_EM, by the last layout) with no button down, shown after
-// VIEW_HOVER_DWELL_MS there; then kept while the pointer is in the stack, a box of the strip is held (a tab dragged
-// out) or the view's menu is open, and gone on Escape. Shown, it pushes the body down: no control of it lies over the
-// body's. (A click on the strip ends it too: view_zone_fill, after the strip did its act.)
+// A compact chrome icon of a lone panel's header (non-focusable, like caption_row, so F6 and panel activation put
+// keyboard focus directly into the panel's content rather than its chrome).
 @(private = "file")
-view_hover_strip :: proc(r: ^View_Record, stack: ^Box) -> bool {
-	s := gs()
+view_lone_icon :: proc(id, glyph, label: string) -> (clicked: bool) {
 	em := font_size()
-	a, p := stack.rect, mouse_pos()
-	inside := s.mouse_valid && p.x >= a.min.x && p.x < a.max.x && p.y >= a.min.y && p.y < a.max.y
-	switch r.hover {
-	case .Shown:
-		held := s.active_key[.Left] != 0 && view_key_within(s, s.active_key[.Left], key_from_string(stack.key, "###view_tabs"))
-		keep := inside || held || menu_is_open(view_menu_id(r))
-		// (peeked, not taken: an Escape the body reads still reaches it)
-		if !keep || key_pressed_peek(.Escape) { r.hover = .Rest }
-	case .Rest, .Armed:
-		band := inside && p.y < a.min.y + em * VIEW_HOVER_EDGE_EM
-		pressed := s.buttons_down != {} || s.pressed_any != {}
-		if !band || pressed {
-			r.hover = .Rest
-			break
-		}
-		if r.hover == .Rest { r.hover, r.hover_since = .Armed, s.time_ms }
-		waited := s.time_ms - r.hover_since
-		if waited >= VIEW_HOVER_DWELL_MS {
-			r.hover = .Shown
-		} else {
-			wake_within(s, max(1, int(VIEW_HOVER_DWELL_MS - waited) + WAKE_MARGIN_MS))   // (one frame at the deadline)
-		}
-	}
-	return r.hover == .Shown
+	side := math.round(em * VIEW_DETACH_EM)
+	spacer(px(em * 0.25))
+	push_tags("ghost_button", "button", "weak")
+	defer pop_tags()
+	next({width = px(side), height = px(side), font = lucide_icons(), font_size = em * 0.85, text_pad = 0, text_align = .Center, radius = em * 0.3})
+	b := build_box({.Clickable, .Draw_Background, .Draw_Hot_Effects, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s", glyph, id))
+	a11y_default(b, {role = .Button, name = label})
+	sig := signal(b)
+	if hovered_for(sig) { if tooltip() { tooltip_text(label) } }
+	return sig.clicked
 }
 
-// Whether the box `k` is `root` or lies under it (a box of a strip on hover: held, or clicked).
+// The matching top bar of a collapsed compact-form rail so view_fold_button stays at the exact same pixel across fold.
 @(private = "file")
-view_key_within :: proc(s: ^State, k: Key, root: Key) -> bool {
-	for b := s.boxes[k] or_else nil; b != nil; b = b.parent {
-		if b.key == root { return true }
+view_rail_header :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, list: []^View_Record, shown: ^View_Record) {
+	s := gs()
+	em := font_size()
+	labels := view_labels(vs)
+	h := math.round(em * VIEW_LONE_HEADER_EM)
+	small_em := math.round(em * DENSE_FONT_SCALE)
+	next({width = fill(), height = px(h), axis = .X, cross = .Center})
+	bar: ^Box
+	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_lone_header") }
+	push_parent(bar)
+	defer pop_parent()
+	spacer(fill())
+	push_style_copy()
+	top_style().font_size = small_em
+	if view_lone_icon("view_stack_close", lucide.X, labels.close) {
+		for r in list { view_apply(vs, r, {kind = .User_Close}) }
+		s.anim_busy = true
 	}
-	return false
+	spacer(fill())
+	pop(&s.style_stack)
+	_ = sp; _ = e; _ = shown
+}
+
+// The slim compact header bar of a lone panel (views.md, section 2.5): sits above the body so controls never overlap
+// body content or jump on hover. Left: rigid drag grip + eliding title (drag detaches, double click maximises, right
+// click opens menu). Middle: optional view_header_tools slot. Right: reserved menu ("…") and Close ("×") buttons that
+// stay inside the header at any width.
+@(private = "file")
+view_lone_header :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list: []^View_Record, shown: ^View_Record, maxed: bool, minimise := true) {
+	s := gs()
+	em := font_size()
+	labels := view_labels(vs)
+	title := view_title_shown(shown)
+	h := math.round(em * VIEW_LONE_HEADER_EM)
+	small_em := math.round(em * DENSE_FONT_SCALE)
+	next({width = fill(), height = px(h), axis = .X, cross = .Center})
+	bar: ^Box
+	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_lone_header") }
+	push_parent(bar)
+	defer pop_parent()
+	// Left: drag grip + eliding title (shrinks cleanly so right-side controls never crop)
+	next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+	drag := build_box({.Clickable, .Clip, .Fits_Width}, "###view_lone_drag")
+	if parent(drag) {
+		push_tags("weak")
+		next({width = px(math.round(small_em * VIEW_DRAG_GRIP_EM)), height = pct(1), font = lucide_icons(), font_size = math.round(small_em * 0.9), text_align = .Center, text_pad = 0})
+		grip := build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###view_lone_grip", lucide.GRIP_VERTICAL))
+		a11y_default(grip, {ignore = true})
+		next({width = fill(), height = pct(1), font_size = small_em, text_pad = math.round(small_em * 0.2), text_align = .Left})
+		build_box({.Draw_Text}, fmt.tprintf("%s###view_lone_title", text_shown(title)))
+		pop_tags()
+	}
+	sig := signal(drag)
+	if sig.dragging { view_panel_drag(vs, shown, drag.key, sig, em) }
+	if sig.double_clicked { view_stack_maximise(vs, sp, e, k, !maxed) }
+	if sig.right_clicked { menu_open(view_menu_id(shown), mouse_pos(), drag.key) }
+	// Optional program header tools
+	next({width = children_sum(0), height = pct(1), axis = .X, cross = .Center})
+	shown.strip_tools = build_box({}, "###view_strip_tools").key
+	// Right: reserved menu and Close controls at compact size (rigid: never shrunk or cropped)
+	push_style_copy()
+	top_style().font_size = small_em
+	if shown.kind.o.new_tab != nil && view_lone_icon("view_new_tab", lucide.PLUS, view_new_tab_label(vs, shown.kind)) {
+		view_new_tab(vs, shown)
+	}
+	if minimise && e != .Center && !maxed && view_lone_icon("view_stack_min", lucide.MINUS, labels.minimize) {
+		view_zone_unmaximise(vs, sp, e)
+		view_stack_minimise(vs, sp, e, true)
+	}
+	menu_id := view_menu_id(shown)
+	if view_lone_icon("view_lone_menu", lucide.ELLIPSIS, i18n.tr("Panel menu")) {
+		if mb := box_from_key(key_from_string(bar.key, "###view_lone_menu")); mb != nil {
+			if menu_is_open(menu_id) { menu_close() } else { menu_open(menu_id, mb.rect, mb.key, align = .End) }
+		}
+	}
+	if view_lone_icon("view_stack_close", lucide.X, labels.close) {
+		if maxed { view_stack_maximise(vs, sp, e, k, false) }
+		for r in list { view_apply(vs, r, {kind = .User_Close}) }
+		s.anim_busy = true
+	}
+	spacer(px(math.round(small_em * 0.25)))
+	pop(&s.style_stack)
 }
 
 // Inside a build: `b`, the program's title box of the view, moves it: in a lone panel, a drag of it past DOCK_DRAG_EM

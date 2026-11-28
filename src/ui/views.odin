@@ -216,10 +216,7 @@ View_Record :: struct {
 	tools:      Key,         // the header's box of the program's tools, in this build
 	header:     Key,         // the header strip, in this build (view_room)
 	panel:      Key,         // the dialog's panel, or the internal window's frame (view_room)
-	strip_tools: Key,        // as a panel shown in its stack's strip: the strip's slot of its tools, in this build (0: none)
-	// a lone panel: its stack's strip on a rest at its top edge (view_hover_strip), and when the arming began (State.time_ms)
-	hover:       View_Hover,
-	hover_since: f64,
+	strip_tools: Key,        // as a panel shown in its stack's strip or lone header: the slot of its tools, in this build (0: none)
 	// the build that last placed its zone's fold button (view_fold_button): its strip, built before its body, reads the
 	// last one and leaves its Minimise out
 	fold_built: u64,
@@ -707,8 +704,10 @@ view_header_tools :: proc(v: ^View) -> bool {
 	}
 	if r.tools == 0 {
 		push_parent(head)
-		// (strictness 0: rigid tools keep their least_x whole while a shrinkable tool such as a strip of tabs gives way)
-		next({width = children_sum(0), height = children_sum(), axis = .X, cross = .Center})
+		// (dense floating window: fills the middle between the dedicated drag grip and the reserved right-side controls;
+		// elsewhere strictness 0 so rigid tools keep their least_x while shrinkable tools such as tabs give way)
+		w := view_header_dense(r, v.presentation) ? fill() : children_sum(0)
+		next({width = w, height = children_sum(), axis = .X, cross = .Center})
 		r.tools = build_box({}, "###view_tools").key
 		pop_parent()
 	}

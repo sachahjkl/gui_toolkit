@@ -17,8 +17,10 @@ import lucide "../lucide"
 // The text of a dense scope, a share of the size around it; a row's height, in that text's sizes.
 DENSE_FONT_SCALE :: 0.85
 DENSE_ROW_EM :: 1.55
-// The share of a dense row's width its label takes.
+// The share of a dense row's width its label takes when no Dense_Labels column is given, and the maximum share any
+// label column may take so values are never crushed in a narrow panel.
 DENSE_LABEL_SHARE :: 0.38
+DENSE_LABEL_MAX_SHARE :: 0.45
 // What a nested header's rows are moved in by, in the scope's text sizes.
 DENSE_INDENT_EM :: 0.9
 // A dense floating window's header (View_Options.dense), in the scope's text sizes: a row of tabs, a little taller
@@ -83,15 +85,37 @@ dense_row :: proc(label: string, id := "", label_width: f32 = 0, ranges: []Fuzzy
 	return true
 }
 
+// The width in pixels that `label` needs on one line in the current dense style (its text plus horizontal padding).
+dense_label_width :: proc(label: string) -> f32 {
+	st := top_style()
+	return math.ceil(text_width(st.font, st.font_size, label) + 2 * st.text_pad)
+}
+
 // dense_row's row without its scope: the caller pops it (pop_parent). For a wrapper whose own scope holds it.
 dense_row_open :: proc(label: string, id := "", label_width: f32 = 0, ranges: []Fuzzy_Range = nil, height: f32 = 0) {
 	set_next_axis(.X, .Center)
 	s := gs()
+	em := max(font_size(), 1)
 	s.next_mod.width = fill()
 	s.next_mod.height = px(height > 0 ? height : dense_row_height())
-	push_parent(build_box({}, id != "" ? id : fmt.tprintf("###row_%s", label)))
+	row := build_box({}, id != "" ? id : fmt.tprintf("###row_%s", label))
+	push_parent(row)
+	row_w := row.rect.max.x - row.rect.min.x
+	w: Size
+	if label_width > 0 {
+		lw := label_width
+		if row_w > 0 {
+			cap := max(math.floor(row_w * DENSE_LABEL_MAX_SHARE), math.ceil(DENSE_LABEL_MIN_EM * em))
+			lw = min(lw, cap)
+		}
+		w = px(lw)
+	} else if row_w > 0 {
+		w = px(min(math.floor(row_w * DENSE_LABEL_SHARE), math.ceil(DENSE_LABEL_MAX_EM * em)))
+	} else {
+		w = pct(DENSE_LABEL_SHARE, 1)
+	}
 	// (lit, the label is a paragraph as tall as its line: centred in the row as the plain one's text is)
-	next({width = label_width > 0 ? px(label_width) : pct(DENSE_LABEL_SHARE, 1), height = len(ranges) > 0 ? text_size() : pct(1)})
+	next({width = w, height = len(ranges) > 0 ? text_size() : pct(1)})
 	if tags("weak") {
 		lb := len(ranges) > 0 ? matched_label("###label", label, ranges) : build_box({.Draw_Text}, fmt.tprintf("%s###label", label))
 		dense_readable(lb)
@@ -145,7 +169,7 @@ dense_label_column :: proc(l: ^Dense_Labels, label: string, indent: f32 = 0) -> 
 	}
 	l.next = max(l.next, min(w + indent / em, DENSE_LABEL_MAX_EM))
 	col := l.column > 0 ? l.column : DENSE_LABEL_FIRST_EM
-	return math.ceil(max(col, DENSE_LABEL_MIN_EM) * em - indent)
+	return max(math.ceil(max(col, DENSE_LABEL_MIN_EM) * em - indent), math.ceil(em))
 }
 
 // A theme's weak ink is made for text at the theme's size: at a dense size, it still reads on the ground it lies on

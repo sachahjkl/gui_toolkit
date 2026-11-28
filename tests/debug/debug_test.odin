@@ -646,20 +646,80 @@ clicking_a_debug_tab_switches_panels :: proc(t: ^testing.T) {
 	testing.expect(t, session.find(s, debug.box_name("Soldier/speed")) == nil, "View panel returns on click")
 }
 
-// Many debug tabs in a floating debug window shrink or scroll inside view_header so pin and window controls stay inside.
+// Many debug tabs (9+) in a narrow floating debug window keep a dedicated draggable grip on the left and pin/reattach/
+// window/close controls strictly inside the header with zero overlap; dragging the grip moves the floating window.
 @(test)
 many_debug_tabs_keep_header_controls_inside :: proc(t: ^testing.T) {
 	soldier: Soldier
-	s := session.start(t, {size = WINDOW, build = page})
-	for name in ([]string{"Folder", "Draft", "Apply", "Indexes", "Installer"}) {
+	s := session.start(t, {size = {460, 500}, build = page})
+	for name in ([]string{"Folder", "Draft", "Apply", "Indexes", "Installer", "Network", "Layout", "Plugins", "Audio"}) {
 		debug.panel(s.state, name, soldier_debug, &soldier)
 	}
 	debug.open(s.state)
 	session.wait_box(s, "debug_pin")
 	session.frames(s, 3)
 	head := session.get(s, "view_header")
-	for id in ([]string{"debug_tabs", "debug_pin", "view_window", "view_close"}) {
-		b := session.get(s, id)
-		testing.expectf(t, b.rect.min.x >= head.rect.min.x - 1 && b.rect.max.x <= head.rect.max.x + 1, "%s %v inside header %v", id, b.rect, head.rect)
+	grip := session.get(s, "view_drag_grip")
+	slot := session.get(s, "debug_tabs_slot")
+	pin := session.get(s, "debug_pin")
+	reattach := session.get(s, "view_reattach")
+	window := session.get(s, "view_window")
+	close_btn := session.get(s, "view_close")
+	testing.expectf(t, grip.rect.max.x - grip.rect.min.x >= 12, "dedicated drag grip present: %v", grip.rect)
+	ordered := [?]^ui.Box{grip, slot, pin, reattach, window, close_btn}
+	for b, i in ordered {
+		testing.expectf(t, b.rect.min.x >= head.rect.min.x - 1 && b.rect.max.x <= head.rect.max.x + 1, "control %d (%v) inside header %v", i, b.rect, head.rect)
+		if i > 0 {
+			prev := ordered[i - 1]
+			testing.expectf(t, prev.rect.max.x <= b.rect.min.x + 1, "control %d (%v) does not overlap control %d (%v)", i - 1, prev.rect, i, b.rect)
+		}
 	}
+	// Dragging the dedicated grip moves the floating debug window.
+	x0 := head.rect.min.x
+	g0 := session.center(grip)
+	session.drag(s, g0, g0 - {50, 0})
+	session.frames(s, 2)
+	head = session.get(s, "view_header")
+	testing.expectf(t, head.rect.min.x < x0 - 20, "dragging grip moved debug window: %v -> %v", x0, head.rect.min.x)
+}
+
+Spacing_Data :: struct { count: int, flag: bool }
+
+spacing_debug :: proc(d: ^Spacing_Data) {
+	debug.number("configuration_directory_limit", &d.count)
+	debug.watch("url", "https://api.example.com/v1/sessions/ses_1234567890abcdef")
+	if debug.act("Print") {}
+	if debug.act("Reset") {}
+	if debug.section("Render") {
+		debug.toggle("wire", &d.flag)
+	}
+}
+
+// Acts followed by a section header keep clear vertical breathing room (>= dense_gap * 2), and a short-labelled watch
+// with a long value gets the full remaining row width instead of wasting blank space on the left.
+@(test)
+section_spacing_and_watch_horizontal_distribution :: proc(t: ^testing.T) {
+	d := Spacing_Data{count = 7, flag = true}
+	s := session.start(t, {size = {900, 620}, build = page})
+	debug.panel(s.state, "Space", spacing_debug, &d)
+	debug.open(s.state)
+	testing.expect(t, debug.show_panel(s.state, "Space"))
+	session.wait_box(s, debug.box_name("Space/Render", "section"))
+	session.frames(s, 3)
+	act_btn := session.get(s, debug.box_name("Space/Print", "act"))
+	sec := session.get(s, debug.box_name("Space/Render", "section"))
+	gap := sec.rect.min.y - act_btn.rect.max.y
+	min_gap := max(f32(1), ui.dense_gap()) * 2
+	testing.expectf(t, gap >= min_gap, "acts-to-section vertical gap %.1f px >= %.1f px", gap, min_gap)
+	url_row := session.get(s, debug.box_name("Space/url", "row"))
+	url_lbl := session.get(s, "label", within = url_row)
+	url_val := session.get(s, debug.box_name("Space/url", "watch"))
+	num_row := session.get(s, debug.box_name("Space/configuration_directory_limit", "row"))
+	num_lbl := session.get(s, "label", within = num_row)
+	// Short label "url" takes far less width than the long label column, so the long watch value gets full remaining width.
+	url_lbl_w := url_lbl.rect.max.x - url_lbl.rect.min.x
+	num_lbl_w := num_lbl.rect.max.x - num_lbl.rect.min.x
+	testing.expectf(t, url_lbl_w < num_lbl_w * 0.6, "watch label %.1f px stays compact vs long label %.1f px", url_lbl_w, num_lbl_w)
+	testing.expectf(t, url_val.rect.min.x <= url_lbl.rect.max.x + 8, "watch value starts right after its short label: %v after %v", url_val.rect, url_lbl.rect)
+	testing.expectf(t, (url_val.rect.max.x - url_val.rect.min.x) > (url_row.rect.max.x - url_row.rect.min.x) * 0.75, "watch value gets >75%% of row width: %v in %v", url_val.rect, url_row.rect)
 }

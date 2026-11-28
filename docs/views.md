@@ -395,20 +395,21 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 - `views_frame` builds the panels and the internal windows before the content, so they read their keys first; it is
   where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; the panels of its
   frame float (internal windows) until it builds one, and the panels of its own spaces wait for them.
-- A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1), unless its kind says
-  `tabs_always` (a terminal: its strip shows with one tab). Two panels or more in a stack are its tabs: a click shows
-  one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out as an internal window under the pointer.
+- A panel alone in its stack shows a slim compact header bar (`VIEW_LONE_HEADER_EM`) above its body, unless its kind
+  says `tabs_always` (a terminal: its full tab strip shows with one tab). The compact header bar has a drag grip and
+  eliding title on the left (a drag past `DOCK_DRAG_EM` takes it out as a floating window, a double click maximises,
+  a right click opens its menu), the optional `view_header_tools` slot, and reserved right-side controls (Minimise
+  when the view does not place its own `view_fold_button`, a menu button, and Close) that never overlap the body or
+  get cropped off the right edge. Two panels or more in a stack show a tab strip: a click shows one, a right click
+  opens its menu, a drag past `DOCK_DRAG_EM` takes it out as an internal window under the pointer.
 - **The strip**, left to right: the tabs, in the look of every row of tabs (`ui.tabs`: the shown one in the text's colour
   rising out of the strip's line as one shape with its panel, the others a faint outline, weak; the one shown brought into view when it changes), each a Tab stop, on a strip ([strip.md](strip.md)): too many for the
   stack, they scroll with arrows, never a bar; the "+" of the shown view's kind, right after the last tab (at the end of
   the tabs when they scroll), where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
   shown view (`view_header_tools`); then at the right end Minimise, Maximise and Close of the stack, drawn as a
   window's caption buttons. In a stack too narrow for them (a side zone of a few ems) the moves go (the view's menu
-  and the palette have them) and the three buttons are small icons. A lone panel shows the same strip after the
-  pointer rests `VIEW_HOVER_DWELL_MS` (300 ms) in its top band (`VIEW_HOVER_EDGE_EM`) with no button down; it pushes
-  the body down, so none of its controls lies over the body's. It stays while the pointer is in the panel, and goes
-  when the pointer leaves it, on Escape, or after a click on the strip; only a new rest brings it back. A pointer that
-  only crosses the band moves nothing.
+  and the palette have them) and the three buttons are small icons. Dense floating views (`View_Options.dense`) reserve
+  a rigid drag handle grip (`VIEW_DRAG_GRIP_EM`) on the left of their header so tabs never consume the draggable area.
   - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new
     instance (`view_open` with a name of its own), at once or later (a shell a server makes). Each "+" leaves the
     stack waiting for one instance of that kind: the next one that opens within `NEW_TAB_WAIT_MS` (10 s) joins the
