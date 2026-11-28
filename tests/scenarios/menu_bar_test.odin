@@ -150,11 +150,14 @@ the_menu_bar_takes_the_keyboard :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 	file := session.find_text(s, "File")
 	testing.expect(t, file != nil && file.custom == nil, "no letter underlined at rest")
 
-	// (Alt held: the access letters underlined)
+	// (Alt held alone: waits MENU_BAR_ALT_DELAY_MS so quick chords do not blink, then underlines access letters)
 	session.event(s, {kind = .Key_Press, key = .Alt, mods = {.Alt}})
 	session.frames(s, 2)
 	file = session.find_text(s, "File")
-	testing.expect(t, file != nil && file.custom != nil, "Alt held: File's letter underlined")
+	testing.expect(t, file != nil && file.custom == nil, "Alt just pressed: no immediate blink before delay")
+	session.advance(s, ui.MENU_BAR_ALT_DELAY_MS + 20)
+	file = session.find_text(s, "File")
+	testing.expect(t, file != nil && file.custom != nil, "Alt held past delay: File's letter underlined")
 	session.save_png(s, "alt_held.png")
 	session.event(s, {kind = .Key_Press, key = .I, mods = {.Alt}})
 	session.event(s, {kind = .Key_Release, key = .I, mods = {.Alt}})
@@ -219,4 +222,26 @@ the_menu_bar_takes_the_keyboard :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 	session.key(s, .Down)
 	session.frames(s, 2)
 	testing.expect(t, !ui.menu_any_open(), "Alt+Left is no tap of Alt")
+}) }
+
+// Alt+Up / Alt+Down chords never blink menu bar underlines (neither immediately on Alt down nor while held after the arrow).
+@(test)
+alt_arrow_chords_do_not_blink_mnemonics :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r: Bar_Run
+	s := session.start(t, {size = {600, 400}, user = &r, build = bar_build})
+	session.wait_idle(s)
+	session.event(s, {kind = .Key_Press, key = .Alt, mods = {.Alt}})
+	session.frames(s, 2)
+	file := session.find_text(s, "File")
+	testing.expect(t, file != nil && file.custom == nil, "no underline on immediate Alt press")
+	session.event(s, {kind = .Key_Press, key = .Up, mods = {.Alt}})
+	session.event(s, {kind = .Key_Release, key = .Up, mods = {.Alt}})
+	session.advance(s, ui.MENU_BAR_ALT_DELAY_MS + 100)
+	file = session.find_text(s, "File")
+	testing.expect(t, file != nil && file.custom == nil, "no underline while holding Alt after Alt+Up chord")
+	session.event(s, {kind = .Key_Press, key = .Down, mods = {.Alt}})
+	session.event(s, {kind = .Key_Release, key = .Down, mods = {.Alt}})
+	session.event(s, {kind = .Key_Release, key = .Alt})
+	session.frames(s, 2)
+	testing.expect(t, !bar_lit(s), "Alt+Up/Down does not light the menu bar")
 }) }

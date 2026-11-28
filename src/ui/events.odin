@@ -152,7 +152,10 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.typed_mods += e.mods
 			if e.key != .None { s.keys_held += {e.key} }
 			// (Windows repeats a held Alt: a repeat keeps what came between, a click or a key)
-			if !(e.repeat && e.key == .Alt) { s.bar.alt_alone = e.key == .Alt && e.mods - {.Alt} == {} }
+			if !(e.repeat && e.key == .Alt) {
+				s.bar.alt_alone = e.key == .Alt && e.mods - {.Alt} == {}
+				if s.bar.alt_alone { s.bar.alt_since = s.time_ms }
+			}
 			if act := zoom_key_action(e.key, e.mods); zoom_keys && act != .None {
 				// the zone that holds the keyboard focus, else the window (zoom-zones.md)
 				if z := zoom_zone_of_focus(s); z != nil {

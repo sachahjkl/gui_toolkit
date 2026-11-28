@@ -28,6 +28,9 @@ Menu_Bar_Entry :: struct {
 	mnemonic: rune,   // its access letter, lower case (0: none)
 }
 
+// How long Alt must be held alone before access letters underline (ms): stops quick Alt+arrow chords from blinking.
+MENU_BAR_ALT_DELAY_MS :: 150
+
 @(private)
 Menu_Bar_State :: struct {
 	entries, entries_prev: [dynamic]Menu_Bar_Entry,
@@ -36,6 +39,7 @@ Menu_Bar_State :: struct {
 	keyboard:   bool,   // a menu of the bar was opened by the keyboard: the access letters show while it is open
 	read_build: u64,    // the build whose first entry read the bar's keys
 	alt_alone:  bool,   // Alt is down and nothing was pressed since (events.odin)
+	alt_since:  f64,    // State.time_ms when Alt went down alone (events.odin)
 	alt_tapped: bool,   // this build's input let Alt go with nothing pressed while it was down
 }
 
@@ -203,9 +207,18 @@ menu_bar_button :: proc(id: string) -> string {
 	b := build_box({.Clickable, .Draw_Text, .Draw_Hot_Effects, .Draw_Background}, words)
 	pop_tags()
 	append(&s.bar.entries, Menu_Bar_Entry{box = b.key, menu = menu_key(menu_id), mnemonic = mnemonic})
-	// (the access letter underlined while Alt is held, the bar lit or a menu of it opened by the keyboard)
-	// (Ctrl with Alt is AltGr on Windows: a character, no access letter)
-	if at >= 0 && ((.Alt in s.keys_held && .Ctrl not_in s.mods) || s.bar.focus != 0 || s.bar.keyboard) {
+	// (the access letter underlined when the bar is lit, a menu of it opened by the keyboard, or Alt is held alone past
+	// MENU_BAR_ALT_DELAY_MS so quick chords like Alt+Up/Alt+Down never blink; Ctrl+Alt is AltGr on Windows)
+	show_mnemonic := s.bar.focus != 0 || s.bar.keyboard
+	if !show_mnemonic && s.bar.alt_alone && .Alt in s.keys_held && .Ctrl not_in s.mods {
+		waited := s.time_ms - s.bar.alt_since
+		if waited >= MENU_BAR_ALT_DELAY_MS {
+			show_mnemonic = true
+		} else {
+			wake_within(s, max(1, int(MENU_BAR_ALT_DELAY_MS - waited) + WAKE_MARGIN_MS))
+		}
+	}
+	if at >= 0 && show_mnemonic {
 		_, w := utf8.decode_rune_in_string(shown[at:])
 		d := frame_new(Fuzzy_Draw)
 		d.ranges = make([]Fuzzy_Range, 1, frame_allocator())

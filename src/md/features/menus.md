@@ -29,10 +29,12 @@ A program's author reads [docs/menus.md](../../../docs/menus.md). This file keep
 pointer, and a person who works with the keys could not reach its menus.
 
 - **Access letters** come from the words: `&` marks one (Windows' and GTK's own mark: "&File", "Ed&it"); without it,
-  the first letter. One way to write it, no option of the call. The letter is underlined while Alt is held, while the bar
-  is lit, and while a menu of the bar opened by the keys is open: the system's rule (underlines only for who uses the
-  keys). Refused: underlined always (noise for the pointer's user), a separate `mnemonic` argument (two places to
-  keep in step).
+  the first letter. One way to write it, no option of the call. The letter is underlined immediately while the bar is lit
+  or a menu of it opened by the keys is open, and after holding Alt alone for `MENU_BAR_ALT_DELAY_MS` (150 ms). Waiting
+  150 ms and requiring `alt_alone` stops quick chords such as Alt+Up / Alt+Down (moving lines in an editor) from
+  blinking underlines on every press, while holding Alt to read mnemonics still reveals them promptly. Refused:
+  underlined always (noise for the pointer's user), underlined on frame 0 of Alt down (blinks on every Alt chord), a
+  separate `mnemonic` argument (two places to keep in step).
 - **F10 and Alt alone light the bar** (its first entry): Windows has both, GTK has F10. Alt alone counts only when
   nothing was pressed while it was down (`alt_alone`, set by the press, cleared by any other key or a press of the
   pointer, read at its release): Alt+Left is no tap. Neither is an Alt whose release the system made as the focus
