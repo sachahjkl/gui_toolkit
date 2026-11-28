@@ -1034,13 +1034,16 @@ palette_rank_work :: proc(d: rawptr) {
 @(private = "file")
 palette_list_empty :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row) {
 	headings := 0
+	in_recent := make(map[[2]i32]struct{}, 8, context.temp_allocator)
 	if !j.chooser {
 		for h, i in palette_recent(j) {
 			if i == 0 { headings += 1 }
+			in_recent[h] = {}
 			append(rows, Palette_Row{snap = h[0], item = h[1], headings = headings, heading = i == 0, recent = true})
 		}
 	}
-	recent := len(rows^) > 0
+	has_recent := len(rows^) > 0
+	recent := has_recent
 	listed := 0
 	for snap in j.snaps { if j.prefix != .None || j.chooser || snap.listed { listed += 1 } }
 	group := ""
@@ -1053,7 +1056,11 @@ palette_list_empty :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row) {
 			g := items[i].group
 			k := i
 			for k < len(items) && items[k].group == g { k += 1 }
-			shown := g != "" ? g : (listed > 1 ? snap.title : "")
+			// (skip a group whose items are all already shown under Recent: never repeat an item twice)
+			remaining := false
+			for x in i ..< k { if ([2]i32{i32(si), i32(x)} not_in in_recent) { remaining = true; break } }
+			if !remaining { i = k; continue }
+			shown := g != "" ? g : (listed > 1 || has_recent ? snap.title : "")
 			heading := shown != "" && (shown != group || recent)
 			recent = false
 			group = shown
@@ -1062,6 +1069,7 @@ palette_list_empty :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row) {
 			for pass in 0 ..< 2 {
 				for x in i ..< k {
 					if items[x].disabled != (pass == 1) { continue }
+					if ([2]i32{i32(si), i32(x)} in in_recent) { continue }
 					append(rows, Palette_Row{snap = i32(si), item = i32(x), headings = headings, heading = heading, group = shown})
 					heading = false
 				}
@@ -1086,8 +1094,13 @@ palette_recent :: proc(j: ^Palette_Job) -> [][2]i32 {
 			if strings.has_prefix(k, head) { wanted[k[len(head):]] = choice_weight(&j.memory, k, j.now_ms) }
 		}
 		if len(wanted) == 0 { continue }
+		seen_id := make(map[string]struct{}, len(wanted), context.temp_allocator)
 		for it, ii in snap.items {
-			if w, ok := wanted[it.id]; ok && w > 0 && !it.disabled { append(&found, Weighed{{i32(si), i32(ii)}, w}) }
+			if it.id in seen_id { continue }
+			if w, ok := wanted[it.id]; ok && w > 0 && !it.disabled {
+				seen_id[it.id] = {}
+				append(&found, Weighed{{i32(si), i32(ii)}, w})
+			}
 		}
 	}
 	slice.stable_sort_by(found[:], proc(a, b: Weighed) -> bool { return a.weight > b.weight })

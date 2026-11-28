@@ -1183,3 +1183,25 @@ a_late_frame_moves_the_fade_by_a_bounded_step :: proc(t: ^testing.T) {
 	late := dialog_shown(&f)
 	testing.expectf(t, abs(late - smooth(1 + 25)) < 1e-3, "a 50 ms frame moves it by 25 ms: %v, not %v", late, smooth(1 + 50))
 }
+
+// An item chosen multiple times appears once under Recent and is not repeated in the list underneath.
+@(test)
+recent_items_are_never_duplicated :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Run{table = COMMANDS[:]}
+	defer run_free(&r)
+	for _ in 0 ..< 3 {
+		open_palette(t, &f, &r)
+		type_text(&f, &r, "close")
+		send(&f, &r, key_ev(.Return))
+	}
+	open_palette(t, &f, &r)
+	testing.expect_value(t, row_id(&r, 0), "close")
+	count := 0
+	for i in 0 ..< row_count(&r) {
+		if row_id(&r, i) == "close" { count += 1 }
+	}
+	testing.expect_value(t, count, 1)
+}
