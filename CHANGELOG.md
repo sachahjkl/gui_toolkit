@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.369.1] - 2026-11-28 00:17
+
+### Fixed
+- **`ui.view_header_tools` and the floating debug window header**: allow shrinkable header tools such as a strip of tabs to narrow and scroll instead of pushing the pin, window, and close buttons outside the header.
+- **`ui.tabs_ex`, `ui.tabs`, `ui.tab_panel`, and debug window tabs**: report `changed` as `true` when a click or keyboard navigation changes the selected tab instead of always returning `false`.
+
 ## [0.369.0] - 2026-11-27 23:04
 
 ### Added
@@ -5307,6 +5313,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.369.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.369.1
 [0.369.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.369.0
 [0.368.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.368.0
 [0.367.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.367.0
