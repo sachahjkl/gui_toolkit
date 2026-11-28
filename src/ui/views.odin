@@ -566,6 +566,56 @@ view_box_in :: proc(vs: ^Views, id: string, s: ^State, instance := "") -> Key {
 	return 0
 }
 
+// Read-only snapshot of an open view's presentation, dock placement, tab activity, keyboard focus, and shown title,
+// returned by view_info without exposing private View_Record internals.
+View_Info :: struct {
+	open:         bool,              // true while the view is open (matches ok)
+	presentation: View_Presentation, // current presentation (.Dialog, .Panel, .Internal, .External)
+	space:        string,            // dock space name when docked ("": main frame)
+	edge:         View_Edge,         // dock edge when docked
+	stack:        int,               // stack rank within its edge when docked
+	active:       bool,              // true when shown (for a docked panel, true when it is the active tab of its stack)
+	focused:      bool,              // true when keyboard focus is inside the view
+	title:        string,            // current shown title (translated if from View_Options.title)
+}
+
+// Read-only query of an open view's presentation, dock placement, active tab state, keyboard focus, and shown title.
+// Returns ({}, false) when the view is not registered or not open.
+view_info :: proc(vs: ^Views, id: string, instance := "") -> (info: View_Info, ok: bool) {
+	r := view_record_find(vs, id, instance)
+	if r == nil || r.machine.state == .Closed { return {}, false }
+	p := r.machine.as
+	info.open = true
+	info.presentation = p
+	info.title = view_title_shown(r)
+	if p == .Panel {
+		place := view_panel_place(r.machine)
+		info.space, info.edge, info.stack = place.space, place.edge, place.stack
+		act := ""
+		if sp, found := vs.spaces[place.space]; found && place.stack >= 0 && place.stack < VIEW_STACKS_MAX {
+			act = sp.active[place.edge][place.stack]
+		}
+		active_match, latest: ^View_Record
+		for other in vs.records {
+			if other.machine.state == .Closed || !view_builds_panel(other.machine) { continue }
+			if view_panel_place(other.machine) != place { continue }
+			if act != "" && other.modal_name == act { active_match = other }
+			if latest == nil || other.dock_order >= latest.dock_order { latest = other }
+		}
+		shown := active_match != nil ? active_match : latest
+		info.active = shown == nil || shown == r
+	} else {
+		info.active = true
+	}
+	if info.active {
+		st := view_state_of(r, p)
+		if st == nil { st = r.owner }
+		root := r.roots[p]
+		if st != nil && root != 0 { info.focused = view_focus_inside(st, root) }
+	}
+	return info, true
+}
+
 // The presentation it has now (Closed: its last one, or its home).
 view_presentation :: proc(vs: ^Views, id: string, instance := "") -> View_Presentation {
 	if r := view_record_find(vs, id, instance); r != nil { return r.machine.as }

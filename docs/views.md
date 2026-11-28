@@ -104,6 +104,7 @@ again.
 | `view_ended(vs, id, instance) -> (code, ok)` | |
 | `view_present(vs, id, p, place, instance)`, `view_reattach(vs, id, instance)` | moves it; the choice is remembered |
 | `view_presentation(vs, id, instance)` | where it is, or where it opens next |
+| `view_info(vs, id, instance) -> (View_Info, bool)` | read-only snapshot of an open view: `open`, `presentation`, `space`, `edge`, `stack`, `active` (active tab in its stack), `focused` (keyboard focus inside the view), and `title` |
 | `view_was_open(vs, id, instance)` | it was open when the program last quit |
 | `view_restore(vs, id, data, first_start_open, instance, owner) -> bool` | at start-up: opens it if it was open at the last quit, or at the very first start (no line for it yet) when `first_start_open`; a view the user closed stays closed |
 | `view_restored_instances(vs, id, allocator) -> []string` | at start-up: the instances of `id` open at the last quit, in the order their lines were written; the program opens each with its own data, and each opens where it was (section "What is remembered") |
