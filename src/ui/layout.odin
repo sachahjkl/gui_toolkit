@@ -227,8 +227,9 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 	// (a swap smaller than its face for a few frames lets it stand past its edges: a face squeezed would cut or wrap its words)
 	overflow := b.swap != nil || (axis == .X ? .Allow_Overflow_X in b.flags : .Allow_Overflow_Y in b.flags)
 	// (a percentage is of the box's size now, the violations above it done: the upward pass gave it the box's size
-	// before an ancestor shrank, and a box that lets its children overflow kept them that large)
-	if overflow && b.pref[axis].kind != .Children_Sum {
+	// before an ancestor shrank, which left both overflowing boxes and under-filled rows such as an incomplete last row
+	// of pct(1/N) theme cards sized against the wider unshrunk ancestor instead of their parent's real width)
+	if b.pref[axis].kind != .Children_Sum {
 		avail := b.size[ai] - content_pad(b, axis)
 		for c := b.first; c != nil; c = c.next {
 			if is_floating(c, axis) || c.pref[axis].kind != .Percent { continue }

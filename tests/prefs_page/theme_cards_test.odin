@@ -2,6 +2,7 @@ package prefs_page_test
 
 import "core:fmt"
 import "core:testing"
+import config "gt:config"
 import prefs_page "gt:prefs_page"
 import "gt:testkit/session"
 import "gt:ui"
@@ -48,6 +49,41 @@ a_last_row_of_two_keeps_the_column_width_at_3 :: proc(t: ^testing.T) {
 a_short_last_row_keeps_the_column_width_at_2 :: proc(t: ^testing.T) {
 	g := Grid{5, 2}
 	expect_even_grid(t, &g)
+}
+
+// Inside a real settings page (margined body inside a split + scroll view), 5 themes in a 3-column grid keep the exact
+// same card width on the incomplete last row (cards 3..4) as on the full row (cards 0..2), within 1 px.
+@(test)
+five_themes_in_prefs_page_match_column_width :: proc(t: ^testing.T) {
+	Page_State :: struct {
+		prefs: config.Prefs,
+		page:  prefs_page.Page,
+	}
+	st: Page_State
+	defs := [?]config.Def{
+		{name = "appearance.theme", kind = .String, value_kind = .Theme, default = {s = "Midnight"}, title = "Theme"},
+	}
+	config.register(&st.prefs, defs[:])
+	defer { prefs_page.destroy(&st.page); config.prefs_destroy(&st.prefs) }
+	s := session.start(t, {size = {900, 560}, user = &st, build = proc(s: ^session.Session) {
+		st := (^Page_State)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		prefs_page.build(&st.page, &st.prefs, {themes = ui.THEMES[:5]})
+	}})
+	session.wait_box(s, "th4")
+	session.frames(s, 3)
+	first := session.get(s, "th0")
+	w := first.rect.max.x - first.rect.min.x
+	testing.expectf(t, w > 80, "card 0 width %.1f px", w)
+	for i in 0 ..< 5 {
+		card := session.get(s, fmt.tprintf("th%d", i))
+		cw := card.rect.max.x - card.rect.min.x
+		testing.expectf(t, abs(cw - w) <= 1, "card %d width %.1f px != card 0 %.1f px", i, cw, w)
+		if i >= 3 {
+			above := session.get(s, fmt.tprintf("th%d", i - 3))
+			testing.expectf(t, abs(card.rect.min.x - above.rect.min.x) <= 1, "card %d x %.1f != card %d x %.1f", i, card.rect.min.x, i - 3, above.rect.min.x)
+		}
+	}
 }
 
 @(private = "file")
