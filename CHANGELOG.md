@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.370.0] - 2026-11-28 11:03
+
+### Added
+- **`ui.view_info`**: added a read-only `ui.view_info(vs, id, instance) -> (View_Info, bool)` query exposing an open view's `open`, `presentation`, `space`, `edge`, `stack`, `active` (active tab of its stack), `focused` (keyboard focus inside the view), and `title` without exposing private `View_Record` internals.
+- **`ui.tree` & `ui.file_tree`**: dragging rows now shows a floating, non-clickable drag preview pill following the pointer (with icon, label, and a `+N` count badge for multi-item drags), highlights hovered drop-target folders with an accent fill and border (and outlines the tree for root drops), and cancels cleanly on Escape.
+- **`ui.about_modal`**: added a generic About modal dialog (`About_Info`, `About_Link`, `about_version_text`, `about_diagnostics_text`) with program logo or icon, name, tagline, version, toolkit version, licence, copyright, a prioritized in-app "What's new" action (`on_whats_new`), optional website and online release notes links (`website_url`, `releases_url`, `links`), Copy version, optional Copy diagnostics, Close/Escape, and French translations.
+
+### Changed
+- **Views & Debug window**: lone docked panels now show a slim, non-overlapping compact header bar with a drag grip, menu button, and reserved Close button instead of a hover-only strip; dense floating windows (such as the Debug window) reserve a dedicated drag handle grip on the left and place tabs in a bounded scrolling slot before Pin and window controls so controls never overlap or crop; debug sections keep vertical breathing room after rows and action buttons, and read-only watch rows give long values the full remaining row width without wasting space on the left.
+
+### Fixed
+- **Menu bar mnemonics**: holding Alt now waits `MENU_BAR_ALT_DELAY_MS` (150 ms) while Alt is held alone before underlining menu bar access letters, and suppresses underlines once another key is pressed, eliminating the visual blink during chords such as `Alt+Up` and `Alt+Down`.
+- **Context menus & submenus**: added a safe-triangle aim corridor so moving diagonally toward an open submenu does not accidentally close it, fixed re-opened menus/submenus to always measure their fresh width and flip cleanly inside screen bounds, and added `icon_font` to `ui.menu_submenu`.
+- **Theme picker grid & percentage layout**: percentage-sized children inside a parent narrowed by ancestor margins or splits now resolve against their parent's shrunk width before violation checks, so incomplete last rows of theme cards in the settings page match the exact column width of full rows instead of stretching wider.
+
 ## [0.369.1] - 2026-11-28 00:17
 
 ### Fixed
@@ -5313,6 +5328,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.370.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.370.0
 [0.369.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.369.1
 [0.369.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.369.0
 [0.368.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.368.0
