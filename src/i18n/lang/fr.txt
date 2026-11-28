@@ -3143,3 +3143,21 @@ fr la mise à jour n'a pas de signature : refusée
 
 en Panel menu
 fr Menu du panneau
+
+en Version
+fr Version
+
+en Toolkit
+fr Boîte à outils
+
+en Copy version
+fr Copier la version
+
+en Version copied.
+fr Version copiée.
+
+en Copy diagnostics
+fr Copier les diagnostics
+
+en Diagnostics copied.
+fr Diagnostics copiés.
