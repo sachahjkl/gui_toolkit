@@ -1190,17 +1190,21 @@ recent_items_are_never_duplicated :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	r := Run{table = COMMANDS[:]}
+	table := []ui.Command{{id = "open", label = "Open", group = "File"}, {id = "close", label = "Close", group = "File"}}
+	r := Run{table = table}
 	defer run_free(&r)
 	for _ in 0 ..< 3 {
 		open_palette(t, &f, &r)
 		type_text(&f, &r, "close")
-		send(&f, &r, key_ev(.Return))
+		settle(t, &f, &r)
+		frame(&f, {key(.Return)}, &r)
+		settle_closed(t, &f, &r)
+		frame(&f, nil, &r)
 	}
 	open_palette(t, &f, &r)
 	testing.expect_value(t, row_id(&r, 0), "close")
 	count := 0
-	for i in 0 ..< row_count(&r) {
+	for i in 0 ..< len(r.pal.shown.rows) {
 		if row_id(&r, i) == "close" { count += 1 }
 	}
 	testing.expect_value(t, count, 1)
