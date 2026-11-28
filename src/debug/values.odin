@@ -40,7 +40,8 @@ Pass :: struct {
 	acts:       bool,                      // Build: a row of acts is open, the next act goes on it
 	acts_used, acts_room: f32,             // its width taken so far, and its whole width (by the last layout; 0: unknown)
 	has_item:   [SECTIONS_MAX + 1]bool,    // Build: an item was built in this column already (spacing before sections)
-	after_acts: bool,                      // Build: the previous item was an acts row (breathing room after buttons)
+	after_acts:    bool,                   // Build: the previous item was an acts row (breathing room after buttons)
+	after_section: bool,                   // Build: a non-empty section just closed at this depth
 }
 
 // The pass this thread runs: its procedure's calls find it here.
@@ -185,7 +186,8 @@ act :: proc(label: string) -> (pressed: bool) {
 			w := ui.text_width(ui.top_style().font, em, words) + 2 * em + 2 * gap
 			if p.acts && p.acts_room > 0 && p.acts_used + gap + w > p.acts_room { acts_close(p) }
 			if !p.acts {
-				ui.spacer(ui.px(gap))
+				ui.spacer(ui.px(p.after_section ? section_gap() : gap))
+				p.after_section = false
 				ui.next({width = ui.fill(), height = ui.px(ui.dense_row_height()), axis = .X, cross = .Center})
 				row := ui.build_box({}, widget_id(key, "acts"))
 				ui.push_parent(row)
@@ -234,8 +236,8 @@ note :: proc(words: string) {
 		p := current
 		if p == nil || p.kind != .Build || p.filter != "" { return }
 		acts_close(p)
-		ui.spacer(ui.px(p.after_acts ? ui.dense_gap() * 2 : ui.dense_gap()))
-		p.after_acts = false
+		ui.spacer(ui.px(p.after_section ? section_gap() : (p.after_acts ? ui.dense_gap() * 2 : ui.dense_gap())))
+		p.after_acts, p.after_section = false, false
 		p.has_item[p.depth] = true
 		ui.next({width = ui.fill(), height = ui.text_size()})
 		if ui.tags("weak") { ui.build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###note", ui.text_shown(words))) }
@@ -258,7 +260,7 @@ section :: proc(label: string, open := true) -> bool {
 			was := on
 			ui.spacer(ui.px(p.has_item[p.depth] ? section_gap() : ui.dense_gap()))
 			p.has_item[p.depth] = true
-			p.after_acts = false
+			p.after_acts, p.after_section = false, false
 			ui.tree_header(widget_id(key, "section"), label, &on)
 			if on != was { sf.opened[key] = on }
 			if !on { return false }
@@ -283,8 +285,13 @@ section_end :: proc(entered: bool) {
 	when ENABLED {
 		if !entered { return }
 		p := current
+		had := p.has_item[p.depth]
 		p.depth -= 1
-		if p.kind == .Build { acts_close(p) }
+		if p.kind == .Build {
+			acts_close(p)
+			p.after_acts = false
+			if had { p.after_section = true }
+		}
 		if p.kind == .Build && p.filter == "" { ui.pop_parent(); ui.pop_parent() }
 	}
 }
@@ -583,8 +590,8 @@ item :: proc(label: string, act := false) -> (p: ^Pass, key: u64, here: bool) {
 // remaining room without wasting blank space on the left).
 @(private, require_results, deferred_out = row_end)
 row_start :: proc(p: ^Pass, label: string, key: u64, height: f32 = 0, label_cap_own := false) -> bool {
-	ui.spacer(ui.px(p.after_acts ? ui.dense_gap() * 2 : ui.dense_gap()))
-	p.after_acts = false
+	ui.spacer(ui.px(p.after_section ? section_gap() : (p.after_acts ? ui.dense_gap() * 2 : ui.dense_gap())))
+	p.after_acts, p.after_section = false, false
 	p.has_item[p.depth] = true
 	shown := shown_label(p, label)
 	ranges := p.filter != "" ? ui.word_ranges(shown, p.filter) : nil

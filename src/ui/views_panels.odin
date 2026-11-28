@@ -930,16 +930,39 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 			title := text_shown(view_title_shown(r))
 			tb := tab_box(fmt.tprintf("###view_tab_%s", r.modal_name), on)
 			if on { strip_reveal(tb) }   // (a tab its "+" opened at the end, or one a command showed, comes into view)
+			closed_tab := false
 			if parent(tb) { if tab_body() {
 				if !on { push_tags("weak") }
+				// (words start at dock_content_inset; only the active tab carries a close cross so inactive tabs stay
+				// compact in narrow side panels and clicking/dragging an inactive tab never hits a close button;
+				// middle-click closes any tab)
+				pad := math.round(em * DOCK_TAB_PAD_EM)
+				spacer(px(pad))
 				words := fmt.tprintf("%s###view_tab_title", title)
-				// (its words a dock tab's pad from its sides: the first one's over the panel's first column, dock_content_inset)
-				next({width = tab_title_width(words, 0, em * DOCK_TAB_PAD_EM), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
+				next({width = tab_title_width(words, 0, 0), height = pct(1), text_pad = 0, text_align = .Center})
 				build_box({.Draw_Text}, words)
+				if on {
+					spacer(px(math.round(em * 0.3)))
+					cw := math.round(em * 1.1)
+					next({width = px(cw), height = px(cw), font = lucide_icons(), font_size = em * DOCK_CLOSE_GLYPH_FRACTION, text_align = .Center, text_pad = 0})
+					cb := build_box({.Clickable, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc},
+						fmt.tprintf("%s###view_tab_close_%s", lucide.X, r.modal_name))
+					a11y_default(cb, {role = .Button, name = fmt.tprintf("%s %s", view_labels(vs).close, title)})
+					csig := signal(cb)
+					if hovered_for(csig) { if tooltip() { tooltip_text(view_labels(vs).close) } }
+					if csig.clicked { closed_tab = true }
+					spacer(px(math.round(em * 0.3)))
+				} else {
+					spacer(px(pad))
+				}
 				if !on { pop_tags() }
 			} }
 			a11y_default(tb, {role = .Tab, selected = on, name = title})
-			view_stack_tab_input(vs, sp, e, k, r, tb, on, minimised)
+			if closed_tab {
+				view_apply(vs, r, {kind = .User_Close})
+			} else {
+				view_stack_tab_input(vs, sp, e, k, r, tb, on, minimised)
+			}
 		}
 	}
 	// the "+": right after the last tab, where the new one comes (at the strip's end when the tabs scroll)
@@ -962,6 +985,7 @@ view_stack_tab_input :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, 
 		}
 		if minimised { view_stack_minimise(vs, sp, e, false) }
 	}
+	if sig.middle_clicked { view_apply(vs, r, {kind = .User_Close}); return }
 	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), tb.key) }
 	if sig.dragging { view_panel_drag(vs, r, tb.key, sig, em) }
 }

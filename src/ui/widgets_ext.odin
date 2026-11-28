@@ -1721,11 +1721,13 @@ tabs_ex :: proc(id: string, labels: []string, icons: []string, selected: ^int, o
 				if o.content != nil {
 					o.content(o.user, {index = i, on = on, hot = b.hot_t > 0.5 || hot_within(b.key), box = b, label = label})
 				} else {
-					spacer(px(em))
-					if i < len(icons) { icon(icons[i], em * 1.6) }
-					next({width = tab_title_width(label), height = pct(1)})
+					// (single side inset with text_pad = 0: no double padding eating room before words ellipsize)
+					pad := math.round(em * (dense_shown() ? 0.45 : 0.7))
+					spacer(px(pad))
+					if i < len(icons) { icon(icons[i], em * 1.3); spacer(px(math.round(em * 0.25))) }
+					next({width = tab_title_width(label, 0, 0), height = pct(1), text_pad = 0})
 					build_box({.Draw_Text}, label)
-					spacer(px(em))
+					spacer(px(pad))
 				}
 				if !on { pop_tags() }
 			} }

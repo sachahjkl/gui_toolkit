@@ -914,6 +914,8 @@ two_panels_in_a_zone_are_tabs :: proc(t: ^testing.T) {
 	s := dock_start(t, &r, "side", "side2")
 	wait_built(s, "view_tabs")
 	testing.expect(t, session.find(s, "view_tab_view_side") != nil && session.find(s, "view_tab_view_side2") != nil, "a tab each")
+	// per-tab close button closes only that tab while keeping the other view open
+	testing.expect(t, session.find(s, "view_tab_close_view_side2") != nil, "per-tab close button exists")
 	testing.expect(t, built(s, "view_panel_view_side2") != nil, "the last docked shown")
 	if !click_named(s, "view_tab_view_side") { return }
 	if wait_built(s, "view_panel_view_side") == nil { return }

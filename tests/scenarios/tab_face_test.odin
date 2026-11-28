@@ -39,10 +39,11 @@ face_build :: proc(s: ^session.Session) {
 			ui.tab_face(b, on, r.mark && on ? FACE_MARK : {})
 			if ui.parent(b) { if ui.tab_body() {
 				if !on { ui.push_tags("weak") }
-				ui.spacer(ui.px(em))
-				ui.next({width = ui.tab_title_width(words), height = ui.pct(1)})
+				pad := math_round(em * 0.7)
+				ui.spacer(ui.px(pad))
+				ui.next({width = ui.tab_title_width(words, 0, 0), height = ui.pct(1), text_pad = 0})
 				ui.build_box({.Draw_Text}, words)
-				ui.spacer(ui.px(em))
+				ui.spacer(ui.px(pad))
 				if !on { ui.pop_tags() }
 			} }
 		}
