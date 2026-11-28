@@ -762,6 +762,60 @@ pictures_of_a_file_tree :: proc(t: ^testing.T) {
 	}
 }
 
+// Dragging a tree item shows a non-clickable floating preview pill following the pointer (with "+N" badge when
+// dragging multiple items) and highlights the hovered target folder; releasing or pressing Escape hides the preview.
+@(test)
+a_tree_drag_shows_preview_pill_and_hides_on_release_or_cancel :: proc(t: ^testing.T) {
+	app: App
+	app.t.multi = true
+	defer app_destroy(&app)
+	s := start(t, &app)
+	session.frames(s, 3)
+	testing.expect(t, session.find(s, "tree_drag_preview") == nil, "no preview before drag")
+
+	// Single-item drag from beta (row 1) onto alpha folder (row 0).
+	r1 := row_box(s, 1)
+	r0 := row_box(s, 0)
+	p0 := session.center(r1)
+	p1 := session.center(r0)
+	session.press(s, p0)
+	session.move(s, p0 + {20, -4})
+	session.move(s, p1)
+	session.frames(s, 2)
+	preview := session.find(s, "tree_drag_preview")
+	if testing.expect(t, preview != nil && preview.last_build == s.state.build_index, "drag preview shown during active drag") {
+		testing.expect(t, .Clickable not_in preview.flags, "drag preview never steals pointer hits")
+		testing.expect(t, session.find_text(s, "beta") != nil, "drag preview shows dragged label")
+		testing.expect(t, session.find(s, "drag_count") == nil, "single item has no +N badge")
+	}
+	testing.expect(t, app.t.drop_over && app.t.drop_row == 0, "hovered folder is drop target")
+	// Releasing ends the drag and hides the preview.
+	session.release(s, p1)
+	session.frames(s, 2)
+	preview = session.find(s, "tree_drag_preview")
+	testing.expect(t, preview == nil || preview.last_build < s.state.build_index, "drag preview disappears on release")
+
+	// Multi-item drag: Shift-select two leaves (beta=1, gamma=2) and drag -> shows "+1" badge; Escape cancels cleanly.
+	session.click(s, "lrow_1")
+	session.key(s, .Down, {.Shift})
+	session.frames(s, 2)
+	p2 := session.center(row_box(s, 2))
+	session.press(s, p2)
+	session.move(s, p2 + {20, -6})
+	session.move(s, p1)
+	session.frames(s, 2)
+	preview = session.find(s, "tree_drag_preview")
+	if testing.expect(t, preview != nil && preview.last_build == s.state.build_index, "multi-item drag preview shown") {
+		badge := session.find(s, "drag_count")
+		testing.expect(t, badge != nil && badge.last_build == s.state.build_index, "multi-item drag shows +N badge")
+	}
+	session.key(s, .Escape)
+	session.frames(s, 2)
+	preview = session.find(s, "tree_drag_preview")
+	testing.expect(t, !app.t.dragging && (preview == nil || preview.last_build < s.state.build_index), "Escape cancels drag and hides preview")
+	session.release(s, p1)
+}
+
 @(private = "file")
 row_of :: proc(f: ^Files, label: string) -> int {
 	for r, i in f.t.file_rows { if r.label == label { return i } }

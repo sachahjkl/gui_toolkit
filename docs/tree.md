@@ -55,8 +55,10 @@ Read after the rows are built; the next call clears them.
 | `drop_row`, `drop_over` | while a drag of rows is held: the branch under the pointer (-1: the top level) |
 | `dropped` | the drag was let go over the tree (`drop_row` says where) |
 
-A drag that rests on a closed branch for `TREE_HOVER_OPEN_MS` opens it. A drop from another program:
-`ui.tree_drop_target(&tree, pos)` gives the branch under a position.
+While a drag of rows is active, a non-clickable floating preview pill follows the pointer (showing the dragged item's
+icon, label, and a `+N` count badge for multi-item drags) while hovered drop-target folders highlight with an accent
+fill and border. Escape cancels the drag; a drag that rests on a closed branch for `TREE_HOVER_OPEN_MS` opens it. A
+drop from another program: `ui.tree_drop_target(&tree, pos)` gives the branch under a position.
 
 ## Keys
 

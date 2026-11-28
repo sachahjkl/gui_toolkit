@@ -406,6 +406,8 @@ overlay_release_keys :: proc(s: ^State, owner: Key_Owner) {
 @(private)
 menus_raise :: proc(s: ^State) {
 	for lv in s.menus { root_raise(s, s.boxes[lv.panel]) }
+	// (the tree drag preview pill above views/panels, non-clickable, under tooltips)
+	root_raise(s, s.boxes[key_from_string(s.root.key, "###tree_drag_preview")])
 	// (then the tooltip, over the menus: a tooltip of a menu's button, or of a panel opened as a menu, showed under it)
 	root_raise(s, s.boxes[key_from_string(s.root.key, "###tooltip")])
 }

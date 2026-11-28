@@ -579,6 +579,7 @@ State :: struct {
 	mouse_moved:     bool,            // the pointer moved this frame
 	pointer:         platform.Pointer_Info,   // the device that moved the pointer last (pointer_device)
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
+	tree_stack:      [dynamic]^Tree,        // trees being built (tree.odin)
 	file_tree_stack: [dynamic]^File_Tree,   // file trees being built (file_tree.odin)
 	file_trees:      [dynamic]^File_Tree,   // the file trees built in this State: a trash's toast finds its tree among them
 	file_tree_serial: u64,                  // counts the file trees' trashes: a toast's undo names its trash by it

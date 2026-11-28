@@ -134,6 +134,7 @@ destroy :: proc(s: ^State) {
 	delete(s.modals_open)
 	delete(s.modals_built)
 	delete(s.list_stack)
+	delete(s.tree_stack)
 	delete(s.file_tree_stack)
 	delete(s.file_trees)
 	delete(s.strip_stack)

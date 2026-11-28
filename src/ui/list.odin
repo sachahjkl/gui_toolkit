@@ -65,7 +65,8 @@ List_State :: struct {
 	rules:             bool,
 	// When true on a multi-select list, list_row defers selection on a left pointer press that hits the empty part of a
 	// row so item_band_update can start a band on drag or select on release.
-	defer_empty_press: bool,
+	defer_empty_press:    bool,
+	defer_selected_press: bool,   // keep a multi-selection intact on plain press of a selected row so dragging moves all of them
 	// Set by each list_row call: true when that row received a left pointer press on its empty part (not on content).
 	pressed_empty:     bool,
 }
@@ -307,7 +308,8 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 	if lit { pop_tags() }
 	sig := signal(b)
 	st.pressed_empty = pressed_empty
-	defer_click := st.defer_empty_press && st.multi && sig.pointer_pressed && pressed_empty && !sig.double_clicked
+	defer_sel := st.defer_selected_press && st.multi && lit && sig.pointer_pressed && sig.mods == {} && !sig.double_clicked && list_selected_count(st) > 1
+	defer_click := defer_sel || (st.defer_empty_press && st.multi && sig.pointer_pressed && pressed_empty && !sig.double_clicked)
 	if selectable && (sig.pressed || sig.right_clicked) {
 		if !defer_click {
 			if st.sel != i { st.changed = true }

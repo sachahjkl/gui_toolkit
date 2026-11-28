@@ -96,9 +96,12 @@ The tree says what was asked; the program does it with its own data and words:
 - `rename_asked`: F2 on a row. `tree_rename_begin(t, id, text)` puts a field in that row's label; `renamed` holds the
   text at Enter; Escape or a click elsewhere ends it with nothing.
 - Drag and drop: `drag_rows` once a press moved past the drag threshold (the rows selected, or the row pressed);
-  while it is held, `drop_row` is the branch under the pointer (a leaf's parent), opened after `TREE_HOVER_OPEN_MS`;
-  `dropped` at the release. The program starts the system's drag when the pointer leaves the window
-  (`platform.drag_start`), and gives the system's drops to `tree_drop_hover` and `tree_drop_at`.
+  while it is held, `drop_row` is the branch under the pointer (a leaf's parent), opened after `TREE_HOVER_OPEN_MS`,
+  a floating drag preview pill (`###tree_drag_preview`) follows the pointer on the root overlay layer (non-clickable,
+  raised above panels and views so it never steals hits; icon + label + `+N` count badge for multi-item drags), and
+  the hovered drop target folder gets an accent tint and border (root drops outline the tree). Escape cancels an active
+  drag cleanly; releasing sets `dropped` when over the tree. The program starts the system's drag when the pointer
+  leaves the window (`platform.drag_start`), and gives the system's drops to `tree_drop_hover`.
 
 ## The file tree
 

@@ -112,6 +112,11 @@ Tree :: struct {
 	drag_released: bool,              // the drag ended this build: its release clicks nothing
 	hover_id:      u64,               // the branch a drag rests on, since `hover_ms`
 	hover_ms:      f64,
+	// Floating drag preview pill metadata (owned; populated when a drag starts, shown while dragging):
+	drag_label:    string,
+	drag_icon:     string,
+	drag_tint:     Maybe(Color),
+	drag_count:    int,
 }
 
 tree_destroy :: proc(t: ^Tree) {
@@ -123,6 +128,8 @@ tree_destroy :: proc(t: ^Tree) {
 	delete(t.ends)
 	delete(t.places)
 	delete(t.kids)
+	delete(t.drag_label)
+	delete(t.drag_icon)
 	line_edit_destroy(&t.rename_edit)
 }
 
@@ -283,22 +290,34 @@ tree_open :: proc(id: string, t: ^Tree, rows: []Tree_Row, version: u64) -> (show
 		}
 	}
 
-	// a drag of rows: where it would go, a branch it rests on opened, its end
+	// a drag of rows: where it would go, a branch it rests on opened, cancel on Escape, or drop on release
 	if .Left not_in s.buttons_down { t.drag_spent = false }
 	if t.dragging {
 		if .Left not_in s.buttons_down {
 			t.dragging, t.drag_released = false, true
 			t.dropped = t.drop_over
+			t.drag_count = 0
+		} else if key_press(.Escape) {
+			t.dragging, t.drag_spent, t.drag_released = false, true, true
+			t.dropped, t.drop_over, t.drop_row, t.hover_id, t.drag_count = false, false, -1, 0, 0
 		} else {
 			tree_drop_hover(t, s.mouse)
 		}
 	}
 
+	t.list.defer_selected_press = t.multi
 	a11y({role = .Tree, multiselectable = t.multi})
 	shown, ok = vlist_open(id, &t.vl, t.tree_ids[:], t.tree_labels[:], nil, version)
-	// (a right click on the list itself, under its rows: the tree's own menu)
-	if lb := parent_box(); signal(lb).right_clicked {
-		t.menu, t.menu_empty, t.menu_at, t.menu_keyboard = -1, true, mouse_pos(), false
+	append(&s.tree_stack, t)
+	// (a right click on the list itself, under its rows: the tree's own menu; root drop outlines the tree)
+	if lb := parent_box(); lb != nil {
+		if (t.dragging || t.drop_outside) && t.drop_over && t.drop_row < 0 {
+			lb.flags += {.Draw_Border}
+			lb.border, lb.target_border = color("accent"), color("accent")
+		}
+		if signal(lb).right_clicked {
+			t.menu, t.menu_empty, t.menu_at, t.menu_keyboard = -1, true, mouse_pos(), false
+		}
 	}
 
 	// the tree's keys, after the list's (Up, Down... are the list's)
@@ -352,6 +371,60 @@ tree_open :: proc(id: string, t: ^Tree, rows: []Tree_Row, version: u64) -> (show
 @(private)
 tree_end :: proc(shown: Vlist_Rows, ok: bool) {
 	vlist_end(shown, ok)
+	s := gs()
+	if len(s.tree_stack) == 0 { return }
+	t := pop(&s.tree_stack)
+	if t.dragging && t.drag_count > 0 { tree_drag_preview(t) }
+}
+
+// Floating drag preview pill following the pointer on the root overlay layer (non-clickable so it never steals hits).
+@(private = "file")
+tree_drag_preview :: proc(t: ^Tree) {
+	s := gs()
+	if !s.mouse_valid { return }
+	push_parent(s.root)
+	push_tags_isolated("floating")
+	append(&s.style_stack, s.style_stack[0])
+	defer {
+		pop(&s.style_stack)
+		pop_tags_isolated()
+		pop_parent()
+	}
+	st := top_style()
+	em := st.font_size
+	id :: "###tree_drag_preview"
+	prev := s.boxes[key_from_string(s.root.key, id)]
+	size := prev != nil && prev.size.x > 0 ? prev.size : Vec2{em * 8, em * 1.9}
+	pos := clamp_popup(s.mouse + Vec2{math.round(em * 0.9), math.round(em * 0.9)}, size, s.window_size)
+	accent := color("accent")
+	next({
+		fixed_x = pos.x, fixed_y = pos.y,
+		width = children_sum(), height = px(math.round(em * 1.9)),
+		axis = .X, cross = .Center,
+		radius = math.round(em * 0.45),
+		border = draw.mix(color("border"), accent, 0.55),
+	})
+	pill := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, id)
+	a11y_default(pill, {ignore = true})
+	if parent(pill) {
+		spacer(px(math.round(em * 0.5)))
+		if t.drag_icon != "" {
+			next({width = px(math.round(em * 1.2)), height = pct(1), font = lucide_icons(), font_size = math.round(em * 0.95), text_align = .Center, text_pad = 0, fg = t.drag_tint})
+			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###drag_icon", t.drag_icon))
+			spacer(px(math.round(em * 0.3)))
+		}
+		lw := min(math.ceil(text_width(st.font, em, t.drag_label) + 2 * math.round(em * 0.15)), math.round(em * 16))
+		next({width = px(max(lw, em * 2)), height = pct(1), text_pad = math.round(em * 0.15)})
+		build_box({.Draw_Text}, fmt.tprintf("%s###drag_label", text_shown(t.drag_label)))
+		if t.drag_count > 1 {
+			spacer(px(math.round(em * 0.4)))
+			badge := fmt.tprintf("+%d", t.drag_count - 1)
+			ink := readable(color("text"), accent, 4.5)
+			next({width = text_size(math.round(em * 0.35)), height = px(math.round(em * 1.25)), bg = accent, fg = ink, font_size = math.round(em * 0.8), text_align = .Center, text_pad = 0, radius = math.round(em * 0.6)})
+			build_box({.Draw_Background, .Draw_Text, .No_Text_Trunc, .Fixed_Radius}, fmt.tprintf("%s###drag_count", badge))
+		}
+		spacer(px(math.round(em * 0.5)))
+	}
 }
 
 // A drag over the tree at the frame position `pos`: drop_row and drop_over say where it would go, the target row is
@@ -427,14 +500,16 @@ tree_row :: proc(t: ^Tree, i: int, o := Tree_Row_Options{}) -> Signal {
 	lit_drop := (t.dragging || t.drop_outside) && t.drop_over && t.drop_row >= 0 && t.drop_row == i
 	next({width = fill(), height = px(h), cross = .Center, radius = math.round(em * 0.2)})
 	if lit_drop {
-		// (the branch a drag would go in: the face of a row under the pointer)
+		// (the branch a drag would go in: accent tint and border so hovered drop targets read clearly)
 		m := s.next_mod
-		m.border = color("accent")
+		accent := color("accent")
+		m.border = accent
+		m.bg = draw.mix(color("surface"), accent, 0.18)
 		s.next_mod = m
 	}
 	sig := list_row(&t.list, i, r.label)
 	b := sig.box
-	if lit_drop { b.flags += {.Draw_Border} }
+	if lit_drop { b.flags += {.Draw_Background, .Draw_Border} }
 	selected := list_is_selected(&t.list, i)
 	ink := b.ink.a > 0 ? b.ink : color("weak text")
 	lit_level := -1
@@ -506,8 +581,11 @@ tree_row :: proc(t: ^Tree, i: int, o := Tree_Row_Options{}) -> Signal {
 	a11y_set(b, {role = .Tree_Item, name = r.label, level = r.depth + 1, position = int(t.places[i]),
 		set_size = int(t.parents[i] >= 0 ? t.kids[t.parents[i]] : t.roots), expanded = expanded, selected = selected})
 
-	if sig.clicked && sig.mods == {} && !t.drag_released && !(r.branch && sig.second_click) {
-		tree_act(t, i, sig.second_click)
+	if sig.clicked && sig.mods == {} && !t.drag_released {
+		if selected && t.multi && list_selected_count(&t.list) > 1 {
+			item_selection_click(&t.list.selection, list_rows(&t.list), i, {})
+		}
+		if !(r.branch && sig.second_click) { tree_act(t, i, sig.second_click) }
 	}
 	if sig.right_clicked { t.menu, t.menu_at, t.menu_keyboard = i, mouse_pos(), false }
 	if sig.dragging && !t.dragging && !t.drag_spent && .Left in s.buttons_down {
@@ -521,6 +599,13 @@ tree_row :: proc(t: ^Tree, i: int, o := Tree_Row_Options{}) -> Signal {
 				one[0] = r.id
 				t.drag_rows = one
 			}
+			delete(t.drag_label)
+			delete(t.drag_icon)
+			t.drag_label = strings.clone(r.label)
+			t.drag_icon = strings.clone(r.icon)
+			t.drag_tint = o.icon_tint
+			t.drag_count = len(t.drag_rows)
+			tree_drop_hover(t, s.mouse)
 		}
 	}
 	return sig
