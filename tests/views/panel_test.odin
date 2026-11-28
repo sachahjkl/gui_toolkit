@@ -386,9 +386,9 @@ a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	if fold == nil { return }
 	at := fold.rect
 	testing.expect(t, built(s, "view_tabs") == nil, "at rest: no tab strip")
-	header := built(s, "view_lone_header")
 	body := built(s, "view_panel_view_marks")
-	testing.expectf(t, header != nil && body != nil && body.rect.min.y >= header.rect.max.y - 0.5, "compact header above body: %v above %v", header.rect if header != nil else ui.Rect{}, body.rect if body != nil else ui.Rect{})
+	testing.expect(t, built(s, "view_lone_header") == nil, "no extra header above a rail sidebar")
+	testing.expectf(t, body != nil && abs(body.rect.min.y - zone.rect.min.y) <= 1, "body starts at zone top: %v in %v", body.rect if body != nil else ui.Rect{}, zone.rect)
 	testing.expectf(t, abs(at.min.x - (zone.rect.min.x + FOLD_INSET)) <= 1, "where the view put it: %v in %v", at, zone.rect)
 	session.click(s, "view_fold")
 	if wait_built(s, "marks_compact") == nil { return }
@@ -412,17 +412,18 @@ a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	testing.expectf(t, !sm.fold[.Left].folded, "restored, remembered: %q", text)
 }
 
-// The panel that places its fold button: its compact header has Close and menu, and no second Minimise (said once).
+// A panel that places its fold button keeps no extra header when lone, and when stacked with another panel its tab
+// strip says Minimise no second time (said once).
 @(test)
 a_fold_button_s_strip_says_minimise_once :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
-	s := dock_start(t, &r, "marks")
+	s := dock_start(t, &r, "side", "marks")
 	fold := wait_built(s, "view_fold")
+	strip := wait_built(s, "view_tabs")
 	session.frames(s, 2)
-	header := built(s, "view_lone_header")
-	if fold == nil || header == nil { testing.expect(t, false, "the fold button and the header"); return }
-	testing.expect(t, built(s, "view_stack_close") != nil, "the header's Close button")
+	if fold == nil || strip == nil { testing.expect(t, false, "the fold button and the tab strip"); return }
+	testing.expect(t, built(s, "view_stack_close") != nil, "the strip's Close button")
 	testing.expect(t, built(s, "view_stack_min") == nil, "no second Minimise")
 	testing.expect(t, built(s, "view_fold") != nil, "the view's button stays")
 }

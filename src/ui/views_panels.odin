@@ -866,14 +866,16 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		shown.strip_tools = 0
 		// (the shown view placed its zone's fold button in its last build: the strip says Minimise no second time)
 		folds := shown.fold_built != 0 && shown.fold_built + 1 >= s.build_index
+		// (a lone sidebar with its own compact rail form owns its top row via view_fold_button: views.md, rule 2b)
+		lone_header := !with_strip && shown.kind.o.rail_em <= 0
 		if with_strip {
 			view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !folds)
-		} else {
+		} else if lone_header {
 			view_lone_header(vs, sp, e, k, list, shown, only >= 0, minimise = !folds)
 		}
 		if !minimised { view_panel_build(vs, sp, shown) }
 		pop_parent()
-		view_panel_menu_press(shown, stack, with_strip ? strip_h : math.round(em * VIEW_LONE_HEADER_EM))
+		view_panel_menu_press(shown, stack, lone_header ? math.round(em * VIEW_LONE_HEADER_EM) : strip_h)
 		for r in list { view_header_menu(vs, r, .Panel) }
 		if last || length <= 0 || (minimised && axis == .Y) { continue }
 		// (the handle after it: its share of the zone, written when it is let go)
@@ -1059,8 +1061,6 @@ view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View
 		stack := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_stack_%d", k))
 		sp.stacks[e][k], sp.stack_key[e][k] = stack.rect, stack.key
 		push_parent(stack)
-		// (keep the same top offset as view_lone_header so view_fold_button stays under the pointer across fold/unfold)
-		view_rail_header(vs, sp, e, list, shown)
 		view_panel_build(vs, sp, shown, rail = true)
 		// (the toolkit's rail has no Restore for a compact form: its view places it, views.md, Minimise)
 		when ODIN_DEBUG {
@@ -1315,31 +1315,6 @@ view_lone_icon :: proc(id, glyph, label: string) -> (clicked: bool) {
 	sig := signal(b)
 	if hovered_for(sig) { if tooltip() { tooltip_text(label) } }
 	return sig.clicked
-}
-
-// The matching top bar of a collapsed compact-form rail so view_fold_button stays at the exact same pixel across fold.
-@(private = "file")
-view_rail_header :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, list: []^View_Record, shown: ^View_Record) {
-	s := gs()
-	em := font_size()
-	labels := view_labels(vs)
-	h := math.round(em * VIEW_LONE_HEADER_EM)
-	small_em := math.round(em * DENSE_FONT_SCALE)
-	next({width = fill(), height = px(h), axis = .X, cross = .Center})
-	bar: ^Box
-	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_lone_header") }
-	push_parent(bar)
-	defer pop_parent()
-	spacer(fill())
-	push_style_copy()
-	top_style().font_size = small_em
-	if view_lone_icon("view_stack_close", lucide.X, labels.close) {
-		for r in list { view_apply(vs, r, {kind = .User_Close}) }
-		s.anim_busy = true
-	}
-	spacer(fill())
-	pop(&s.style_stack)
-	_ = sp; _ = e; _ = shown
 }
 
 // The slim compact header bar of a lone panel (views.md, section 2.5): sits above the body so controls never overlap
