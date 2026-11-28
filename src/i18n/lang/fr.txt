@@ -2047,6 +2047,33 @@ fr To
 en PB
 fr Po
 
+en About %s
+fr À propos de %s
+
+en Version
+fr Version
+
+en Toolkit
+fr Boîte à outils
+
+en Website
+fr Site web
+
+en Online release notes
+fr Notes en ligne
+
+en Copy version
+fr Copier la version
+
+en Version copied.
+fr Version copiée.
+
+en Copy diagnostics
+fr Copier les diagnostics
+
+en Diagnostics copied.
+fr Diagnostics copiés.
+
 en Previous
 fr Précédent
 
@@ -2972,6 +2999,9 @@ fr Pas de fenêtre : le système l'a refusée.
 en floating window
 fr fenêtre flottante
 
+en Panel menu
+fr Menu du panneau
+
 en Open %s in a window
 fr Ouvrir %s dans une fenêtre
 
@@ -3140,33 +3170,3 @@ fr le serveur a répondu %d
 
 en the update has no signature: refused
 fr la mise à jour n'a pas de signature : refusée
-
-en Panel menu
-fr Menu du panneau
-
-en Version
-fr Version
-
-en Toolkit
-fr Boîte à outils
-
-en Copy version
-fr Copier la version
-
-en Version copied.
-fr Version copiée.
-
-en Copy diagnostics
-fr Copier les diagnostics
-
-en Diagnostics copied.
-fr Diagnostics copiés.
-
-en Online release notes
-fr Notes en ligne
-
-en Website
-fr Site web
-
-en About %s
-fr À propos de %s
