@@ -18,6 +18,11 @@
 
 ## Next
 
+- **Suite-wide naming and documentation pass.** Uniformise program name casing across every program, README, site and
+  Atelier's catalogue, and add the newest programs (Plume, Galerie, Ardoise) everywhere the suite is listed.
+- **Every program on `ui.about_modal`.** Plume, Galerie, Ardoise, Tower, Feuille, Classeur, Cliche, Socle, Inspecteur,
+  Atelier, Papier and Wren show the shared About modal with built-in What's new first. Intent:
+  [src/md/features/about-modal.md](src/md/features/about-modal.md).
 - **The programs' own saves on `fsx.DOCUMENT`.** plume drops `write_keeping` and `keep_owner`, galerie `write_beside`,
   feuille its writes in place of a PDF (a cut file after a crash or a full disk): a document keeps its mode, owner, access
   list and link, and a hard link is said. Intent: [src/md/features/document-writes.md](src/md/features/document-writes.md).
