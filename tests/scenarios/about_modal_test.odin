@@ -12,9 +12,9 @@ import "gt:ui"
 
 @(private = "file")
 About_App :: struct {
-	open:        bool,
-	opened_url:  string,
-	copied:      string,
+	open:           bool,
+	opened_url:     string,
+	whats_new_hits: int,
 }
 
 @(private = "file")
@@ -23,31 +23,33 @@ about_test_build :: proc(s: ^session.Session) {
 	ui.next({width = ui.fill(), height = ui.fill()})
 	ui.build_box({.Draw_Background}, "###page")
 	links := [?]ui.About_Link{
-		{label = "Website", url = "https://froment.software"},
 		{label = "Repository", url = "https://github.com/sachahjkl/plume"},
 	}
 	ui.about_modal("about", &app.open, {
-		name        = "Plume",
-		version     = "0.15.0",
-		tagline     = "A focused writing workspace",
-		licence     = "MIT",
-		copyright   = "© 2026 Froment Software",
-		icon        = lucide.FEATHER,
-		links       = links[:],
-		diagnostics = "Renderer: llvmpipe",
-		on_link     = proc(url: string, user: rawptr) {
+		name         = "Plume",
+		version      = "0.15.0",
+		tagline      = "A focused writing workspace",
+		licence      = "MIT",
+		copyright    = "© 2026 Froment Software",
+		icon         = lucide.FEATHER,
+		on_whats_new = proc(user: rawptr) { (^About_App)(user).whats_new_hits += 1 },
+		website_url  = "https://froment.software",
+		releases_url = "https://froment.software/plume/changelog/",
+		links        = links[:],
+		diagnostics  = "Renderer: llvmpipe",
+		on_link      = proc(url: string, user: rawptr) {
 			app := (^About_App)(user)
 			delete(app.opened_url)
 			app.opened_url = strings.clone(url)
 		},
-		user        = app,
+		user         = app,
 	})
 }
 
 @(test)
 about_modal_shows_info_copies_and_closes :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	app := About_App{open = true}
-	defer { delete(app.opened_url); delete(app.copied) }
+	defer delete(app.opened_url)
 	s := session.start(t, {size = {800, 600}, user = &app, build = about_test_build})
 	// Route clipboard writes into app.copied for deterministic testing.
 	s.state.clipboard_set = proc(text: string) {
@@ -66,10 +68,16 @@ about_modal_shows_info_copies_and_closes :: proc(t: ^testing.T) { unwatched.run(
 	testing.expect(t, session.find_text(s, ui.VERSION) != nil, "toolkit version shown")
 	testing.expect(t, session.find_text(s, "MIT") != nil, "licence shown")
 
-	// Clicking a link invokes on_link with the URL.
-	session.click(s, "about_link_0")
+	// Clicking Website / Online release notes / custom links invokes on_link with the URL.
+	session.click(s, "about_website")
 	session.frames(s, 2)
 	testing.expect_value(t, app.opened_url, "https://froment.software")
+	session.click(s, "about_releases")
+	session.frames(s, 2)
+	testing.expect_value(t, app.opened_url, "https://froment.software/plume/changelog/")
+	session.click(s, "about_link_0")
+	session.frames(s, 2)
+	testing.expect_value(t, app.opened_url, "https://github.com/sachahjkl/plume")
 	testing.expect(t, app.open, "clicking a link keeps modal open")
 
 	// Copy helpers format version and diagnostics cleanly.
@@ -93,6 +101,15 @@ about_modal_shows_info_copies_and_closes :: proc(t: ^testing.T) { unwatched.run(
 	session.click(s, "about_close")
 	session.frames(s, 3)
 	testing.expect(t, !app.open, "Close button closes modal")
+
+	// Reopening and clicking the primary "What's new" button closes About and triggers on_whats_new.
+	app.open = true
+	session.wait_box(s, "about_whats_new")
+	session.frames(s, 2)
+	session.click(s, "about_whats_new")
+	session.frames(s, 3)
+	testing.expect(t, !app.open, "What's new closes About modal")
+	testing.expect_value(t, app.whats_new_hits, 1)
 
 	// Reopening and pressing Escape closes the modal too.
 	app.open = true

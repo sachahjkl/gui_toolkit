@@ -13,6 +13,9 @@ for version and diagnostics. A program's author reads [docs/about.md](../../../d
   bar so the program name appears once in the hero row (Interface Design: say each piece of information once).
 - **Pure text formatters.** `about_version_text` and `about_diagnostics_text` build the copied strings separately from
   the UI so tests and programs can reuse or assert the exact text without scraping boxes.
+- **Built-in "What's new" first.** Every gui_toolkit program embeds its changelog in-app. When `on_whats_new` is
+  provided, "What's new" is the modal's primary action (closing About and jumping straight to the in-app changelog),
+  while `website_url`, `releases_url` ("Online release notes"), and `links` appear as secondary ghost buttons.
 - **Non-blocking links.** Link buttons call `About_Info.on_link` when provided, otherwise `ui.open(url, .Url)` on the
   chores pool, never blocking the interface thread.
 - **Zero globals.** All state belongs to the caller's `open: ^bool` and `ui.State`.

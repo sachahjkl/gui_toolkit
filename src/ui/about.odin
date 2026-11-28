@@ -31,20 +31,23 @@ About_Link :: struct {
 
 // What the program passes to about_modal. Every field is optional; empty fields are omitted.
 About_Info :: struct {
-	name:        string,                          // program name
-	version:     string,                          // program version
-	tagline:     string,                          // short description under the name
-	licence:     string,                          // licence text (e.g. "MIT")
-	copyright:   string,                          // optional copyright / vendor line
-	logo:        render.Texture,                  // optional logo texture, drawn in a rounded square
-	logo_draw:   Custom_Draw,                     // optional custom draw for the logo (wins over logo and icon)
-	logo_user:   rawptr,                          // user pointer for logo_draw
-	icon:        string,                          // optional icon glyph when logo_draw == nil and logo == 0
-	icon_font:   font.Font_Id,                    // font of icon (0: lucide_icons())
-	links:       []About_Link,                    // optional links opened on click
-	diagnostics: string,                          // optional extra diagnostics lines appended to "Copy diagnostics"
-	on_link:     proc(url: string, user: rawptr), // optional callback instead of ui.open(url, .Url)
-	user:        rawptr,                          // user pointer passed to on_link
+	name:         string,                          // program name
+	version:      string,                          // program version
+	tagline:      string,                          // short description under the name
+	licence:      string,                          // licence text (e.g. "MIT")
+	copyright:    string,                          // optional copyright / vendor line
+	logo:         render.Texture,                  // optional logo texture, drawn in a rounded square
+	logo_draw:    Custom_Draw,                     // optional custom draw for the logo (wins over logo and icon)
+	logo_user:    rawptr,                          // user pointer for logo_draw
+	icon:         string,                          // optional icon glyph when logo_draw == nil and logo == 0
+	icon_font:    font.Font_Id,                    // font of icon (0: lucide_icons())
+	on_whats_new: proc(user: rawptr),              // prioritized built-in "What's new" action (closes About and jumps in-app)
+	website_url:  string,                          // optional project website URL ("Website" button)
+	releases_url: string,                          // optional secondary online release notes URL ("Online release notes" button)
+	links:        []About_Link,                    // optional extra link buttons
+	diagnostics:  string,                          // optional extra diagnostics block (shows "Copy diagnostics" when non-empty)
+	on_link:      proc(url: string, user: rawptr), // optional callback instead of ui.open(url, .Url)
+	user:         rawptr,                          // user pointer passed to on_whats_new and on_link
 }
 
 @(private = "file")
@@ -106,7 +109,11 @@ about_modal :: proc(id: string, showing: ^bool, info: About_Info) {
 	em := font_size()
 	// Place the modal's top-right close cross without a duplicate title bar so the program name is said once.
 	m := &s.modal_stack[len(s.modal_stack) - 1]
-	border := border_inset(box_from_key(m.panel))
+	panel := box_from_key(m.panel)
+	if panel != nil && info.name != "" {
+		a11y_default(panel, {role = .Dialog, name = fmt.tprintf(i18n.tr("About %s"), info.name)})
+	}
+	border := border_inset(panel)
 	m.corner_side = math.round(em * DIALOG_CLOSE_EM)
 	m.corner_inset = border + math.round(em * 0.6)
 	m.close, m.close_label = true, i18n.tr("Close")
@@ -192,18 +199,34 @@ about_modal :: proc(id: string, showing: ^bool, info: About_Info) {
 				}
 			}
 
-			// Optional links
-			if len(info.links) > 0 {
+			// Built-in "What's new" (prioritized primary action) + optional external links
+			open_url :: proc(info: About_Info, url: string) {
+				if info.on_link != nil { info.on_link(url, info.user) } else if url != "" { open(url, .Url) }
+			}
+			has_links := info.on_whats_new != nil || info.website_url != "" || info.releases_url != "" || len(info.links) > 0
+			if has_links {
 				space(ITEM_GAP)
 				if flow({math.round(em * SPACE_2), math.round(em * SPACE_2)}, "###about_links") {
+					if info.on_whats_new != nil {
+						if button("###about_whats_new", i18n.tr("What's new"), lucide.SPARKLES, {intent = .Primary, icon_font = lucide_icons()}).clicked {
+							showing^ = false
+							info.on_whats_new(info.user)
+						}
+					}
+					if info.website_url != "" {
+						if button("###about_website", i18n.tr("Website"), lucide.GLOBE, {face = .Ghost, icon_font = lucide_icons(), tip = info.website_url}).clicked {
+							open_url(info, info.website_url)
+						}
+					}
+					if info.releases_url != "" {
+						if button("###about_releases", i18n.tr("Online release notes"), lucide.EXTERNAL_LINK, {face = .Ghost, icon_font = lucide_icons(), tip = info.releases_url}).clicked {
+							open_url(info, info.releases_url)
+						}
+					}
 					for lk, i in info.links {
 						glyph := lk.icon != "" ? lk.icon : lucide.EXTERNAL_LINK
 						if button(fmt.tprintf("###about_link_%d", i), lk.label, glyph, {face = .Ghost, icon_font = lucide_icons(), tip = lk.url}).clicked {
-							if info.on_link != nil {
-								info.on_link(lk.url, info.user)
-							} else if lk.url != "" {
-								open(lk.url, .Url)
-							}
+							open_url(info, lk.url)
 						}
 					}
 				}
@@ -213,7 +236,7 @@ about_modal :: proc(id: string, showing: ^bool, info: About_Info) {
 			hline(fill())
 			space(ITEM_GAP)
 
-			// Footer actions: Copy version, Copy diagnostics, Close
+			// Footer actions: Copy version, optional Copy diagnostics (when diagnostics provided), Close
 			next({width = fill(), height = children_sum(), axis = .X, cross = .Center})
 			if row(.Center, id = "###about_actions") {
 				next({width = fill()})
@@ -222,13 +245,16 @@ about_modal :: proc(id: string, showing: ^bool, info: About_Info) {
 						if s.clipboard_set != nil { s.clipboard_set(about_version_text(info)) }
 						toast_add(.Info, nil, nil, i18n.tr("Version copied."))
 					}
-					if button("###about_copy_diagnostics", i18n.tr("Copy diagnostics"), lucide.CLIPBOARD_LIST, {face = .Ghost, icon_font = lucide_icons()}).clicked {
-						if s.clipboard_set != nil { s.clipboard_set(about_diagnostics_text(info)) }
-						toast_add(.Info, nil, nil, i18n.tr("Diagnostics copied."))
+					if info.diagnostics != "" {
+						if button("###about_copy_diagnostics", i18n.tr("Copy diagnostics"), lucide.CLIPBOARD_LIST, {face = .Ghost, icon_font = lucide_icons()}).clicked {
+							if s.clipboard_set != nil { s.clipboard_set(about_diagnostics_text(info)) }
+							toast_add(.Info, nil, nil, i18n.tr("Diagnostics copied."))
+						}
 					}
 				}
 				space(CONTROL_GAP)
-				if button("###about_close", i18n.tr("Close"), o = {intent = .Primary}).clicked {
+				close_intent: Intent = info.on_whats_new != nil ? .Neutral : .Primary
+				if button("###about_close", i18n.tr("Close"), o = {intent = close_intent}).clicked {
 					showing^ = false
 				}
 			}

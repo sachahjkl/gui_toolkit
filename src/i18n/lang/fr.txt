@@ -3161,3 +3161,12 @@ fr Copier les diagnostics
 
 en Diagnostics copied.
 fr Diagnostics copiés.
+
+en Online release notes
+fr Notes en ligne
+
+en Website
+fr Site web
+
+en About %s
+fr À propos de %s
